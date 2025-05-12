@@ -3,6 +3,7 @@ import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import { generateOTP } from '../../../utils/otp.js';
+import { setOTP, verifyOTP } from '../../../utils/redis.js';
 
 // Register new customer
 export const register = async (req, res, next) => {
@@ -141,78 +142,103 @@ export const login = async (req, res, next) => {
   }
 };
 
+// Helper function to generate OTP
+const generateOTPHelper = () => {
+    const digits = process.env.OTP_LENGTH || 6;
+    return Math.floor(Math.random() * Math.pow(10, digits)).toString().padStart(digits, '0');
+};
+
 // Send OTP
 export const sendOTP = async (req, res, next) => {
-  try {
-    const { phoneOrEmail, purpose } = req.body;
+    try {
+        const { phoneOrEmail, purpose } = req.body;
 
-    // Find customer by email or phone
-    const customer = await Customer.findOne({
-      $or: [
-        { email: phoneOrEmail },
-        { phone: phoneOrEmail }
-      ]
-    });
+        // Find customer by email or phone
+        const customer = await Customer.findOne({
+            $or: [
+                { email: phoneOrEmail },
+                { phone: phoneOrEmail }
+            ]
+        });
 
-    if (!customer) {
-      return next(new AppError('No account found with this email or phone number', 404));
-    }
+        if (!customer) {
+            return next(new AppError('No account found with this email or phone number', 404));
+        }
 
-    const otp = generateOTP();
-    const expiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+        const otp = generateOTPHelper();
+        
+        // Store OTP in Redis
+        await setOTP(customer._id.toString(), otp);
 
-    // Set OTP based on purpose
-    switch (purpose) {
-      case 'login':
-        customer.resetPasswordOTP = otp;
-        customer.resetPasswordOTPExpiry = expiry;
-        break;
-      case 'reset':
-        customer.resetPasswordOTP = otp;
-        customer.resetPasswordOTPExpiry = expiry;
-        break;
-      case 'verify':
+        // Send OTP via email or SMS
         if (phoneOrEmail.includes('@')) {
-          customer.emailVerificationOTP = otp;
-          customer.emailVerificationOTPExpiry = expiry;
+            await sendEmail({
+                to: phoneOrEmail,
+                subject: 'Your OTP - RocketryBox',
+                text: `Your OTP is: ${otp}. This code will expire in ${process.env.OTP_EXPIRY_MINUTES} minutes.`
+            });
         } else {
-          customer.phoneVerificationOTP = otp;
-          customer.phoneVerificationOTPExpiry = expiry;
+            await sendSMS({
+                to: phoneOrEmail,
+                message: `Your OTP for RocketryBox is ${otp}. Valid for ${process.env.OTP_EXPIRY_MINUTES} minutes.`
+            });
         }
-        break;
-      default:
-        return next(new AppError('Invalid purpose', 400));
+
+        res.status(200).json({
+            success: true,
+            data: {
+                message: 'OTP sent successfully',
+                otp: process.env.NODE_ENV === 'development' ? otp : undefined,
+                expiresIn: parseInt(process.env.OTP_EXPIRY_MINUTES) * 60
+            }
+        });
+    } catch (error) {
+        next(new AppError(error.message, 400));
     }
+};
 
-    await customer.save();
+// Verify OTP
+export const verifyOTPHandler = async (req, res, next) => {
+    try {
+        const { phoneOrEmail, otp } = req.body;
 
-    // Send OTP via email or SMS
-    if (phoneOrEmail.includes('@')) {
-      await sendEmail({
-        to: phoneOrEmail,
-        subject: 'Your OTP - RocketryBox',
-        text: `Your OTP is: ${otp}. This code will expire in 10 minutes.`
-      });
-    } else {
-      await sendSMS({
-        to: phoneOrEmail,
-        templateId: SMS_TEMPLATES.OTP.templateId,
-        variables: {
-          otp,
-          expiry: '10 minutes'
+        // Find customer
+        const customer = await Customer.findOne({
+            $or: [
+                { email: phoneOrEmail },
+                { phone: phoneOrEmail }
+            ]
+        });
+
+        if (!customer) {
+            return next(new AppError('No account found with this email or phone number', 404));
         }
-      });
-    }
 
-    res.status(200).json({
-      success: true,
-      data: {
-        message: 'OTP sent successfully',
-        otp: process.env.NODE_ENV === 'development' ? otp : undefined,
-        expiresIn: 600 // 10 minutes in seconds
-      }
-    });
-  } catch (error) {
-    next(new AppError(error.message, 400));
-  }
+        // Verify OTP using Redis
+        const result = await verifyOTP(customer._id.toString(), otp);
+
+        if (!result.valid) {
+            return next(new AppError(result.message, 400));
+        }
+
+        // Generate tokens
+        const accessToken = customer.generateAuthToken();
+        const refreshToken = customer.generateRefreshToken();
+
+        // Update customer
+        customer.lastLogin = new Date();
+        await customer.save();
+
+        res.status(200).json({
+            success: true,
+            data: {
+                message: 'OTP verified successfully',
+                accessToken,
+                refreshToken,
+                user: customer
+            }
+        });
+    } catch (error) {
+        next(new AppError(error.message, 400));
+    }
 }; 

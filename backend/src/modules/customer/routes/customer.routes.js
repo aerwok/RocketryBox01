@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, sendOTP } from '../controllers/auth.controller.js';
+import { register, login, sendOTP, verifyOTPHandler } from '../controllers/auth.controller.js';
 import {
   getProfile,
   updateProfile,
@@ -59,11 +59,8 @@ router.use(defaultLimiter);
 // Auth routes
 router.post('/auth/register', authLimiter, validateRequest(registerSchema), register);
 router.post('/auth/login', authLimiter, validateRequest(loginSchema), login);
-router.post('/auth/send-otp', authLimiter, validateRequest(otpSchema), sendOTP);
-
-// Service routes
-router.get('/services', listServices);
-router.post('/services/check-availability', validateRequest(checkAvailabilitySchema), checkAvailability);
+router.post('/auth/otp/send', authLimiter, validateRequest(otpSchema), sendOTP);
+router.post('/auth/otp/verify', authLimiter, validateRequest(otpSchema), verifyOTPHandler);
 
 // Protected routes
 router.use(protect);
@@ -71,29 +68,57 @@ router.use(protect);
 // Profile routes
 router.get('/profile', getProfile);
 router.put('/profile', validateRequest(profileUpdateSchema), updateProfile);
-
-// Address routes
-router.post('/addresses', validateRequest(addressSchema), addAddress);
-router.put('/addresses/:addressId', validateRequest(addressSchema), updateAddress);
-router.delete('/addresses/:addressId', deleteAddress);
+router.post('/profile/addresses', validateRequest(addressSchema), addAddress);
+router.put('/profile/addresses/:id', validateRequest(addressSchema), updateAddress);
+router.delete('/profile/addresses/:id', deleteAddress);
 
 // Order routes
 router.post('/orders/rates', validateRequest(calculateRatesSchema), calculateRates);
 router.post('/orders', validateRequest(createOrderSchema), createOrder);
 router.get('/orders', validateRequest(listOrdersSchema), listOrders);
-router.get('/orders/:awb', getOrderDetails);
-router.get('/orders/:awb/label', downloadLabel);
+router.get('/orders/:id', getOrderDetails);
+router.get('/orders/:id/label', downloadLabel);
 
 // Payment routes
-router.post('/orders/:awb/payment', paymentLimiter, validateRequest(createPaymentSchema), createPayment);
-router.post('/orders/:awb/verify-payment', paymentLimiter, validateRequest(verifyPaymentSchema), verifyPayment);
-router.post('/orders/:awb/refund', refundLimiter, validateRequest(refundSchema), refundPayment);
-router.get('/orders/:awb/payment-status', paymentLimiter, checkPaymentStatus);
+router.post(
+  '/orders/:id/payment',
+  paymentLimiter,
+  validateRequest(createPaymentSchema),
+  createPayment
+);
+router.post(
+  '/orders/:id/payment/verify',
+  paymentLimiter,
+  validateRequest(verifyPaymentSchema),
+  verifyPayment
+);
+router.get('/orders/:id/payment/status', checkPaymentStatus);
 
 // Tracking routes
-router.post('/orders/:awb/subscribe', trackingLimiter, validateRequest(subscribeTrackingSchema), subscribeTracking);
+router.post(
+  '/orders/:id/tracking',
+  trackingLimiter,
+  validateRequest(subscribeTrackingSchema),
+  subscribeTracking
+);
 
-// Webhook routes (no authentication required)
+// Refund routes
+router.post(
+  '/orders/:id/refund',
+  refundLimiter,
+  validateRequest(refundSchema),
+  refundPayment
+);
+
+// Service routes
+router.get('/services', listServices);
+router.post(
+  '/services/check',
+  validateRequest(checkAvailabilitySchema),
+  checkAvailability
+);
+
+// Webhook routes
 router.post('/webhooks/tracking', handleTrackingWebhook);
 
 export default router; 

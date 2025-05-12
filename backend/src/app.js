@@ -12,16 +12,16 @@ import { logger } from './utils/logger.js';
 dotenv.config();
 
 // Import routes
-import customerRoutes from './modules/customer/routes/customer.routes.js';
-import marketingRoutes from './modules/marketing/routes/marketing.routes.js';
-import sellerRoutes from './modules/seller/routes/seller.routes.js';
-import adminRoutes from './modules/admin/routes/admin.routes.js';
+import customerRoutes from './modules/customer/index.js';
+import marketingRoutes from './modules/marketing/index.js';
+import sellerRoutes from './modules/seller/index.js';
+// import adminRoutes from './modules/admin/routes/admin.routes.js';
 
 // Create Express app
 const app = express();
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_ATLAS_URI)
   .then(() => {
     logger.info('Connected to MongoDB');
   })
@@ -60,7 +60,7 @@ app.use(morgan('combined', {
 app.use('/api/customer', customerRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/seller', sellerRoutes);
-app.use('/api/admin', adminRoutes);
+// app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

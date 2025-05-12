@@ -2,11 +2,15 @@ import express from 'express';
 import { body, query } from 'express-validator';
 import { validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
+import { defaultLimiter } from '../../../middleware/rateLimiter.js';
 import { submitContact, getAllContacts, getContactById } from '../controllers/contact.controller.js';
 import { registerPartner, getAllPartners, updatePartnerStatus } from '../controllers/partner.controller.js';
 import { getTrackingInfo, updateTrackingStatus, getAllTracking } from '../controllers/tracking.controller.js';
 
 const router = express.Router();
+
+// Apply default rate limiter to all routes
+router.use(defaultLimiter);
 
 // Public routes
 router.post(
@@ -20,59 +24,34 @@ router.post(
 );
 
 router.post(
-  '/partner',
+  '/partner/register',
   [
-    body('fullName').notEmpty().withMessage('Full name is required'),
-    body('companyName').notEmpty().withMessage('Company name is required'),
+    body('name').notEmpty().withMessage('Name is required'),
     body('email').isEmail().withMessage('Please enter a valid email'),
-    body('contact').notEmpty().withMessage('Contact number is required'),
-    body('address').notEmpty().withMessage('Address is required'),
-    body('service').notEmpty().withMessage('Service type is required'),
-    body('business').notEmpty().withMessage('Business type is required'),
-    body('timeframe').notEmpty().withMessage('Timeframe is required')
+    body('phone').notEmpty().withMessage('Phone is required'),
+    body('businessName').notEmpty().withMessage('Business name is required'),
+    body('businessType').notEmpty().withMessage('Business type is required'),
+    body('message').notEmpty().withMessage('Message is required')
   ],
   validate,
   registerPartner
 );
 
-router.get(
-  '/track',
-  [
-    query('trackingId').notEmpty().withMessage('Tracking ID is required')
-  ],
-  validate,
-  getTrackingInfo
-);
+// Protected admin routes
+router.use(protect);
+router.use(restrictTo('admin'));
 
-// Admin routes
-router.use(protect); // Protect all routes below this middleware
-router.use(restrictTo('admin')); // Restrict to admin role
+// Contact management
+router.get('/contacts', getAllContacts);
+router.get('/contacts/:id', getContactById);
 
-// Contact admin routes
-router.get('/admin/contacts', getAllContacts);
-router.get('/admin/contacts/:id', getContactById);
+// Partner management
+router.get('/partners', getAllPartners);
+router.patch('/partners/:id/status', updatePartnerStatus);
 
-// Partner admin routes
-router.get('/admin/partners', getAllPartners);
-router.patch(
-  '/admin/partners/:id/status',
-  [
-    body('status').isIn(['pending', 'approved', 'rejected']).withMessage('Invalid status')
-  ],
-  validate,
-  updatePartnerStatus
-);
-
-// Tracking admin routes
-router.get('/admin/tracking', getAllTracking);
-router.patch(
-  '/admin/tracking/:trackingId/status',
-  [
-    body('status').isIn(['pending', 'in_transit', 'delivered', 'exception']).withMessage('Invalid status'),
-    body('location').notEmpty().withMessage('Location is required')
-  ],
-  validate,
-  updateTrackingStatus
-);
+// Tracking management
+router.get('/tracking', getAllTracking);
+router.get('/tracking/:id', getTrackingInfo);
+router.patch('/tracking/:id/status', updateTrackingStatus);
 
 export default router; 

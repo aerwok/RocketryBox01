@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler.js';
+import { getSession, setSession } from '../utils/redis.js';
 
 export const protect = async (req, res, next) => {
   try {
@@ -16,18 +17,33 @@ export const protect = async (req, res, next) => {
     // 2) Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3) Check if user still exists
-    // This will be implemented when we create the user model
-    // const currentUser = await User.findById(decoded.id);
-    // if (!currentUser) {
-    //   return next(new AppError('The user belonging to this token no longer exists.', 401));
-    // }
+    // 3) Check session in Redis
+    const session = await getSession(decoded.id);
+    if (!session) {
+      return next(new AppError('Your session has expired. Please log in again.', 401));
+    }
 
-    // 4) Grant access to protected route
-    req.user = decoded;
+    // 4) Extend session if needed
+    const sessionData = JSON.parse(session);
+    if (sessionData.lastActivity < Date.now() - (30 * 60 * 1000)) { // 30 minutes
+      await setSession(decoded.id, {
+        ...sessionData,
+        lastActivity: Date.now()
+      });
+    }
+
+    // 5) Add user info to request
+    req.user = {
+      ...decoded,
+      ...sessionData.user
+    };
+    
     next();
   } catch (error) {
-    next(new AppError('Invalid token. Please log in again!', 401));
+    if (error instanceof jwt.JsonWebTokenError) {
+      return next(new AppError('Invalid token. Please log in again!', 401));
+    }
+    next(error);
   }
 };
 
