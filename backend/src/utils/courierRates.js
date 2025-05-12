@@ -12,6 +12,26 @@ const rateCard = {
       'NORTH_EAST':     { base: [64, 87, 131, 227, 430], addl: [62, 86, 87, 87, 87], cod: 35, codPct: 1.5 }
     }
   },
+  'Bluedart surface': {
+    slabs: [0.5, 1, 2, 5, 10],
+    zones: {
+      'WITHIN_CITY':    { base: [32, 40, 43, 44, 59], addl: [31, 38, 42, 43, 57], cod: 35, codPct: 1.5 },
+      'WITHIN_STATE':   { base: [40, 47, 55, 59, 82], addl: [38, 47, 54, 59, 81], cod: 35, codPct: 1.5 },
+      'METRO_TO_METRO': { base: [43, 55, 84, 188, 222], addl: [42, 54, 55, 59, 82], cod: 35, codPct: 1.5 },
+      'REST_OF_INDIA':  { base: [44, 59, 94, 188, 364], addl: [43, 58, 59, 59, 59], cod: 35, codPct: 1.5 },
+      'NORTH_EAST':     { base: [59, 82, 126, 222, 425], addl: [57, 81, 82, 82, 82], cod: 35, codPct: 1.5 }
+    }
+  },
+  'Delhivery air': {
+    slabs: [0.5, 1, 2, 5, 10],
+    zones: {
+      'WITHIN_CITY':    { base: [35, 52, 72, 144, 265], addl: [33, 51, 52, 52, 52], cod: 35, codPct: 1.75 },
+      'WITHIN_STATE':   { base: [37, 55, 77, 152, 278], addl: [35, 54, 55, 55, 55], cod: 35, codPct: 1.75 },
+      'METRO_TO_METRO': { base: [49, 63, 92, 174, 328], addl: [46, 62, 63, 63, 63], cod: 35, codPct: 1.75 },
+      'REST_OF_INDIA':  { base: [52, 67, 102, 196, 372], addl: [49, 66, 67, 67, 67], cod: 35, codPct: 1.75 },
+      'NORTH_EAST':     { base: [71, 90, 134, 230, 433], addl: [67, 89, 90, 90, 90], cod: 35, codPct: 1.75 }
+    }
+  },
   'Delhivery surface': {
     slabs: [0.5, 1, 2, 5, 10],
     zones: {
@@ -20,6 +40,16 @@ const rateCard = {
       'METRO_TO_METRO': { base: [46, 60, 89, 171, 325], addl: [43, 59, 60, 60, 60], cod: 35, codPct: 1.75 },
       'REST_OF_INDIA':  { base: [49, 64, 99, 193, 369], addl: [46, 63, 64, 64, 64], cod: 35, codPct: 1.75 },
       'NORTH_EAST':     { base: [68, 87, 131, 227, 430], addl: [64, 86, 87, 87, 87], cod: 35, codPct: 1.75 }
+    }
+  },
+  'DTDC air': {
+    slabs: [0.5, 1, 2, 5, 10],
+    zones: {
+      'WITHIN_CITY':    { base: [33, 52, 72, 144, 265], addl: [33, 51, 52, 52, 52], cod: 27, codPct: 1.25 },
+      'WITHIN_STATE':   { base: [38, 55, 77, 152, 278], addl: [38, 54, 55, 55, 55], cod: 27, codPct: 1.25 },
+      'METRO_TO_METRO': { base: [44, 63, 92, 174, 328], addl: [44, 62, 63, 63, 63], cod: 27, codPct: 1.25 },
+      'REST_OF_INDIA':  { base: [52, 67, 102, 196, 372], addl: [52, 66, 67, 67, 67], cod: 27, codPct: 1.25 },
+      'NORTH_EAST':     { base: [65, 90, 134, 230, 433], addl: [65, 89, 90, 90, 90], cod: 27, codPct: 1.25 }
     }
   },
   'DTDC surface': {
@@ -35,6 +65,16 @@ const rateCard = {
   'Ekart air': {
     slabs: [0.5, 1, 2, 5, 10],
     zones: {
+      'WITHIN_CITY':    { base: [34, 52, 72, 144, 265], addl: [32, 51, 52, 52, 52], cod: 30, codPct: 1.5 },
+      'WITHIN_STATE':   { base: [36, 55, 77, 152, 278], addl: [34, 54, 55, 55, 55], cod: 30, codPct: 1.5 },
+      'METRO_TO_METRO': { base: [41, 63, 92, 174, 328], addl: [39, 62, 63, 63, 63], cod: 30, codPct: 1.5 },
+      'REST_OF_INDIA':  { base: [43, 67, 102, 196, 372], addl: [41, 66, 67, 67, 67], cod: 30, codPct: 1.5 },
+      'NORTH_EAST':     { base: [48, 90, 134, 230, 433], addl: [46, 89, 90, 90, 90], cod: 30, codPct: 1.5 }
+    }
+  },
+  'Ekart surface': {
+    slabs: [0.5, 1, 2, 5, 10],
+    zones: {
       'WITHIN_CITY':    { base: [31, 49, 69, 141, 262], addl: [29, 48, 49, 49, 49], cod: 30, codPct: 1.5 },
       'WITHIN_STATE':   { base: [33, 52, 74, 149, 275], addl: [31, 51, 52, 52, 52], cod: 30, codPct: 1.5 },
       'METRO_TO_METRO': { base: [38, 60, 89, 171, 325], addl: [36, 59, 60, 60, 60], cod: 30, codPct: 1.5 },
@@ -45,6 +85,16 @@ const rateCard = {
   'Xpressbees air': {
     slabs: [0.5, 1, 2, 5, 10],
     zones: {
+      'WITHIN_CITY':    { base: [30, 43, 67, 101, 152], addl: [19, 33, 52, 55, 55], cod: 27, codPct: 1.18 },
+      'WITHIN_STATE':   { base: [30, 43, 67, 101, 152], addl: [19, 33, 52, 55, 55], cod: 27, codPct: 1.18 },
+      'METRO_TO_METRO': { base: [40, 61, 72, 113, 164], addl: [37, 38, 63, 23, 23], cod: 27, codPct: 1.18 },
+      'REST_OF_INDIA':  { base: [54, 61, 79, 126, 177], addl: [43, 38, 28, 23, 25], cod: 27, codPct: 1.18 },
+      'NORTH_EAST':     { base: [58, 72, 92, 152, 241], addl: [50, 72, 92, 152, 25], cod: 27, codPct: 1.18 }
+    }
+  },
+  'Xpressbees surface': {
+    slabs: [0.5, 1, 2, 5, 10],
+    zones: {
       'WITHIN_CITY':    { base: [27, 40, 64, 98, 149], addl: [16, 30, 49, 52, 52], cod: 27, codPct: 1.18 },
       'WITHIN_STATE':   { base: [27, 40, 64, 98, 149], addl: [16, 30, 49, 52, 52], cod: 27, codPct: 1.18 },
       'METRO_TO_METRO': { base: [37, 58, 69, 110, 161], addl: [34, 35, 60, 20, 20], cod: 27, codPct: 1.18 },
@@ -52,54 +102,34 @@ const rateCard = {
       'NORTH_EAST':     { base: [55, 69, 89, 149, 238], addl: [47, 69, 89, 149, 22], cod: 27, codPct: 1.18 }
     }
   },
-  'Delhivery surface-0.50': {
-    slabs: [0.5],
+  'Shadowfax': {
+    slabs: [0.5, 1, 2, 5, 10],
     zones: {
-      'WITHIN_CITY':    { base: [32], addl: [30], cod: 35, codPct: 1.75 },
-      'WITHIN_STATE':   { base: [34], addl: [32], cod: 35, codPct: 1.75 },
-      'METRO_TO_METRO': { base: [46], addl: [43], cod: 35, codPct: 1.75 },
-      'REST_OF_INDIA':  { base: [49], addl: [46], cod: 35, codPct: 1.75 },
-      'NORTH_EAST':     { base: [68], addl: [64], cod: 35, codPct: 1.75 }
+      'WITHIN_CITY':    { base: [25, 35, 45, 65, 85], addl: [20, 30, 40, 50, 60], cod: 25, codPct: 1.0 },
+      'WITHIN_STATE':   { base: [30, 40, 50, 70, 90], addl: [25, 35, 45, 55, 65], cod: 25, codPct: 1.0 },
+      'METRO_TO_METRO': { base: [35, 45, 55, 75, 95], addl: [30, 40, 50, 60, 70], cod: 25, codPct: 1.0 },
+      'REST_OF_INDIA':  { base: [40, 50, 60, 80, 100], addl: [35, 45, 55, 65, 75], cod: 25, codPct: 1.0 },
+      'NORTH_EAST':     { base: [45, 55, 65, 85, 105], addl: [40, 50, 60, 70, 80], cod: 25, codPct: 1.0 }
     }
   },
-  'Delhivery surface-1.00': {
-    slabs: [1.0],
+  'Dunzo': {
+    slabs: [0.5, 1, 2, 5, 10],
     zones: {
-      'WITHIN_CITY':    { base: [49], addl: [48], cod: 35, codPct: 1.75 },
-      'WITHIN_STATE':   { base: [52], addl: [51], cod: 35, codPct: 1.75 },
-      'METRO_TO_METRO': { base: [60], addl: [59], cod: 35, codPct: 1.75 },
-      'REST_OF_INDIA':  { base: [64], addl: [63], cod: 35, codPct: 1.75 },
-      'NORTH_EAST':     { base: [87], addl: [86], cod: 35, codPct: 1.75 }
+      'WITHIN_CITY':    { base: [30, 40, 50, 70, 90], addl: [25, 35, 45, 55, 65], cod: 30, codPct: 1.2 },
+      'WITHIN_STATE':   { base: [35, 45, 55, 75, 95], addl: [30, 40, 50, 60, 70], cod: 30, codPct: 1.2 },
+      'METRO_TO_METRO': { base: [40, 50, 60, 80, 100], addl: [35, 45, 55, 65, 75], cod: 30, codPct: 1.2 },
+      'REST_OF_INDIA':  { base: [45, 55, 65, 85, 105], addl: [40, 50, 60, 70, 80], cod: 30, codPct: 1.2 },
+      'NORTH_EAST':     { base: [50, 60, 70, 90, 110], addl: [45, 55, 65, 75, 85], cod: 30, codPct: 1.2 }
     }
   },
-  'Delhivery surface-2.00': {
-    slabs: [2.0],
+  'Swiggy Genie': {
+    slabs: [0.5, 1, 2, 5, 10],
     zones: {
-      'WITHIN_CITY':    { base: [69], addl: [49], cod: 35, codPct: 1.75 },
-      'WITHIN_STATE':   { base: [74], addl: [52], cod: 35, codPct: 1.75 },
-      'METRO_TO_METRO': { base: [89], addl: [60], cod: 35, codPct: 1.75 },
-      'REST_OF_INDIA':  { base: [99], addl: [64], cod: 35, codPct: 1.75 },
-      'NORTH_EAST':     { base: [131], addl: [87], cod: 35, codPct: 1.75 }
-    }
-  },
-  'Delhivery surface-5.00': {
-    slabs: [5.0],
-    zones: {
-      'WITHIN_CITY':    { base: [141], addl: [49], cod: 35, codPct: 1.75 },
-      'WITHIN_STATE':   { base: [149], addl: [52], cod: 35, codPct: 1.75 },
-      'METRO_TO_METRO': { base: [171], addl: [60], cod: 35, codPct: 1.75 },
-      'REST_OF_INDIA':  { base: [193], addl: [64], cod: 35, codPct: 1.75 },
-      'NORTH_EAST':     { base: [227], addl: [87], cod: 35, codPct: 1.75 }
-    }
-  },
-  'Delhivery surface-10.00': {
-    slabs: [10.0],
-    zones: {
-      'WITHIN_CITY':    { base: [262], addl: [49], cod: 35, codPct: 1.75 },
-      'WITHIN_STATE':   { base: [275], addl: [52], cod: 35, codPct: 1.75 },
-      'METRO_TO_METRO': { base: [325], addl: [60], cod: 35, codPct: 1.75 },
-      'REST_OF_INDIA':  { base: [369], addl: [64], cod: 35, codPct: 1.75 },
-      'NORTH_EAST':     { base: [430], addl: [87], cod: 35, codPct: 1.75 }
+      'WITHIN_CITY':    { base: [35, 45, 55, 75, 95], addl: [30, 40, 50, 60, 70], cod: 35, codPct: 1.3 },
+      'WITHIN_STATE':   { base: [40, 50, 60, 80, 100], addl: [35, 45, 55, 65, 75], cod: 35, codPct: 1.3 },
+      'METRO_TO_METRO': { base: [45, 55, 65, 85, 105], addl: [40, 50, 60, 70, 80], cod: 35, codPct: 1.3 },
+      'REST_OF_INDIA':  { base: [50, 60, 70, 90, 110], addl: [45, 55, 65, 75, 85], cod: 35, codPct: 1.3 },
+      'NORTH_EAST':     { base: [55, 65, 75, 95, 115], addl: [50, 60, 70, 80, 90], cod: 35, codPct: 1.3 }
     }
   }
 };

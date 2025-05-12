@@ -14,4 +14,15 @@ export async function getDTDCRates({ pickupPincode, deliveryPincode, weight, cod
       available: true
     }
   ];
+}
+
+// Booking function for centralized booking
+export async function bookDTDCOrder(order) {
+  // TODO: Integrate with DTDC API for real AWB, label, tracking
+  return {
+    awb: `DTDC${Date.now()}`,
+    label: 'mock-dtdc-label-base64',
+    trackingUrl: `https://dtdc.com/track/${order._id}`,
+    courierName: 'DTDC'
+  };
 } 

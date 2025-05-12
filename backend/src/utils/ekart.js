@@ -14,4 +14,15 @@ export async function getEkartRates({ pickupPincode, deliveryPincode, weight, co
       available: true
     }
   ];
+}
+
+// Booking function for centralized booking
+export async function bookEkartOrder(order) {
+  // TODO: Integrate with Ekart API for real AWB, label, tracking
+  return {
+    awb: `EKART${Date.now()}`,
+    label: 'mock-ekart-label-base64',
+    trackingUrl: `https://ekartlogistics.com/track/${order._id}`,
+    courierName: 'Ekart'
+  };
 } 

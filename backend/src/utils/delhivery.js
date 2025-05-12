@@ -14,4 +14,15 @@ export async function getDelhiveryRates({ pickupPincode, deliveryPincode, weight
       available: true
     }
   ];
+}
+
+// Booking function for centralized booking
+export async function bookDelhiveryOrder(order) {
+  // TODO: Integrate with Delhivery API for real AWB, label, tracking
+  return {
+    awb: `DLVY${Date.now()}`,
+    label: 'mock-delhivery-label-base64',
+    trackingUrl: `https://track.delhivery.com/${order._id}`,
+    courierName: 'Delhivery'
+  };
 } 

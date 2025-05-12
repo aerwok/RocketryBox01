@@ -14,4 +14,15 @@ export async function getXpressbeesRates({ pickupPincode, deliveryPincode, weigh
       available: true
     }
   ];
+}
+
+// Booking function for centralized booking
+export async function bookXpressbeesOrder(order) {
+  // TODO: Integrate with Xpressbees API for real AWB, label, tracking
+  return {
+    awb: `XPB${Date.now()}`,
+    label: 'mock-xpressbees-label-base64',
+    trackingUrl: `https://www.xpressbees.com/track/${order._id}`,
+    courierName: 'Xpressbees'
+  };
 } 
