@@ -15,7 +15,7 @@ dotenv.config();
 import customerRoutes from './modules/customer/index.js';
 import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
-// import adminRoutes from './modules/admin/routes/admin.routes.js';
+import adminRoutes from './modules/admin/index.js';
 
 // Create Express app
 const app = express();
@@ -60,7 +60,7 @@ app.use(morgan('combined', {
 app.use('/api/customer', customerRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/seller', sellerRoutes);
-// app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

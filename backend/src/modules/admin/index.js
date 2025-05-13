@@ -1,9 +1,13 @@
 import express from 'express';
+import authRoutes from './routes/auth.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
+
 const router = express.Router();
 
-// Routes will be imported here
-// import adminRoutes from './routes/admin.routes.js';
+// Auth routes
+router.use('/auth', authRoutes);
 
-// router.use('/', adminRoutes);
+// Dashboard routes
+router.use('/dashboard', dashboardRoutes);
 
 export default router; 
