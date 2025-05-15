@@ -3,12 +3,15 @@ import {
   createShipment,
   createBulkShipments,
   getShipments,
-  getShipment,
+  getShipmentById,
   updateShipmentStatus,
   addTrackingEvent,
   getTrackingHistory,
   getManifest,
-  handleReturn
+  handleReturn,
+  getShippingRates,
+  bookCourierShipment,
+  trackShipmentStatus
 } from '../controllers/shipment.controller.js';
 import { authenticateSeller } from '../../../middleware/auth.js';
 import {
@@ -16,7 +19,9 @@ import {
   validateCreateBulkShipments,
   validateUpdateShipmentStatus,
   validateAddTrackingEvent,
-  validateHandleReturn
+  validateHandleReturn,
+  validateShippingRates,
+  validateCourierBooking
 } from '../validators/shipment.validator.js';
 
 const router = express.Router();
@@ -24,7 +29,13 @@ const router = express.Router();
 // All routes are protected with seller authentication
 router.use(authenticateSeller);
 
-// Create a shipment
+// Shipping rates API
+router.post('/rates', validateShippingRates, getShippingRates);
+
+// Book shipment with courier API
+router.post('/book', validateCourierBooking, bookCourierShipment);
+
+// Create a shipment manually
 router.post('/', validateCreateShipment, createShipment);
 
 // Bulk create shipments
@@ -37,7 +48,10 @@ router.get('/', getShipments);
 router.get('/manifest', getManifest);
 
 // Get shipment details
-router.get('/:id', getShipment);
+router.get('/:id', getShipmentById);
+
+// Track shipment with courier API
+router.get('/:id/track', trackShipmentStatus);
 
 // Update shipment status
 router.patch('/:id/status', validateUpdateShipmentStatus, updateShipmentStatus);

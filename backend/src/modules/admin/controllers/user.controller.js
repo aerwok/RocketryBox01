@@ -6,6 +6,10 @@ import Order from '../../order/models/order.model.js';
 import KYC from '../../seller/models/kyc.model.js';
 import Agreement from '../../seller/models/agreement.model.js';
 import RateCard from '../../seller/models/ratecard.model.js';
+import { getIO } from '../../../utils/socketio.js';
+import { getSellerProfile } from '../../seller/services/realtime.service.js';
+import { getCustomerProfile } from '../../customer/services/realtime.service.js';
+import { invalidateCachePattern, CACHE_PATTERNS } from '../../../utils/cache.js';
 
 /**
  * Get all sellers with pagination and filters
@@ -105,7 +109,7 @@ export const getAllSellers = async (req, res, next) => {
 };
 
 /**
- * Get seller details by ID including KYC, agreements and order stats
+ * Get seller details by ID including KYC, agreements and profile info
  * @route GET /api/v1/admin/users/sellers/:id
  * @access Private (Admin only)
  */
@@ -113,8 +117,18 @@ export const getSellerDetails = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        // Get seller details
-        const seller = await Seller.findById(id);
+        // Get real-time seller profile data
+        let sellerProfile;
+        try {
+            sellerProfile = await getSellerProfile(id);
+        } catch (error) {
+            logger.warn(`Failed to get seller profile from cache: ${error.message}`);
+            // Fall back to database query if cache fails
+            sellerProfile = null;
+        }
+
+        // Get seller details from database if not available from real-time service
+        const seller = sellerProfile || await Seller.findById(id);
         
         if (!seller) {
             return next(new AppError('Seller not found', 404));
@@ -129,47 +143,18 @@ export const getSellerDetails = async (req, res, next) => {
         // Get rate cards
         const rateCards = await RateCard.find({ seller: id });
 
-        // Get order stats
-        const orderStats = await Order.aggregate([
-            {
-                $match: { seller: seller._id }
-            },
-            {
-                $group: {
-                    _id: '$status',
-                    count: { $sum: 1 },
-                    revenue: { $sum: '$totalAmount' }
-                }
-            }
-        ]);
-
-        // Calculate total orders and revenue
-        const totalOrders = await Order.countDocuments({ seller: id });
-        const totalRevenue = await Order.aggregate([
-            {
-                $match: { seller: seller._id }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: '$totalAmount' }
-                }
-            }
-        ]);
+        // Add real-time flag to indicate if data came from real-time cache
+        const responseData = {
+            seller,
+            kycDetails: kyc || null,
+            agreements,
+            rateCards,
+            isRealtime: !!sellerProfile
+        };
 
         res.status(200).json({
             success: true,
-            data: {
-                seller,
-                kycDetails: kyc || null,
-                agreements,
-                rateCards,
-                stats: {
-                    orderBreakdown: orderStats,
-                    totalOrders,
-                    totalRevenue: totalRevenue.length > 0 ? totalRevenue[0].total : 0
-                }
-            }
+            data: responseData
         });
     } catch (error) {
         logger.error(`Error in getSellerDetails: ${error.message}`);
@@ -207,6 +192,33 @@ export const updateSellerStatus = async (req, res, next) => {
         });
 
         await seller.save();
+
+        // Invalidate seller cache
+        try {
+            invalidateCachePattern(`seller:${id}:*`);
+            
+            // Get Socket.IO instance and broadcast update
+            const io = getIO();
+            
+            // Emit to admin dashboard for real-time updates
+            io.to('admin-dashboard').emit('seller:profile:updated', {
+                sellerId: id,
+                status: seller.status,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+            });
+            
+            // Emit to admin-seller-specific room for admins who are subscribed to this seller
+            io.to(`admin-seller-${id}`).emit('seller:profile:updated', await getSellerProfile(id));
+            
+            // Emit to seller-specific room if they're connected
+            io.to(`seller-${id}`).emit('seller:profile:updated', await getSellerProfile(id));
+            
+            logger.info(`Broadcasted seller profile update for ${id}`);
+        } catch (error) {
+            logger.warn(`Failed to broadcast seller update: ${error.message}`);
+            // Don't fail the request if broadcasting fails
+        }
 
         // Log the status update
         logger.info(`Admin ${req.user.id} updated seller ${id} status to ${status}`);
@@ -454,7 +466,7 @@ export const getAllCustomers = async (req, res, next) => {
 };
 
 /**
- * Get customer details by ID including order history
+ * Get customer details by ID with profile information
  * @route GET /api/v1/admin/users/customers/:id
  * @access Private (Admin only)
  */
@@ -462,57 +474,39 @@ export const getCustomerDetails = async (req, res, next) => {
     try {
         const { id } = req.params;
 
-        // Get customer details
-        const customer = await Customer.findById(id);
+        // Get real-time customer profile data
+        let customerProfile;
+        try {
+            customerProfile = await getCustomerProfile(id);
+        } catch (error) {
+            logger.warn(`Failed to get customer profile from cache: ${error.message}`);
+            // Fall back to database query if cache fails
+            customerProfile = null;
+        }
+
+        // Get customer details from database if not available from real-time service
+        const customer = customerProfile || await Customer.findById(id);
         
         if (!customer) {
             return next(new AppError('Customer not found', 404));
         }
 
-        // Get order history
-        const orders = await Order.find({ customer: id })
-            .sort({ createdAt: -1 })
-            .limit(10);
+        // Get addresses if they exist and weren't included in profile
+        let addresses = [];
+        if (customer.addresses && customer.addresses.length > 0) {
+            addresses = customer.addresses;
+        }
 
-        // Get order stats
-        const orderStats = await Order.aggregate([
-            {
-                $match: { customer: customer._id }
-            },
-            {
-                $group: {
-                    _id: '$status',
-                    count: { $sum: 1 },
-                    total: { $sum: '$totalAmount' }
-                }
-            }
-        ]);
-
-        // Calculate total orders and spending
-        const totalOrders = await Order.countDocuments({ customer: id });
-        const totalSpending = await Order.aggregate([
-            {
-                $match: { customer: customer._id }
-            },
-            {
-                $group: {
-                    _id: null,
-                    total: { $sum: '$totalAmount' }
-                }
-            }
-        ]);
+        // Add real-time flag to indicate if data came from real-time cache
+        const responseData = {
+            customer,
+            addresses,
+            isRealtime: !!customerProfile
+        };
 
         res.status(200).json({
             success: true,
-            data: {
-                customer,
-                orders,
-                stats: {
-                    orderBreakdown: orderStats,
-                    totalOrders,
-                    totalSpending: totalSpending.length > 0 ? totalSpending[0].total : 0
-                }
-            }
+            data: responseData
         });
     } catch (error) {
         logger.error(`Error in getCustomerDetails: ${error.message}`);
@@ -540,17 +534,46 @@ export const updateCustomerStatus = async (req, res, next) => {
         // Update status
         customer.status = status;
         
-        // Add status change to history if the field exists
-        if (customer.statusHistory) {
+        // Add status change to history if it exists
+        if (!customer.statusHistory) {
+            customer.statusHistory = [];
+        }
+        
             customer.statusHistory.push({
                 status,
                 reason,
                 updatedBy: req.user.id,
                 timestamp: new Date()
             });
-        }
 
         await customer.save();
+
+        // Invalidate customer cache
+        try {
+            invalidateCachePattern(`customer:${id}:*`);
+            
+            // Get Socket.IO instance and broadcast update
+            const io = getIO();
+            
+            // Emit to admin dashboard for real-time updates
+            io.to('admin-dashboard').emit('customer:profile:updated', {
+                customerId: id,
+                status: customer.status,
+                updatedBy: req.user.id,
+                updatedAt: new Date()
+            });
+            
+            // Emit to admin-customer-specific room for admins who are subscribed to this customer
+            io.to(`admin-customer-${id}`).emit('customer:profile:updated', await getCustomerProfile(id));
+            
+            // Emit to customer-specific room if they're connected
+            io.to(`customer-${id}`).emit('customer:profile:updated', await getCustomerProfile(id));
+            
+            logger.info(`Broadcasted customer profile update for ${id}`);
+        } catch (error) {
+            logger.warn(`Failed to broadcast customer update: ${error.message}`);
+            // Don't fail the request if broadcasting fails
+        }
 
         // Log the status update
         logger.info(`Admin ${req.user.id} updated customer ${id} status to ${status}`);
@@ -564,5 +587,69 @@ export const updateCustomerStatus = async (req, res, next) => {
     } catch (error) {
         logger.error(`Error in updateCustomerStatus: ${error.message}`);
         next(new AppError('Failed to update customer status', 500));
+    }
+};
+
+/**
+ * Get real-time profile data for multiple customers and sellers
+ * @route POST /api/v1/admin/users/realtime
+ * @access Private (Admin only)
+ */
+export const getRealtimeUserData = async (req, res, next) => {
+    try {
+        const { sellerIds = [], customerIds = [] } = req.body;
+        
+        // Validate input
+        if (!Array.isArray(sellerIds) || !Array.isArray(customerIds)) {
+            return next(new AppError('Invalid input format. sellerIds and customerIds must be arrays', 400));
+        }
+        
+        // Limit the number of IDs that can be queried at once to prevent abuse
+        const MAX_IDS = 20;
+        if (sellerIds.length + customerIds.length > MAX_IDS) {
+            return next(new AppError(`Too many IDs requested. Maximum ${MAX_IDS} total IDs allowed`, 400));
+        }
+        
+        logger.info(`Fetching real-time profile data for ${sellerIds.length} sellers and ${customerIds.length} customers`);
+        
+        // Get seller profiles in parallel
+        const sellerPromises = sellerIds.map(async (id) => {
+            try {
+                return await getSellerProfile(id);
+            } catch (error) {
+                logger.warn(`Failed to get real-time seller profile for ${id}: ${error.message}`);
+                // Return basic info on error
+                return { id, error: 'Failed to fetch real-time data' };
+            }
+        });
+        
+        // Get customer profiles in parallel
+        const customerPromises = customerIds.map(async (id) => {
+            try {
+                return await getCustomerProfile(id);
+            } catch (error) {
+                logger.warn(`Failed to get real-time customer profile for ${id}: ${error.message}`);
+                // Return basic info on error
+                return { id, error: 'Failed to fetch real-time data' };
+            }
+        });
+        
+        // Wait for all promises to resolve
+        const [sellers, customers] = await Promise.all([
+            Promise.all(sellerPromises),
+            Promise.all(customerPromises)
+        ]);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                sellers,
+                customers,
+                timestamp: new Date()
+            }
+        });
+    } catch (error) {
+        logger.error(`Error in getRealtimeUserData: ${error.message}`);
+        next(new AppError('Failed to fetch real-time user data', 500));
     }
 }; 

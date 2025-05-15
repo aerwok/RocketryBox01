@@ -40,13 +40,32 @@ const paymentSchema = new mongoose.Schema({
 }, { _id: false });
 
 const orderSchema = new mongoose.Schema({
-  seller: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', required: true },
-  orderId: { type: String, required: true, unique: true },
-  orderDate: { type: Date, required: true },
+  seller: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Seller', 
+    required: true,
+    index: true
+  },
+  orderId: { 
+    type: String, 
+    required: true, 
+    unique: true,
+    index: true
+  },
+  orderDate: { 
+    type: Date, 
+    required: true,
+    index: true
+  },
   customer: customerSchema,
   product: productSchema,
   payment: paymentSchema,
-  status: { type: String, enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Returned'], default: 'Pending' },
+  status: { 
+    type: String, 
+    enum: ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Returned'], 
+    default: 'Pending',
+    index: true
+  },
   orderTimeline: [
     {
       status: { type: String },
@@ -61,12 +80,94 @@ const orderSchema = new mongoose.Schema({
       createdAt: { type: Date, default: Date.now }
     }
   ],
-  awb: String,
+  awb: { 
+    type: String,
+    index: true
+  },
   courier: String,
   tracking: String,
-  channel: { type: String, enum: ['MANUAL', 'EXCEL', 'SHOPIFY', 'WOOCOMMERCE', 'AMAZON', 'FLIPKART', 'OPENCART', 'API'], default: 'MANUAL' },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  channel: { 
+    type: String, 
+    enum: ['MANUAL', 'EXCEL', 'SHOPIFY', 'WOOCOMMERCE', 'AMAZON', 'FLIPKART', 'OPENCART', 'API'], 
+    default: 'MANUAL',
+    index: true
+  },
+  createdAt: { 
+    type: Date, 
+    default: Date.now,
+    index: true
+  },
+  updatedAt: { 
+    type: Date, 
+    default: Date.now 
+  }
 });
+
+// Add compound indexes for common query patterns
+orderSchema.index({ seller: 1, status: 1 });
+orderSchema.index({ seller: 1, orderDate: -1 });
+orderSchema.index({ seller: 1, channel: 1, status: 1 });
+orderSchema.index({ createdAt: -1 });
+
+// Filter out cancelled orders by default
+orderSchema.pre(/^find/, function(next) {
+  // Skip the default filter if explicitly requested
+  const skipDefaultFilter = this.getOptions().skipDefaultFilter;
+  
+  if (!skipDefaultFilter && !this._conditions.status) {
+    this.find({ status: { $ne: 'Cancelled' } });
+  }
+  next();
+});
+
+// Update the updatedAt timestamp on save
+orderSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+// Helper method to update order status safely
+orderSchema.methods.updateStatus = async function(status, comment = '', updatedBy = null) {
+  const validStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Returned'];
+  
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid status: ${status}`);
+  }
+  
+  this.status = status;
+  
+  // Add to timeline
+  this.orderTimeline.push({
+    status,
+    timestamp: new Date(),
+    comment: comment || `Order marked as ${status.toLowerCase()}`
+  });
+  
+  // Add a note if provided
+  if (comment && updatedBy) {
+    this.notes.push({
+      note: `Status changed to ${status}: ${comment}`,
+      createdBy: updatedBy,
+      createdAt: new Date()
+    });
+  }
+  
+  return await this.save();
+};
+
+// Helper method to get order summary
+orderSchema.methods.getOrderSummary = function() {
+  return {
+    id: this._id,
+    orderId: this.orderId,
+    status: this.status,
+    customer: this.customer.name,
+    product: this.product.name,
+    amount: this.payment.total,
+    orderDate: this.orderDate,
+    awb: this.awb,
+    courier: this.courier
+  };
+};
 
 export default mongoose.model('SellerOrder', orderSchema); 

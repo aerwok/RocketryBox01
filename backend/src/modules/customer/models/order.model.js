@@ -21,17 +21,20 @@ const orderSchema = new mongoose.Schema({
   customer: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer',
-    required: true
+    required: true,
+    index: true
   },
   awb: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
   status: {
     type: String,
     enum: ['Booked', 'Processing', 'In Transit', 'Out for Delivery', 'Delivered', 'Failed', 'Cancelled'],
-    default: 'Booked'
+    default: 'Booked',
+    index: true
   },
   pickupAddress: {
     name: {
@@ -125,11 +128,13 @@ const orderSchema = new mongoose.Schema({
   serviceType: {
     type: String,
     enum: ['standard', 'express', 'cod'],
-    required: true
+    required: true,
+    index: true
   },
   paymentMethod: {
     type: String,
-    required: true
+    required: true,
+    index: true
   },
   paymentId: {
     type: String,
@@ -179,6 +184,12 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Add compound indexes for common query patterns
+orderSchema.index({ customer: 1, status: 1 });
+orderSchema.index({ customer: 1, createdAt: -1 });
+orderSchema.index({ status: 1, estimatedDelivery: 1 });
+orderSchema.index({ createdAt: -1 });
+
 // Generate AWB number before saving
 orderSchema.pre('save', async function(next) {
   if (this.isNew) {
@@ -190,6 +201,61 @@ orderSchema.pre('save', async function(next) {
   }
   next();
 });
+
+// Filter out cancelled orders by default
+orderSchema.pre(/^find/, function(next) {
+  // Skip the default filter if explicitly requested
+  const skipDefaultFilter = this.getOptions().skipDefaultFilter;
+  
+  if (!skipDefaultFilter && !this._conditions.status) {
+    this.find({ status: { $ne: 'Cancelled' } });
+  }
+  next();
+});
+
+// Helper method to update order status safely
+orderSchema.methods.updateStatus = async function(status, description = null) {
+  const validStatuses = ['Booked', 'Processing', 'In Transit', 'Out for Delivery', 'Delivered', 'Failed', 'Cancelled'];
+  
+  if (!validStatuses.includes(status)) {
+    throw new Error(`Invalid status: ${status}`);
+  }
+  
+  this.status = status;
+  
+  // Update tracking timeline
+  if (!this.tracking) {
+    this.tracking = {
+      status,
+      timeline: []
+    };
+  }
+  
+  this.tracking.status = status;
+  this.tracking.timeline.push({
+    status,
+    timestamp: new Date(),
+    description: description || `Order ${status.toLowerCase()}`
+  });
+  
+  return await this.save();
+};
+
+// Helper method to get order details in standardized format
+orderSchema.methods.getOrderDetails = function() {
+  return {
+    id: this._id,
+    awb: this.awb,
+    customer: this.customer,
+    status: this.status,
+    amount: this.amount,
+    serviceType: this.serviceType,
+    createdAt: this.createdAt,
+    estimatedDelivery: this.estimatedDelivery,
+    tracking: this.tracking,
+    courier: this.courier
+  };
+};
 
 // Calculate volumetric weight
 orderSchema.methods.calculateVolumetricWeight = function() {

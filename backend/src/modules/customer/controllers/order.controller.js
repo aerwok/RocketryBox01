@@ -11,6 +11,7 @@ import { getBluedartRates } from '../../../utils/bluedart.js';
 import { getDTDCRates } from '../../../utils/dtdc.js';
 import { getEkartRates } from '../../../utils/ekart.js';
 import { getXpressbeesRates } from '../../../utils/xpressbees.js';
+import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 
 // Create new order
 export const createOrder = async (req, res, next) => {
@@ -50,6 +51,15 @@ export const createOrder = async (req, res, next) => {
       estimatedDelivery: rates.data.estimatedDelivery,
       instructions,
       pickupDate: new Date(pickupDate)
+    });
+
+    // Emit order created event for real-time dashboard updates
+    emitEvent(EVENT_TYPES.ORDER_CREATED, {
+      orderId: order._id,
+      awb: order.awb,
+      customerId: req.user.id,
+      amount: order.amount,
+      status: order.status
     });
 
     // Send order confirmation

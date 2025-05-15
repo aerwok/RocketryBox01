@@ -3,11 +3,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const sellerSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true, lowercase: true },
-  phone: { type: String, required: true, unique: true },
+  name: { type: String, required: true, index: true },
+  email: { type: String, required: true, unique: true, lowercase: true, index: true },
+  phone: { type: String, required: true, unique: true, index: true },
   password: { type: String, required: true, select: false },
-  businessName: { type: String, required: true },
+  businessName: { type: String, required: true, index: true },
   companyCategory: { type: String },
   brandName: { type: String },
   website: { type: String },
@@ -32,17 +32,43 @@ const sellerSchema = new mongoose.Schema({
       }
     ]
   },
-  status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending', index: true },
   otp: {
     code: { type: String },
     expiresAt: { type: Date }
   },
   lastLogin: { type: Date },
+  lastActive: { type: Date, default: Date.now, index: true },
   refreshToken: { type: String, select: false },
   walletBalance: { type: String, default: '0' },
   rateCard: { type: mongoose.Schema.Types.ObjectId, ref: 'RateCard', default: null },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
+});
+
+// Add compound indexes for common query patterns
+sellerSchema.index({ status: 1, lastActive: -1 });
+sellerSchema.index({ businessName: 'text', email: 'text', phone: 'text' });
+
+// Default filter to exclude suspended sellers
+sellerSchema.pre(/^find/, function(next) {
+  // Check if this query should skip the default filter
+  const skipDefaultFilter = this.getOptions().skipDefaultFilter;
+  
+  // Apply default filter for normal queries
+  if (!skipDefaultFilter && !this._conditions.status) {
+    this.find({ status: { $ne: 'suspended' } });
+  }
+  next();
+});
+
+// Update lastActive and timestamps
+sellerSchema.pre('save', function(next) {
+  if (this.isModified('lastLogin')) {
+    this.lastActive = new Date();
+  }
+  this.updatedAt = new Date();
+  next();
 });
 
 // Hash password before save
@@ -77,6 +103,33 @@ sellerSchema.methods.toJSON = function () {
   delete obj.password;
   delete obj.refreshToken;
   return obj;
+};
+
+// Static method to find a seller by ID safely
+sellerSchema.statics.findByIdSafe = async function(id) {
+  try {
+    return await this.findById(id).lean();
+  } catch (error) {
+    return null;
+  }
+};
+
+// Helper method for updating seller data safely
+sellerSchema.methods.updateSafe = async function(updates) {
+  const allowedFields = [
+    'name', 'phone', 'businessName', 'companyCategory', 'brandName',
+    'website', 'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail'
+  ];
+  
+  Object.keys(updates).forEach(key => {
+    if (allowedFields.includes(key)) {
+      this[key] = updates[key];
+    }
+  });
+  
+  this.lastActive = new Date();
+  this.updatedAt = new Date();
+  return await this.save();
 };
 
 export default mongoose.model('Seller', sellerSchema); 

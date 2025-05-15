@@ -4,6 +4,7 @@ import { sendEmail } from '../../../utils/email.js';
 import { sendSMS } from '../../../utils/sms.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 
 // Helper to generate OTP
 function generateOTP(length = 6) {
@@ -43,6 +44,13 @@ export const login = async (req, res, next) => {
     const refreshToken = seller.generateRefreshToken();
     seller.refreshToken = refreshToken;
     await seller.save();
+
+    // Emit seller login event for real-time dashboard updates
+    emitEvent(EVENT_TYPES.SELLER_LOGIN, {
+      sellerId: seller._id,
+      businessName: seller.businessName,
+      email: seller.email
+    });
 
     res.status(200).json({
       success: true,
@@ -210,6 +218,14 @@ export const register = async (req, res, next) => {
       documents,
       status: 'pending'
     });
+
+    // Emit seller registered event for real-time dashboard updates
+    emitEvent(EVENT_TYPES.SELLER_REGISTERED, {
+      sellerId: seller._id,
+      businessName: seller.businessName,
+      email: seller.email
+    });
+
     await sendEmail({
       to: seller.email,
       subject: 'Welcome to Rocketry Box',

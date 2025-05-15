@@ -4,6 +4,7 @@ import { sendEmail } from '../../../utils/email.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import { generateOTP } from '../../../utils/otp.js';
 import { setOTP, verifyOTP } from '../../../utils/redis.js';
+import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 
 // Register new customer
 export const register = async (req, res, next) => {
@@ -70,6 +71,13 @@ export const register = async (req, res, next) => {
     const accessToken = customer.generateAuthToken();
     const refreshToken = customer.generateRefreshToken();
 
+    // Emit customer registered event for real-time dashboard updates
+    emitEvent(EVENT_TYPES.CUSTOMER_REGISTERED, {
+      customerId: customer._id,
+      name: customer.name,
+      email: customer.email
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -127,6 +135,13 @@ export const login = async (req, res, next) => {
     // Generate tokens
     const accessToken = customer.generateAuthToken();
     const refreshToken = customer.generateRefreshToken();
+
+    // Emit customer login event for real-time dashboard updates
+    emitEvent(EVENT_TYPES.CUSTOMER_LOGIN, {
+      customerId: customer._id,
+      name: customer.name,
+      email: customer.email
+    });
 
     res.status(200).json({
       success: true,
