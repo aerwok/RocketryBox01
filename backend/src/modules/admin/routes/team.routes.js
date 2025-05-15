@@ -1,5 +1,5 @@
 import express from 'express';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as teamController from '../controllers/team.controller.js';
 import * as teamValidator from '../validators/team.validator.js';

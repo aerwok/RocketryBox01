@@ -10,7 +10,7 @@ import {
   validateSystemConfig,
   validateConfigByKey
 } from '../validators/settings.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -18,14 +18,14 @@ const router = express.Router();
 // System settings routes
 router.get(
   '/system',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getSystemConfig
 );
 
 router.put(
   '/system',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateSystemConfig,
   updateSystemConfig
@@ -33,7 +33,7 @@ router.put(
 
 router.post(
   '/system/reset',
-  authenticate,
+  protect,
   checkPermission('settings'),
   resetSystemConfig
 );
@@ -41,7 +41,7 @@ router.post(
 // Category-based settings
 router.get(
   '/category/:category',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getConfigByCategory
 );
@@ -49,7 +49,7 @@ router.get(
 // Key-based settings
 router.put(
   '/key/:key',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateConfigByKey,
   updateConfigByKey

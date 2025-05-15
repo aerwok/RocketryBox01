@@ -13,7 +13,7 @@ import {
   getOrderDetails,
   downloadLabel,
   createPayment,
-  verifyPayment,
+  verifyOrderPayment,
   subscribeTracking,
   refundPayment,
   checkPaymentStatus,
@@ -25,7 +25,7 @@ import {
 } from '../controllers/service.controller.js';
 import { handleTrackingWebhook } from '../controllers/webhook.controller.js';
 import { protect } from '../../../middleware/auth.js';
-import { validateRequest } from '../../../middleware/validator.js';
+import { validationHandler as validateRequest } from '../../../middleware/validator.js';
 import {
   defaultLimiter,
   authLimiter,
@@ -90,7 +90,7 @@ router.post(
   '/orders/:id/payment/verify',
   paymentLimiter,
   validateRequest(verifyPaymentSchema),
-  verifyPayment
+  verifyOrderPayment
 );
 router.get('/orders/:id/payment/status', checkPaymentStatus);
 

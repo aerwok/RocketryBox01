@@ -246,6 +246,6 @@ ticketSchema.statics.getTicketStatsByCategory = async function() {
   ]);
 };
 
-const SupportTicket = mongoose.model('SupportTicket', ticketSchema);
+const AdminSupportTicket = mongoose.model('AdminSupportTicket', ticketSchema);
 
-export default SupportTicket; 
+export default AdminSupportTicket; 

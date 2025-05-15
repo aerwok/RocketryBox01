@@ -1,6 +1,6 @@
 import express from 'express';
-import { auth } from '../../../middleware/auth.js';
-import { validate } from '../../../middleware/validate.js';
+import { protect } from '../../../middleware/auth.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import {
   createInvoice,
   updateInvoice,
@@ -21,11 +21,11 @@ import {
 const router = express.Router();
 
 // Apply auth middleware to all routes
-router.use(auth);
+router.use(protect);
 
 // Invoice CRUD routes
-router.post('/', validate(createInvoiceSchema), createInvoice);
-router.put('/:id', validate(updateInvoiceSchema), updateInvoice);
+router.post('/', validationHandler(createInvoiceSchema), createInvoice);
+router.put('/:id', validationHandler(updateInvoiceSchema), updateInvoice);
 router.delete('/:id', deleteInvoice);
 router.get('/:id', getInvoice);
 router.get('/', listInvoices);
@@ -36,6 +36,6 @@ router.get('/:id/pdf', generatePDF);
 
 // Payment routes
 router.post('/:id/payment/initiate', initiateInvoicePayment);
-router.post('/:id/payment/verify', validate(paymentVerificationSchema), verifyInvoicePayment);
+router.post('/:id/payment/verify', validationHandler(paymentVerificationSchema), verifyInvoicePayment);
 
 export default router; 

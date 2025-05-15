@@ -1,6 +1,6 @@
 import express from 'express';
 import { login, sendOTP, verifyOTP, resetPassword, refreshToken, register } from '../controllers/auth.controller.js';
-import { validateRequest } from '../../../middleware/validator.js';
+import { validationHandler as validateRequest } from '../../../middleware/validator.js';
 import { loginSchema, sendOTPSchema, verifyOTPSchema, resetPasswordSchema, registerSchema } from '../validators/seller.validator.js';
 import { getSellerRateCard, calculateRateCard } from '../controllers/billing.controller.js';
 import { authLimiter } from '../../../middleware/rateLimiter.js';

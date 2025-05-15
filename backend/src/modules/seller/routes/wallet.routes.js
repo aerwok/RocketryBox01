@@ -1,10 +1,10 @@
 import express from 'express';
 import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet } from '../controllers/wallet.controller.js';
-import { authenticateSeller } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 
 const router = express.Router();
 
-router.use(authenticateSeller);
+router.use(protect);
 
 // List wallet transactions
 router.get('/', listWalletTransactions);

@@ -19,7 +19,7 @@ import {
   validateAssignEscalation,
   validateBulkUpdate
 } from '../validators/escalation.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -27,7 +27,7 @@ const router = express.Router();
 // Get escalation statistics for dashboard
 router.get(
   '/stats',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   getEscalationStats
 );
@@ -35,7 +35,7 @@ router.get(
 // Search escalations with filters
 router.get(
   '/search',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateSearchEscalations,
   searchEscalations
@@ -44,7 +44,7 @@ router.get(
 // Get a specific escalation by ID
 router.get(
   '/:id',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateEscalationId,
   validateEscalationType,
@@ -54,7 +54,7 @@ router.get(
 // Create a new escalation
 router.post(
   '/',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateEscalationType,
   validateCreateEscalation,
@@ -64,7 +64,7 @@ router.post(
 // Update an escalation
 router.patch(
   '/:id',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateEscalationId,
   validateEscalationType,
@@ -75,7 +75,7 @@ router.patch(
 // Add a comment to an escalation
 router.post(
   '/:id/comments',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateAddComment,
   addComment
@@ -84,7 +84,7 @@ router.post(
 // Assign an escalation to an admin
 router.post(
   '/:id/assign',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateAssignEscalation,
   assignEscalation
@@ -93,7 +93,7 @@ router.post(
 // Bulk update escalation status
 router.post(
   '/bulk-update',
-  authenticate,
+  protect,
   checkPermission('escalationManagement'),
   validateBulkUpdate,
   bulkUpdateStatus

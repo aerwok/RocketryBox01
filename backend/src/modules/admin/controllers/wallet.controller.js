@@ -1,4 +1,4 @@
-import WalletTransaction from '../models/wallet.model.js';
+import AdminWalletTransaction from '../models/wallet.model.js';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { logger } from '../../../utils/logger.js';
 import mongoose from 'mongoose';
@@ -70,10 +70,10 @@ export const getWalletTransactions = async (req, res, next) => {
     }
     
     // Get total count for pagination
-    const total = await WalletTransaction.countDocuments(query);
+    const total = await AdminWalletTransaction.countDocuments(query);
     
     // Get transactions with pagination
-    const transactions = await WalletTransaction.find(query)
+    const transactions = await AdminWalletTransaction.find(query)
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
@@ -110,7 +110,7 @@ export const getWalletTransactionById = async (req, res, next) => {
     }
     
     // Find transaction
-    const transaction = await WalletTransaction.findById(transactionId)
+    const transaction = await AdminWalletTransaction.findById(transactionId)
       .populate('sellerId', 'name email')
       .exec();
     
@@ -149,7 +149,7 @@ export const addWalletTransaction = async (req, res, next) => {
     const subTotal = Number(amount) + Number(codCharge || 0) + Number(igst || 0);
     
     // Get current balance
-    const lastTransaction = await WalletTransaction.findOne({ sellerId })
+    const lastTransaction = await AdminWalletTransaction.findOne({ sellerId })
       .sort({ createdAt: -1 })
       .exec();
     
@@ -166,7 +166,7 @@ export const addWalletTransaction = async (req, res, next) => {
     }
     
     // Create new transaction
-    const newTransaction = await WalletTransaction.create({
+    const newTransaction = await AdminWalletTransaction.create({
       sellerId,
       referenceNumber,
       orderId,
@@ -243,7 +243,7 @@ export const exportWalletTransactions = async (req, res, next) => {
     }
     
     // Get transactions
-    const transactions = await WalletTransaction.find(query)
+    const transactions = await AdminWalletTransaction.find(query)
       .sort({ createdAt: -1 })
       .populate('sellerId', 'name email')
       .exec();

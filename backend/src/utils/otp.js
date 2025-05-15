@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { setOTP } from './redis.js';
 
 /**
  * Generate a random OTP of specified length
@@ -19,6 +20,17 @@ export const generateOTP = (length = 6) => {
   }
   
   return otp;
+};
+
+/**
+ * Store OTP in Redis
+ * @param {string} userId - User ID or identifier
+ * @param {string} otp - Generated OTP
+ * @param {number} expiryInSeconds - Expiry time in seconds
+ * @returns {Promise<boolean>} - Whether OTP was stored successfully
+ */
+export const storeOTP = async (userId, otp, expiryInSeconds = 300) => {
+  return await setOTP(userId, otp, expiryInSeconds);
 };
 
 /**
@@ -47,4 +59,7 @@ export const validateOTP = (inputOTP, storedOTP, expiryTime) => {
   }
   
   return inputOTP === storedOTP;
-}; 
+};
+
+// Alias for backward compatibility
+export const verifyOTP = validateOTP; 

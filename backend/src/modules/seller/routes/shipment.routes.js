@@ -3,7 +3,7 @@ import {
   createShipment,
   createBulkShipments,
   getShipments,
-  getShipmentById,
+  getShipment,
   updateShipmentStatus,
   addTrackingEvent,
   getTrackingHistory,
@@ -13,7 +13,7 @@ import {
   bookCourierShipment,
   trackShipmentStatus
 } from '../controllers/shipment.controller.js';
-import { authenticateSeller } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import {
   validateCreateShipment,
   validateCreateBulkShipments,
@@ -27,7 +27,7 @@ import {
 const router = express.Router();
 
 // All routes are protected with seller authentication
-router.use(authenticateSeller);
+router.use(protect);
 
 // Shipping rates API
 router.post('/rates', validateShippingRates, getShippingRates);
@@ -48,7 +48,7 @@ router.get('/', getShipments);
 router.get('/manifest', getManifest);
 
 // Get shipment details
-router.get('/:id', getShipmentById);
+router.get('/:id', getShipment);
 
 // Track shipment with courier API
 router.get('/:id/track', trackShipmentStatus);

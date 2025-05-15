@@ -1,5 +1,5 @@
 import express from 'express';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as authController from '../controllers/auth.controller.js';
 import * as authValidator from '../validators/auth.validator.js';
@@ -34,7 +34,7 @@ const upload = multer({
 });
 
 // Login route - public
-router.post('/login', validate(authValidator.loginValidator), authController.login);
+router.post('/login', validationHandler(authValidator.loginValidator), authController.login);
 
 // Register route - private (super admin only)
 router.post(
@@ -42,7 +42,7 @@ router.post(
   protect,
   restrictTo('Admin'),
   upload.single('profileImage'),
-  validate(authValidator.registerValidator),
+  validationHandler(authValidator.registerValidator),
   authController.register
 );
 

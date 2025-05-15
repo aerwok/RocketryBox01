@@ -6,7 +6,7 @@ import Order from '../../order/models/order.model.js';
 import Session from '../models/session.model.js';
 import Shipment from '../../shipping/models/shipment.model.js';
 import Ticket from '../../support/models/ticket.model.js';
-import Dispute from '../../seller/models/dispute.model.js';
+import WeightDispute from '../../seller/models/weightDispute.model.js';
 import { getRealtimeDashboardData } from '../services/realtime.service.js';
 
 /**
@@ -132,9 +132,9 @@ export const getDashboardOverview = async (req, res, next) => {
       openTickets,
       closedTickets
     ] = await Promise.all([
-      Dispute.countDocuments(),
-      Dispute.countDocuments({ status: 'Open' }),
-      Dispute.countDocuments({ status: 'Resolved' }),
+      WeightDispute.countDocuments(),
+      WeightDispute.countDocuments({ status: 'Open' }),
+      WeightDispute.countDocuments({ status: 'Resolved' }),
       Ticket.countDocuments(),
       Ticket.countDocuments({ status: { $in: ['New', 'In Progress'] } }),
       Ticket.countDocuments({ status: { $in: ['Resolved', 'Closed'] } })

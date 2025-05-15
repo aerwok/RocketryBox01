@@ -1,5 +1,5 @@
 import express from 'express';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as userController from '../controllers/user.controller.js';
 import multer from 'multer';

@@ -6,7 +6,7 @@ import {
   updateShippingChargeStatus,
   exportShippingCharges
 } from '../controllers/shippingCharge.controller.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 import { 
   validateGetShippingCharges,
@@ -19,7 +19,7 @@ const router = express.Router();
 // Get all shipping charges with pagination and filtering
 router.get(
   '/charges',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetShippingCharges,
   getShippingCharges
@@ -28,7 +28,7 @@ router.get(
 // Export shipping charges
 router.get(
   '/charges/export',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetShippingCharges,
   exportShippingCharges
@@ -37,7 +37,7 @@ router.get(
 // Get shipping charge by ID
 router.get(
   '/charges/:id',
-  authenticate,
+  protect,
   checkPermission('billing'),
   getShippingChargeById
 );
@@ -45,7 +45,7 @@ router.get(
 // Create a new shipping charge
 router.post(
   '/charges',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateCreateShippingCharge,
   createShippingCharge
@@ -54,7 +54,7 @@ router.post(
 // Update shipping charge status
 router.patch(
   '/charges/:id/status',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateUpdateShippingChargeStatus,
   updateShippingChargeStatus

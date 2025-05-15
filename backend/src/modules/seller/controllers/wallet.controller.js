@@ -142,4 +142,77 @@ export const creditToWallet = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// Initiate wallet recharge (Razorpay)
+export const initiateRecharge = async (req, res, next) => {
+  try {
+    const { amount } = req.body;
+    const sellerId = req.user.id;
+    
+    if (!amount || isNaN(amount) || amount <= 0) {
+      throw new AppError('Invalid amount', 400);
+    }
+    
+    // In a real app, we would create a Razorpay order here
+    // For now, we'll just return a mock response
+    res.status(200).json({
+      success: true,
+      data: {
+        orderId: `rzp_${Date.now()}`,
+        amount,
+        currency: 'INR',
+        key: 'rzp_test_key',
+        name: 'Wallet Recharge',
+        description: `Recharge of Rs ${amount}`,
+        prefill: {
+          name: req.user.name,
+          email: req.user.email,
+          contact: req.user.phone
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Verify wallet recharge (Razorpay)
+export const verifyRecharge = async (req, res, next) => {
+  try {
+    const { paymentId, orderId, signature, amount } = req.body;
+    const sellerId = req.user.id;
+    
+    // In a real app, we would verify the signature with Razorpay
+    // For now, we'll just assume it's valid and update the wallet
+    
+    // Find the seller
+    const seller = await Seller.findById(sellerId);
+    if (!seller) throw new AppError('Seller not found', 404);
+    
+    // Update wallet balance
+    const currentBalance = parseFloat(seller.walletBalance || '0');
+    seller.walletBalance = (currentBalance + parseFloat(amount)).toFixed(2);
+    await seller.save();
+    
+    // Record wallet transaction
+    const txn = await WalletTransaction.create({
+      seller: seller._id,
+      referenceNumber: paymentId,
+      type: 'Recharge',
+      amount: amount.toString(),
+      remark: 'Wallet recharge via Razorpay',
+      closingBalance: seller.walletBalance
+    });
+    
+    res.status(200).json({ 
+      success: true, 
+      data: { 
+        transaction: txn,
+        balance: seller.walletBalance
+      } 
+    });
+  } catch (error) {
+    next(error);
+  }
 }; 

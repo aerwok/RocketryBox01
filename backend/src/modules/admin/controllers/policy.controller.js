@@ -48,6 +48,47 @@ export const getPolicyBySlug = async (req, res, next) => {
   }
 };
 
+// Get policy by type
+export const getPolicyByType = async (req, res, next) => {
+  try {
+    const policy = await Policy.findOne({ 
+      type: req.params.type,
+      status: 'published',
+      isDefault: true
+    });
+    
+    if (!policy) {
+      return next(new AppError('Policy not found', 404));
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: policy
+    });
+  } catch (error) {
+    logger.error(`Error in getPolicyByType: ${error.message}`);
+    next(new AppError(error.message, 500));
+  }
+};
+
+// Get all default policies
+export const getDefaultPolicies = async (req, res, next) => {
+  try {
+    const policies = await Policy.find({ 
+      isDefault: true,
+      status: 'published'
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: policies
+    });
+  } catch (error) {
+    logger.error(`Error in getDefaultPolicies: ${error.message}`);
+    next(new AppError(error.message, 500));
+  }
+};
+
 // Create new policy
 export const createPolicy = async (req, res, next) => {
   try {

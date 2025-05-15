@@ -26,7 +26,6 @@ const invoiceSchema = new mongoose.Schema({
   invoiceNumber: {
     type: String,
     required: [true, 'Invoice number is required'],
-    unique: true,
     trim: true
   },
   sellerId: {
@@ -84,10 +83,10 @@ const invoiceSchema = new mongoose.Schema({
 
 // Index for faster querying
 invoiceSchema.index({ sellerId: 1, createdAt: -1 });
-invoiceSchema.index({ invoiceNumber: 1 });
+invoiceSchema.index({ invoiceNumber: 1 }, { unique: true });
 invoiceSchema.index({ status: 1 });
 invoiceSchema.index({ dueDate: 1 });
 
-const Invoice = mongoose.model('Invoice', invoiceSchema);
+const AdminInvoice = mongoose.model('AdminInvoice', invoiceSchema);
 
-export default Invoice; 
+export default AdminInvoice; 

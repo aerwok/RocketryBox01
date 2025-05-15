@@ -1,5 +1,5 @@
 import { body, param, query } from 'express-validator';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 
 // Validate policy creation
 export const validateCreatePolicy = [

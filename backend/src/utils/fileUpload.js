@@ -175,3 +175,27 @@ const deleteLocally = (filePath) => {
     logger.error(`Local file delete error: ${error.message}`);
   }
 };
+
+/**
+ * Upload file to storage (S3 or local)
+ * @param {Object} file - Express multer file object
+ * @param {String} folder - Folder to store the file in (optional)
+ * @returns {Promise<String>} - URL of the uploaded file
+ */
+export const uploadFile = async (file, folder = 'uploads') => {
+  try {
+    if (!file) {
+      throw new Error('No file provided');
+    }
+    
+    // Generate a key with folder structure
+    const fileName = `${Date.now()}-${file.originalname}`;
+    const key = `${folder}/${fileName}`;
+    
+    // Upload to S3 or local storage
+    return await uploadToS3(file, key);
+  } catch (error) {
+    logger.error(`File upload error: ${error.message}`);
+    throw error;
+  }
+};

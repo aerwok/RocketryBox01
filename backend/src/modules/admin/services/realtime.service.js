@@ -5,11 +5,19 @@ import Customer from '../../customer/models/customer.model.js';
 import Order from '../../seller/models/order.model.js';
 import { 
   getCache, 
-  setCache, 
-  CACHE_KEYS,
-  invalidateCachePattern,
-  CACHE_PATTERNS
-} from '../../../utils/cache.js';
+  setCache,
+  deleteCache
+} from '../../../utils/redis.js';
+
+// Define internal cache keys (no longer importing from cache.js)
+const CACHE_KEYS = {
+  DASHBOARD_REALTIME: 'dashboard:realtime',
+  DASHBOARD_USERS: 'dashboard:users',
+  DASHBOARD_ORDERS: 'dashboard:orders',
+  DASHBOARD_REVENUE: 'dashboard:revenue',
+  DASHBOARD_PRODUCTS: 'dashboard:products',
+  DASHBOARD_ACTIVITIES: 'dashboard:activities'
+};
 
 // Constants
 const CACHE_TTL = 60; // 60 seconds cache TTL
@@ -330,7 +338,8 @@ export const getRealtimeDashboardData = async () => {
     }
     
     // Fetch all sections in parallel for better performance
-    const [users, orders, revenue, products, activities] = await Promise.all([
+    // Use Promise.allSettled to handle partial failures
+    const results = await Promise.allSettled([
       getUsersStats(),
       getOrdersStats(),
       getRevenueStats(),
@@ -338,23 +347,44 @@ export const getRealtimeDashboardData = async () => {
       getActivityStats()
     ]);
     
-    // Assemble complete dashboard data
+    // Process results, use null for failed promises
+    const [usersResult, ordersResult, revenueResult, productsResult, activitiesResult] = results;
+    
     const dashboardData = {
-      users,
-      orders,
-      revenue,
-      products,
-      activities,
+      users: usersResult.status === 'fulfilled' ? usersResult.value : null,
+      orders: ordersResult.status === 'fulfilled' ? ordersResult.value : null,
+      revenue: revenueResult.status === 'fulfilled' ? revenueResult.value : null,
+      products: productsResult.status === 'fulfilled' ? productsResult.value : null,
+      activities: activitiesResult.status === 'fulfilled' ? activitiesResult.value : null,
       timestamp: new Date()
     };
     
+    // Log any errors
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        const sections = ['users', 'orders', 'revenue', 'products', 'activities'];
+        logger.error(`Error fetching ${sections[index]} data: ${result.reason}`);
+      }
+    });
+    
     // Cache the complete dashboard data
-    await setCache(CACHE_KEYS.DASHBOARD_REALTIME, dashboardData, CACHE_TTL);
+    if (Object.values(dashboardData).some(value => value !== null && value !== undefined)) {
+      await setCache(CACHE_KEYS.DASHBOARD_REALTIME, dashboardData, CACHE_TTL);
+    }
     
     return dashboardData;
   } catch (error) {
     logger.error(`Error in getRealtimeDashboardData: ${error.message}`);
-    throw error;
+    // Return empty dashboard data as fallback
+    return {
+      users: null,
+      orders: null,
+      revenue: null,
+      products: null,
+      activities: null,
+      timestamp: new Date(),
+      error: error.message
+    };
   }
 };
 
@@ -365,6 +395,11 @@ export const getRealtimeDashboardData = async () => {
  */
 export const updateDashboardSection = async (section) => {
   try {
+    if (!section) {
+      logger.error('Cannot update undefined dashboard section');
+      return null;
+    }
+    
     let sectionData;
     
     // Update specific section based on the event type
@@ -385,18 +420,22 @@ export const updateDashboardSection = async (section) => {
         sectionData = await getActivityStats();
         break;
       default:
-        // If section not specified, update complete dashboard
-        return await getRealtimeDashboardData();
+        // If section not recognized, log error and return null
+        logger.error(`Unknown dashboard section: ${section}`);
+        return null;
     }
     
-    // Invalidate section cache
-    await invalidateCachePattern(CACHE_PATTERNS[section.toUpperCase()]);
+    // Invalidate section cache if we have a valid key
+    const cacheKey = CACHE_KEYS[`DASHBOARD_${section.toUpperCase()}`];
+    if (cacheKey) {
+      await deleteCache(cacheKey);
+    }
     
     // Return updated section
     return { [section]: sectionData, timestamp: new Date() };
   } catch (error) {
     logger.error(`Error updating dashboard section ${section}: ${error.message}`);
-    throw error;
+    return null;
   }
 };
 
@@ -406,10 +445,31 @@ export const updateDashboardSection = async (section) => {
  */
 export const broadcastDashboardSectionUpdate = async (section) => {
   try {
+    if (!section) {
+      logger.error('Cannot broadcast update for undefined section');
+      return;
+    }
+    
+    // Check if there are admin clients connected before gathering data
+    const { getConnectedAdminCount } = await import('../../../utils/socketio.js');
+    const adminCount = getConnectedAdminCount();
+    
+    if (adminCount === 0) {
+      logger.debug(`No admin clients connected, skipping ${section} section update`);
+      return;
+    }
+    
+    logger.debug(`Broadcasting ${section} section update to ${adminCount} admins`);
+    
+    // Get section data
     const sectionData = await updateDashboardSection(section);
-    emitAdminDashboardUpdate('dashboard-section-update', sectionData);
+    
+    // Only emit if we got valid data
+    if (sectionData) {
+      emitAdminDashboardUpdate('dashboard-section-update', sectionData);
+    }
   } catch (error) {
-    logger.error(`Error in broadcastDashboardSectionUpdate: ${error.message}`);
+    logger.error(`Error in broadcastDashboardSectionUpdate for section ${section}: ${error.message}`);
   }
 };
 
@@ -418,8 +478,24 @@ export const broadcastDashboardSectionUpdate = async (section) => {
  */
 export const broadcastDashboardUpdates = async () => {
   try {
+    // Check if there are admin clients connected before gathering data
+    const { getConnectedAdminCount } = await import('../../../utils/socketio.js');
+    const adminCount = getConnectedAdminCount();
+    
+    if (adminCount === 0) {
+      logger.debug('No admin clients connected, skipping dashboard update');
+      return;
+    }
+    
+    logger.debug(`Broadcasting dashboard update to ${adminCount} admins`);
+    
+    // Get dashboard data
     const dashboardData = await getRealtimeDashboardData();
-    emitAdminDashboardUpdate('dashboard-update', dashboardData);
+    
+    // Only emit if we got valid data
+    if (dashboardData) {
+      emitAdminDashboardUpdate('dashboard-update', dashboardData);
+    }
   } catch (error) {
     logger.error(`Error in broadcastDashboardUpdates: ${error.message}`);
   }

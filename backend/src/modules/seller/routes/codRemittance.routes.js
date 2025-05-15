@@ -1,7 +1,7 @@
 import express from 'express';
 import { protect } from '../../../middleware/auth.js';
 import { adminOnly } from '../../../middleware/admin.js';
-import { validate } from '../../../middleware/validate.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import {
   createCODRemittanceSchema,
   updateCODRemittanceSchema
@@ -22,7 +22,7 @@ router.get('/seller/cod-remittances/:id', getCODRemittanceDetails);
 
 // Admin routes
 router.use('/admin/cod-remittances', protect, adminOnly);
-router.post('/admin/cod-remittances', validate(createCODRemittanceSchema), createCODRemittance);
-router.patch('/admin/cod-remittances/:id', validate(updateCODRemittanceSchema), updateCODRemittance);
+router.post('/admin/cod-remittances', validationHandler(createCODRemittanceSchema), createCODRemittance);
+router.patch('/admin/cod-remittances/:id', validationHandler(updateCODRemittanceSchema), updateCODRemittance);
 
 export default router; 

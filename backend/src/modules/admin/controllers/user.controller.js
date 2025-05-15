@@ -3,7 +3,6 @@ import { logger } from '../../../utils/logger.js';
 import Seller from '../../seller/models/seller.model.js';
 import Customer from '../../customer/models/customer.model.js';
 import Order from '../../order/models/order.model.js';
-import KYC from '../../seller/models/kyc.model.js';
 import Agreement from '../../seller/models/agreement.model.js';
 import RateCard from '../../seller/models/ratecard.model.js';
 import { getIO } from '../../../utils/socketio.js';
@@ -134,8 +133,15 @@ export const getSellerDetails = async (req, res, next) => {
             return next(new AppError('Seller not found', 404));
         }
 
-        // Get KYC details
-        const kyc = await KYC.findOne({ seller: id });
+        // Extract KYC details from the seller model
+        const kycDetails = {
+            status: seller.status,
+            documents: seller.documents || {},
+            businessDetails: {
+                name: seller.businessName,
+                gstin: seller.gstin
+            }
+        };
 
         // Get agreements
         const agreements = await Agreement.find({ seller: id });
@@ -146,7 +152,7 @@ export const getSellerDetails = async (req, res, next) => {
         // Add real-time flag to indicate if data came from real-time cache
         const responseData = {
             seller,
-            kycDetails: kyc || null,
+            kycDetails,
             agreements,
             rateCards,
             isRealtime: !!sellerProfile
@@ -252,35 +258,36 @@ export const updateSellerKYC = async (req, res, next) => {
             return next(new AppError('Seller not found', 404));
         }
 
-        // Find and update KYC
-        const kyc = await KYC.findOne({ seller: id });
-        
-        if (!kyc) {
-            return next(new AppError('KYC records not found for this seller', 404));
+        // Update seller's KYC status
+        if (!seller.documents) {
+            seller.documents = {};
         }
-
-        // Update KYC status
-        kyc.status = status;
         
-        // Add verification details
-        kyc.verificationDetails = kyc.verificationDetails || [];
-        kyc.verificationDetails.push({
+        // Update documents status
+        if (seller.documents.documents && Array.isArray(seller.documents.documents)) {
+            seller.documents.documents.forEach(doc => {
+                doc.status = status === 'approved' ? 'verified' : 
+                            status === 'rejected' ? 'rejected' : 'pending';
+            });
+        }
+        
+        // Add verification history if it doesn't exist
+        if (!seller.verificationHistory) {
+            seller.verificationHistory = [];
+        }
+        
+        // Add new verification entry
+        seller.verificationHistory.push({
             status,
             comments,
             verifiedBy: req.user.id,
             timestamp: new Date()
         });
 
-        await kyc.save();
-
-        // If KYC is approved or rejected, update seller status accordingly
-        if (status === 'approved') {
-            seller.kycVerified = true;
-            await seller.save();
-        } else if (status === 'rejected') {
-            seller.kycVerified = false;
-            await seller.save();
-        }
+        // Update KYC verification flag
+        seller.kycVerified = status === 'approved';
+        
+        await seller.save();
 
         // Log the KYC update
         logger.info(`Admin ${req.user.id} updated seller ${id} KYC status to ${status}`);
@@ -288,7 +295,7 @@ export const updateSellerKYC = async (req, res, next) => {
         res.status(200).json({
             success: true,
             data: {
-                kyc
+                seller
             }
         });
     } catch (error) {

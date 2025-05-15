@@ -1,19 +1,13 @@
 import { AppError } from '../middleware/errorHandler.js';
 import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
-import bluedart from './bluedart.js';
-import delhivery from './delhivery.js';
-import dtdc from './dtdc.js';
-import ekart from './ekart.js';
-import xpressbees from './xpressbees.js';
+import * as bluedart from './bluedart.js';
+import * as delhivery from './delhivery.js';
+import * as dtdc from './dtdc.js';
+import * as ekart from './ekart.js';
+import * as xpressbees from './xpressbees.js';
 import { calculateRate } from './courierRates.js';
-import Redis from 'ioredis';
+import { getCache, setCache } from './redis.js';
 import { logger } from './logger.js';
-
-// Initialize Redis if REDIS_URL is available
-let redisClient;
-if (process.env.REDIS_URL) {
-  redisClient = new Redis(process.env.REDIS_URL);
-}
 
 // Map of courier code to their respective utility modules
 const courierModules = {
@@ -59,13 +53,10 @@ const calculateVolumetricWeight = (dimensions) => {
 export const getPartnerDetails = async (courierCode) => {
   try {
     // Check for cached partner details
-    let partnerDetails = null;
-    if (redisClient) {
-      const cachedPartner = await redisClient.get(`partner:${courierCode}`);
-      if (cachedPartner) {
-        partnerDetails = JSON.parse(cachedPartner);
-        return partnerDetails;
-      }
+    const cacheKey = `partner:${courierCode}`;
+    const cachedPartner = await getCache(cacheKey);
+    if (cachedPartner) {
+      return cachedPartner;
     }
 
     // Find partner by name, case-insensitive
@@ -80,7 +71,7 @@ export const getPartnerDetails = async (courierCode) => {
     }
 
     // Extract relevant details for API integration
-    partnerDetails = {
+    const partnerDetails = {
       id: partner._id.toString(),
       name: partner.name,
       apiKey: partner.apiKey,
@@ -94,14 +85,7 @@ export const getPartnerDetails = async (courierCode) => {
     };
 
     // Cache the partner details
-    if (redisClient) {
-      await redisClient.set(
-        `partner:${courierCode}`, 
-        JSON.stringify(partnerDetails), 
-        'EX', 
-        1800 // 30 minutes cache
-      );
-    }
+    await setCache(cacheKey, partnerDetails, 1800); // 30 minutes cache
 
     return partnerDetails;
   } catch (error) {

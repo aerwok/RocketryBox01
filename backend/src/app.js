@@ -10,8 +10,9 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { logger } from './utils/logger.js';
 import { initSocketIO } from './utils/socketio.js';
 import { setupEventListeners } from './utils/eventEmitter.js';
-import { broadcastDashboardUpdates, getConnectedAdminCount } from './modules/admin/services/realtime.service.js';
+import { broadcastDashboardUpdates, broadcastDashboardSectionUpdate, getRealtimeDashboardData } from './modules/admin/services/realtime.service.js';
 import { checkMaintenanceMode } from './middleware/maintenanceMode.js';
+import { isRedisHealthy, getCache } from './utils/redis.js';
 
 // Load environment variables
 dotenv.config();
@@ -21,6 +22,7 @@ import customerRoutes from './modules/customer/index.js';
 import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
 import adminRoutes from './modules/admin/index.js';
+import pincodeRoutes from './modules/common/routes/pincode.routes.js';
 
 // Dashboard update configuration with dynamic adjustment
 const DASHBOARD_UPDATE_CONFIG = {
@@ -47,19 +49,9 @@ let updateIntervalId = null;
 
 // Function to adjust update interval based on system load
 const adjustUpdateInterval = () => {
-  const connectedAdminCount = getConnectedAdminCount();
-  
-  // If we have a high number of connected admins, increase the interval
-  if (connectedAdminCount > DASHBOARD_UPDATE_CONFIG.loadFactorThreshold) {
-    dashboardUpdateInterval = Math.min(
-      dashboardUpdateInterval * DASHBOARD_UPDATE_CONFIG.scaleFactor,
-      DASHBOARD_UPDATE_CONFIG.maxInterval
-    );
-    logger.info(`High admin load (${connectedAdminCount} connected), increasing dashboard update interval to ${dashboardUpdateInterval / 1000}s`);
-  } else {
-    // Otherwise, reset to initial interval
-    dashboardUpdateInterval = DASHBOARD_UPDATE_CONFIG.initialInterval;
-  }
+  // Simplified version without checking connected admin count
+  // Reset to initial interval
+  dashboardUpdateInterval = DASHBOARD_UPDATE_CONFIG.initialInterval;
   
   // Clear existing interval and set new one
   if (updateIntervalId) {
@@ -135,16 +127,132 @@ app.use('/api/customer', customerRoutes);
 app.use('/api/marketing', marketingRoutes);
 app.use('/api/seller', sellerRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/pincodes', pincodeRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
+  // Get Redis status
+  const redisStatus = isRedisHealthy();
+  
   res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    dashboardUpdateInterval: `${dashboardUpdateInterval / 1000}s`
+    dashboardUpdateInterval: `${dashboardUpdateInterval / 1000}s`,
+    redis: redisStatus,
+    mongo: {
+      connected: mongoose.connection.readyState === 1
+    }
   });
 });
+
+// Admin-only debugging endpoints
+if (process.env.NODE_ENV === 'development') {
+  // Redis cache inspection endpoint (only for development)
+  app.get('/debug/redis/:key', async (req, res) => {
+    try {
+      const { key } = req.params;
+      if (!key) {
+        return res.status(400).json({ 
+          success: false,
+          error: 'No key provided'
+        });
+      }
+      
+      logger.debug(`Debug checking Redis key: ${key}`);
+      
+      const value = await getCache(key);
+      
+      return res.status(200).json({
+        success: true,
+        key,
+        exists: value !== null,
+        value,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error(`Redis debug error: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+  
+  // Server status endpoint
+  app.get('/debug/status', (req, res) => {
+    const memoryUsage = process.memoryUsage();
+    
+    res.status(200).json({
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      memory: {
+        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
+        heapTotal: `${Math.round(memoryUsage.heapTotal / 1024 / 1024)}MB`,
+        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+        external: `${Math.round(memoryUsage.external / 1024 / 1024)}MB`
+      },
+      redis: isRedisHealthy(),
+      mongo: {
+        connected: mongoose.connection.readyState === 1
+      }
+    });
+  });
+  
+  // Dashboard data test endpoint
+  app.get('/debug/dashboard/:section?', async (req, res) => {
+    try {
+      const { section } = req.params;
+      const { force } = req.query;
+      
+      logger.debug(`Debug dashboard ${section ? `section ${section}` : 'all'}`);
+      
+      let data;
+      
+      if (section) {
+        // If force is true, trigger a real-time update
+        if (force === 'true') {
+          await broadcastDashboardSectionUpdate(section);
+          res.status(200).json({
+            success: true,
+            message: `Triggered update for section: ${section}`,
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        
+        // Import section-specific function
+        const { updateDashboardSection } = await import('./modules/admin/services/realtime.service.js');
+        data = await updateDashboardSection(section);
+      } else {
+        // If force is true, trigger a real-time update
+        if (force === 'true') {
+          await broadcastDashboardUpdates();
+          res.status(200).json({
+            success: true,
+            message: 'Triggered full dashboard update',
+            timestamp: new Date().toISOString()
+          });
+          return;
+        }
+        
+        data = await getRealtimeDashboardData();
+      }
+      
+      res.status(200).json({
+        success: true,
+        data,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      logger.error(`Dashboard debug error: ${error.message}`);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  });
+}
 
 // Error handling middleware
 app.use(errorHandler);
@@ -190,7 +298,7 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8888;
 server.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
 });

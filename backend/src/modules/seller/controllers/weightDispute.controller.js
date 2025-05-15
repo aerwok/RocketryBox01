@@ -1,5 +1,5 @@
 import WeightDispute from '../models/weightDispute.model.js';
-import SellerShipment from '../models/sellerShipment.model.js';
+import SellerShipment from '../models/shipment.model.js';
 import xlsx from 'xlsx';
 import { AppError } from '../../../middleware/errorHandler.js';
 

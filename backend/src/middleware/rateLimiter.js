@@ -159,4 +159,36 @@ export const refundLimiter = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
+};
+
+// Advanced limiter for admin operations with higher thresholds
+export const advancedLimiter = async (req, res, next) => {
+  try {
+    const key = `advancedlimit:${req.ip}`;
+    const windowMs = 15 * 60 * 1000; // 15 minutes
+    const maxRequests = 30; // 30 requests per 15 minutes
+    
+    const result = await checkRateLimit(
+      key,
+      maxRequests,
+      Math.floor(windowMs / 1000)
+    );
+
+    if (!result.isAllowed) {
+      const error = new AppError(
+        'Rate limit exceeded for administrative operations, please try again later',
+        429
+      );
+      error.remainingAttempts = result.remainingAttempts;
+      return next(error);
+    }
+
+    // Add rate limit info to response headers
+    res.setHeader('X-RateLimit-Limit', maxRequests);
+    res.setHeader('X-RateLimit-Remaining', result.remainingAttempts);
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
 }; 

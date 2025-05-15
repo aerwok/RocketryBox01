@@ -63,7 +63,7 @@ export const updateNDRStatusSchema = Joi.object({
   agentRemarks: Joi.string().allow('', null)
 });
 
-import { validateRequest } from '../../../middleware/validator.js';
+import { validationHandler as validateRequest } from '../../../middleware/validator.js';
 
 export const validateCreateNDR = validateRequest(createNDRSchema);
 export const validateUpdateNDRStatus = validateRequest(updateNDRStatusSchema); 

@@ -1,6 +1,6 @@
 import express from 'express';
 import { protect } from '../../../middleware/auth.js';
-import { validate } from '../../../middleware/validate.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import { addProductSchema, updateProductSchema } from '../validators/product.validator.js';
 import { listProducts, addProduct, getProduct, updateProduct, deleteProduct } from '../controllers/product.controller.js';
 
@@ -11,11 +11,11 @@ router.use(protect);
 // List products
 router.get('/products', listProducts);
 // Add product
-router.post('/products', validate(addProductSchema), addProduct);
+router.post('/products', validationHandler(addProductSchema), addProduct);
 // Get product details
 router.get('/products/:id', getProduct);
 // Update product
-router.put('/products/:id', validate(updateProductSchema), updateProduct);
+router.put('/products/:id', validationHandler(updateProductSchema), updateProduct);
 // Delete product
 router.delete('/products/:id', deleteProduct);
 

@@ -1,5 +1,5 @@
 import { query } from 'express-validator';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 
 // Validate report stats request
 export const validateReportStats = [

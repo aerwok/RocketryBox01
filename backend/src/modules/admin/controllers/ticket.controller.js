@@ -1,4 +1,4 @@
-import SupportTicket from '../models/ticket.model.js';
+import AdminSupportTicket from '../models/ticket.model.js';
 import Admin from '../models/admin.model.js';
 import Seller from '../../seller/models/seller.model.js';
 import Customer from '../../customer/models/customer.model.js';
@@ -91,12 +91,12 @@ export const getTickets = async (req, res, next) => {
 
     // Execute query with pagination
     const [tickets, total] = await Promise.all([
-      SupportTicket.find(filter)
+      AdminSupportTicket.find(filter)
         .sort(sort)
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      SupportTicket.countDocuments(filter)
+      AdminSupportTicket.countDocuments(filter)
     ]);
 
     // Calculate SLA violation status for each ticket
@@ -155,7 +155,7 @@ export const getTicketById = async (req, res, next) => {
     }
 
     // Find the ticket
-    const ticket = await SupportTicket.findById(id);
+    const ticket = await AdminSupportTicket.findById(id);
 
     if (!ticket) {
       return next(new AppError('Ticket not found', 404));
@@ -232,7 +232,7 @@ export const createTicket = async (req, res, next) => {
     }
 
     // Create ticket with SLA calculation
-    const ticket = new SupportTicket({
+    const ticket = new AdminSupportTicket({
       subject,
       category,
       priority: priority || 'Medium',
@@ -315,7 +315,7 @@ export const updateTicketStatus = async (req, res, next) => {
     }
 
     // Find the ticket
-    const ticket = await SupportTicket.findById(id);
+    const ticket = await AdminSupportTicket.findById(id);
 
     if (!ticket) {
       return next(new AppError('Ticket not found', 404));
@@ -421,7 +421,7 @@ export const assignTicket = async (req, res, next) => {
     }
 
     // Find the ticket
-    const ticket = await SupportTicket.findById(id);
+    const ticket = await AdminSupportTicket.findById(id);
 
     if (!ticket) {
       return next(new AppError('Ticket not found', 404));
@@ -510,7 +510,7 @@ export const addResponse = async (req, res, next) => {
     }
 
     // Find the ticket
-    const ticket = await SupportTicket.findById(id);
+    const ticket = await AdminSupportTicket.findById(id);
 
     if (!ticket) {
       return next(new AppError('Ticket not found', 404));
@@ -624,24 +624,24 @@ export const addResponse = async (req, res, next) => {
 export const getTicketStats = async (req, res, next) => {
   try {
     // Get ticket counts by status
-    const statusStats = await SupportTicket.getTicketStats();
+    const statusStats = await AdminSupportTicket.getTicketStats();
 
     // Get ticket stats by category
-    const categoryStats = await SupportTicket.getTicketStatsByCategory();
+    const categoryStats = await AdminSupportTicket.getTicketStatsByCategory();
 
     // Get SLA breach statistics
-    const slaBreachCount = await SupportTicket.countDocuments({
+    const slaBreachCount = await AdminSupportTicket.countDocuments({
       'sla.breached': true,
       status: { $nin: ['Resolved', 'Closed'] }
     });
 
     // Get unassigned ticket count
-    const unassignedCount = await SupportTicket.countDocuments({
+    const unassignedCount = await AdminSupportTicket.countDocuments({
       'assignedTo.id': { $exists: false }
     });
 
     // Calculate average resolution time
-    const resolutionStats = await SupportTicket.aggregate([
+    const resolutionStats = await AdminSupportTicket.aggregate([
       {
         $match: {
           resolutionTime: { $exists: true, $ne: null }
@@ -658,7 +658,7 @@ export const getTicketStats = async (req, res, next) => {
     ]);
 
     // Calculate average first response time
-    const responseTimeStats = await SupportTicket.aggregate([
+    const responseTimeStats = await AdminSupportTicket.aggregate([
       {
         $match: {
           firstResponseTime: { $exists: true, $ne: null }
@@ -679,7 +679,7 @@ export const getTicketStats = async (req, res, next) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
 
-    const dailyTickets = await SupportTicket.aggregate([
+    const dailyTickets = await AdminSupportTicket.aggregate([
       {
         $match: {
           createdAt: { $gte: thirtyDaysAgo, $lte: today }
@@ -746,7 +746,7 @@ export const exportTickets = async (req, res, next) => {
     if (priority) filter.priority = priority;
 
     // Fetch tickets
-    const tickets = await SupportTicket.find(filter)
+    const tickets = await AdminSupportTicket.find(filter)
       .sort({ createdAt: -1 })
       .lean();
 

@@ -11,7 +11,7 @@ import {
   validateAddWhitelistedIP,
   validateRemoveWhitelistedIP
 } from '../validators/maintenance.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -19,7 +19,7 @@ const router = express.Router();
 // Get maintenance settings
 router.get(
   '/',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getMaintenanceSettings
 );
@@ -27,7 +27,7 @@ router.get(
 // Update maintenance settings
 router.put(
   '/',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateMaintenanceSettings,
   updateMaintenanceSettings
@@ -42,7 +42,7 @@ router.get(
 // Add IP to whitelist
 router.post(
   '/whitelist',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateAddWhitelistedIP,
   addWhitelistedIP
@@ -51,7 +51,7 @@ router.post(
 // Remove IP from whitelist
 router.delete(
   '/whitelist/:ip',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateRemoveWhitelistedIP,
   removeWhitelistedIP

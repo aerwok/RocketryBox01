@@ -4,7 +4,6 @@ const remittanceSchema = new mongoose.Schema({
   transactionId: {
     type: String,
     required: [true, 'Transaction ID is required'],
-    unique: true,
     trim: true
   },
   transactionType: {
@@ -96,7 +95,7 @@ const remittanceSchema = new mongoose.Schema({
 
 // Index for faster querying
 remittanceSchema.index({ sellerId: 1, createdAt: -1 });
-remittanceSchema.index({ transactionId: 1 });
+remittanceSchema.index({ transactionId: 1 }, { unique: true });
 remittanceSchema.index({ status: 1 });
 remittanceSchema.index({ transactionType: 1 });
 

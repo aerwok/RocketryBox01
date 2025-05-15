@@ -1,11 +1,11 @@
 import express from 'express';
 import { listNDRs, getNDR, updateNDRStatus, createNDR } from '../controllers/ndr.controller.js';
-import { authenticateSeller } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { validateCreateNDR, validateUpdateNDRStatus } from '../validators/ndr.validator.js';
 
 const router = express.Router();
 
-router.use(authenticateSeller);
+router.use(protect);
 
 // List NDRs
 router.get('/', listNDRs);

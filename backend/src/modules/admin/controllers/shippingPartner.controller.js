@@ -6,14 +6,9 @@ import xlsx from 'xlsx';
 import fs from 'fs';
 import path from 'path';
 import { io } from '../../../server.js';
-import Redis from 'ioredis';
+import { getCache, setCache, deleteCache } from '../../../utils/redis.js';
 import { sendEmail } from '../../../utils/email.js';
-
-// Initialize Redis if REDIS_URL is available
-let redisClient;
-if (process.env.REDIS_URL) {
-  redisClient = new Redis(process.env.REDIS_URL);
-}
+import { logger } from '../../../utils/logger.js';
 
 /**
  * Get all shipping partners with filters and pagination
@@ -47,14 +42,11 @@ export const getShippingPartners = async (req, res, next) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Check for cached data if Redis is available
-    let cacheKey = null;
-    if (redisClient) {
-      cacheKey = `shipping_partners:${JSON.stringify(filter)}:${sort}:${limitNum}:${pageNum}`;
-      const cachedData = await redisClient.get(cacheKey);
-      if (cachedData) {
-        return res.status(200).json(JSON.parse(cachedData));
-      }
+    // Check for cached data
+    const cacheKey = `shipping_partners:${JSON.stringify(filter)}:${sort}:${limitNum}:${pageNum}`;
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      return res.status(200).json(cachedData);
     }
 
     // Execute query with pagination
@@ -77,10 +69,8 @@ export const getShippingPartners = async (req, res, next) => {
       data: partners
     };
 
-    // Cache the response if Redis is available
-    if (redisClient && cacheKey) {
-      await redisClient.set(cacheKey, JSON.stringify(response), 'EX', 300); // Cache for 5 minutes
-    }
+    // Cache the response
+    await setCache(cacheKey, response, 300); // Cache for 5 minutes
 
     res.status(200).json(response);
   } catch (error) {
@@ -143,12 +133,11 @@ export const createShippingPartner = async (req, res, next) => {
 
     const partner = await ShippingPartner.create(partnerData);
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
+    // Invalidate cache with specific keys
+    try {
+      await deleteCache('shipping_partners:all');
+    } catch (error) {
+      logger.error(`Cache invalidation error: ${error.message}`);
     }
 
     // Emit event for real-time updates
@@ -217,13 +206,9 @@ export const updateShippingPartner = async (req, res, next) => {
       { new: true, runValidators: true }
     );
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
-    }
+    // Invalidate cache
+    deleteCache('shipping_partners:all');
+    deleteCache(`shipping_partners:${id}`);
 
     // Emit event for real-time updates
     io.emit('partner:updated', {
@@ -280,13 +265,9 @@ export const updatePartnerStatus = async (req, res, next) => {
 
     await partner.save();
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
-    }
+    // Invalidate cache
+    deleteCache('shipping_partners:all');
+    deleteCache(`shipping_partners:${id}`);
 
     // Emit event for real-time updates
     io.emit('partner:status_updated', {
@@ -343,13 +324,8 @@ export const deleteShippingPartner = async (req, res, next) => {
       return next(new AppError('Shipping partner not found', 404));
     }
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
-    }
+    // Invalidate cache
+    deleteCache('shipping_partners:all');
 
     // Emit event for real-time updates
     io.emit('partner:deleted', {
@@ -511,13 +487,9 @@ export const updatePartnerPerformance = async (req, res, next) => {
     // Save the partner
     await partner.save();
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
-    }
+    // Invalidate cache
+    deleteCache('shipping_partners:all');
+    deleteCache(`shipping_partners:${id}`);
 
     res.status(200).json({
       success: true,
@@ -674,13 +646,9 @@ export const updatePartnerRates = async (req, res, next) => {
 
     await partner.save();
 
-    // Invalidate cache if Redis is available
-    if (redisClient) {
-      const keys = await redisClient.keys('shipping_partners:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-      }
-    }
+    // Invalidate cache
+    deleteCache('shipping_partners:all');
+    deleteCache(`shipping_partners:${id}`);
 
     res.status(200).json({
       success: true,

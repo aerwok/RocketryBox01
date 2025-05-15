@@ -4,7 +4,6 @@ const walletTransactionSchema = new mongoose.Schema({
   referenceNumber: {
     type: String,
     required: [true, 'Reference number is required'],
-    unique: true,
     trim: true
   },
   orderId: {
@@ -59,10 +58,10 @@ const walletTransactionSchema = new mongoose.Schema({
 
 // Index for faster querying
 walletTransactionSchema.index({ sellerId: 1, createdAt: -1 });
-walletTransactionSchema.index({ referenceNumber: 1 });
+walletTransactionSchema.index({ referenceNumber: 1 }, { unique: true });
 walletTransactionSchema.index({ orderId: 1 });
 walletTransactionSchema.index({ type: 1 });
 
-const WalletTransaction = mongoose.model('WalletTransaction', walletTransactionSchema);
+const AdminWalletTransaction = mongoose.model('AdminWalletTransaction', walletTransactionSchema);
 
-export default WalletTransaction; 
+export default AdminWalletTransaction; 

@@ -1,6 +1,6 @@
 import express from 'express';
-import { sellerAuth } from '../../../middleware/auth.js';
-import { validate } from '../../../middleware/validate.js';
+import { protect } from '../../../middleware/auth.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import {
   addTeamUserSchema,
   updateTeamUserSchema,
@@ -18,24 +18,24 @@ import {
 const router = express.Router();
 
 // All routes require seller authentication
-router.use(sellerAuth);
+router.use(protect);
 
 // List team users with filters and pagination
 router.get('/', listTeamUsers);
 
 // Add new team user
-router.post('/', validate(addTeamUserSchema), addTeamUser);
+router.post('/', validationHandler(addTeamUserSchema), addTeamUser);
 
 // Get team user details
 router.get('/:id', getTeamUser);
 
 // Update team user
-router.put('/:id', validate(updateTeamUserSchema), updateTeamUser);
+router.put('/:id', validationHandler(updateTeamUserSchema), updateTeamUser);
 
 // Delete team user
 router.delete('/:id', deleteTeamUser);
 
 // Update team user permissions
-router.patch('/:id/permissions', validate(updatePermissionsSchema), updateTeamUserPermissions);
+router.patch('/:id/permissions', validationHandler(updatePermissionsSchema), updateTeamUserPermissions);
 
 export default router; 

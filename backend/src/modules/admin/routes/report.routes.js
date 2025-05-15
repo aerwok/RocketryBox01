@@ -15,7 +15,7 @@ import {
   validateDashboardKPI,
   validateExportReport
 } from '../validators/report.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -23,7 +23,7 @@ const router = express.Router();
 // Get report overview statistics
 router.get(
   '/stats',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics'),
   validateReportStats,
   getReportStats
@@ -32,7 +32,7 @@ router.get(
 // Get revenue data for charts
 router.get(
   '/revenue',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics'),
   validateRevenueData,
   getRevenueData
@@ -41,7 +41,7 @@ router.get(
 // Get shipment data for charts
 router.get(
   '/shipments',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics'),
   validateShipmentData,
   getShipmentData
@@ -50,7 +50,7 @@ router.get(
 // Get customer data for reports
 router.get(
   '/customers',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics'),
   validateCustomerData,
   getCustomerData
@@ -59,7 +59,7 @@ router.get(
 // Get all KPI data for dashboard
 router.get(
   '/kpi',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics', 'dashboardAccess'),
   validateDashboardKPI,
   getDashboardKPI
@@ -68,7 +68,7 @@ router.get(
 // Export report data
 router.get(
   '/export',
-  authenticate,
+  protect,
   checkPermission('reportsAnalytics'),
   validateExportReport,
   exportReport

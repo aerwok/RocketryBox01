@@ -29,7 +29,7 @@ import {
   validateSMSTemplate,
   validateTemplateId
 } from '../validators/notification.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -37,14 +37,14 @@ const router = express.Router();
 // Email configuration routes
 router.get(
   '/email',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getEmailConfig
 );
 
 router.put(
   '/email',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateEmailConfig,
   updateEmailConfig
@@ -52,7 +52,7 @@ router.put(
 
 router.post(
   '/email/test',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateSendTestEmail,
   sendTestEmail
@@ -61,14 +61,14 @@ router.post(
 // SMS configuration routes
 router.get(
   '/sms',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getSMSConfig
 );
 
 router.put(
   '/sms',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateSMSConfig,
   updateSMSConfig
@@ -76,7 +76,7 @@ router.put(
 
 router.post(
   '/sms/test',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateSendTestSMS,
   sendTestSMS
@@ -85,14 +85,14 @@ router.post(
 // System notification configuration routes
 router.get(
   '/system',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getNotificationSystemConfig
 );
 
 router.put(
   '/system',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateNotificationSystemConfig,
   updateNotificationSystemConfig
@@ -101,14 +101,14 @@ router.put(
 // Email template routes
 router.get(
   '/email-templates',
-  authenticate,
+  protect,
   checkPermission('settings'),
   listEmailTemplates
 );
 
 router.get(
   '/email-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   getEmailTemplateById
@@ -116,7 +116,7 @@ router.get(
 
 router.post(
   '/email-templates',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateEmailTemplate,
   createEmailTemplate
@@ -124,7 +124,7 @@ router.post(
 
 router.put(
   '/email-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   validateEmailTemplate,
@@ -133,7 +133,7 @@ router.put(
 
 router.delete(
   '/email-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   deleteEmailTemplate
@@ -142,14 +142,14 @@ router.delete(
 // SMS template routes
 router.get(
   '/sms-templates',
-  authenticate,
+  protect,
   checkPermission('settings'),
   listSMSTemplates
 );
 
 router.get(
   '/sms-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   getSMSTemplateById
@@ -157,7 +157,7 @@ router.get(
 
 router.post(
   '/sms-templates',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateSMSTemplate,
   createSMSTemplate
@@ -165,7 +165,7 @@ router.post(
 
 router.put(
   '/sms-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   validateSMSTemplate,
@@ -174,7 +174,7 @@ router.put(
 
 router.delete(
   '/sms-templates/:id',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateTemplateId,
   deleteSMSTemplate

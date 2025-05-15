@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, query } from 'express-validator';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import { defaultLimiter } from '../../../middleware/rateLimiter.js';
 import { submitContact, getAllContacts, getContactById } from '../controllers/contact.controller.js';

@@ -15,7 +15,7 @@ import {
   validateGetPolicyByType,
   validateListPolicies
 } from '../validators/policy.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -23,7 +23,7 @@ const router = express.Router();
 // Get all policies with pagination
 router.get(
   '/',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateListPolicies,
   listPolicies
@@ -32,7 +32,7 @@ router.get(
 // Get all default policies
 router.get(
   '/defaults',
-  authenticate,
+  protect,
   checkPermission('settings'),
   getDefaultPolicies
 );
@@ -40,7 +40,7 @@ router.get(
 // Get policy by type
 router.get(
   '/type/:type',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateGetPolicyByType,
   getPolicyByType
@@ -49,7 +49,7 @@ router.get(
 // Get policy by slug
 router.get(
   '/:slug',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateGetPolicy,
   getPolicyBySlug
@@ -58,7 +58,7 @@ router.get(
 // Create new policy
 router.post(
   '/',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateCreatePolicy,
   createPolicy
@@ -67,7 +67,7 @@ router.post(
 // Update policy
 router.put(
   '/:slug',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateUpdatePolicy,
   updatePolicy
@@ -76,7 +76,7 @@ router.put(
 // Delete policy
 router.delete(
   '/:slug',
-  authenticate,
+  protect,
   checkPermission('settings'),
   validateGetPolicy,
   deletePolicy

@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { protect } from '../../../middleware/auth.js';
-import { validate } from '../../../middleware/validate.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import {
   updateWeightDisputeSchema,
   uploadWeightDisputeFileSchema
@@ -23,8 +23,8 @@ router.get('/', listWeightDisputes);
 // Get dispute details
 router.get('/:awbNumber', getWeightDisputeDetails);
 // Update dispute
-router.put('/:awbNumber', validate(updateWeightDisputeSchema), updateWeightDispute);
+router.put('/:awbNumber', validationHandler(updateWeightDisputeSchema), updateWeightDispute);
 // Upload disputes (Excel)
-router.post('/upload', upload.single('file'), validate(uploadWeightDisputeFileSchema), uploadWeightDisputeFile);
+router.post('/upload', upload.single('file'), validationHandler(uploadWeightDisputeFileSchema), uploadWeightDisputeFile);
 
 export default router; 

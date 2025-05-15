@@ -1,6 +1,6 @@
 import { body, param, query } from 'express-validator';
 import mongoose from 'mongoose';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 
 export const validateListNDRs = [
   query('page')

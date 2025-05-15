@@ -1,5 +1,5 @@
 import { body, param } from 'express-validator';
-import { validate } from '../../../middleware/validator.js';
+import { validationHandler as validate } from '../../../middleware/validator.js';
 
 // Validate email configuration update
 export const validateEmailConfig = [

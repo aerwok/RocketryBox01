@@ -1,9 +1,9 @@
 import { getPartnerDetails } from './shipping.js';
-import bluedart from './bluedart.js';
-import delhivery from './delhivery.js';
-import dtdc from './dtdc.js';
-import ekart from './ekart.js';
-import xpressbees from './xpressbees.js';
+import * as bluedart from './bluedart.js';
+import * as delhivery from './delhivery.js';
+import * as dtdc from './dtdc.js';
+import * as ekart from './ekart.js';
+import * as xpressbees from './xpressbees.js';
 import { logger } from './logger.js';
 
 // Map of courier codes to their respective modules
@@ -90,7 +90,54 @@ export const bookShipment = async (courierCode, shipmentDetails) => {
   }
 };
 
+/**
+ * Book an order with a courier service
+ * @param {Object} order - The order data
+ * @param {string} courierCode - The courier code
+ * @returns {Object} - The booking response
+ */
+export const bookOrderWithCourier = async (order, courierCode) => {
+  try {
+    // Map order data to shipment details format
+    const shipmentDetails = {
+      consignee: {
+        name: order.customer.name,
+        phone: order.customer.phone,
+        email: order.customer.email,
+        address: order.shippingAddress
+      },
+      shipper: {
+        name: order.seller.businessName,
+        phone: order.seller.phone,
+        email: order.seller.email,
+        address: order.pickupAddress
+      },
+      package: {
+        weight: order.package.weight,
+        dimensions: order.package.dimensions,
+        description: `Order #${order.orderNumber}`,
+        value: order.total
+      },
+      referenceNumber: order.orderNumber,
+      serviceType: order.serviceType || 'Standard',
+      cod: order.paymentMethod === 'COD',
+      codAmount: order.paymentMethod === 'COD' ? order.total : 0
+    };
+    
+    // Book the shipment
+    return await bookShipment(courierCode, shipmentDetails);
+  } catch (error) {
+    logger.error(`Error in bookOrderWithCourier: ${error.message}`);
+    return {
+      success: false,
+      error: error.message,
+      courierName: courierCode
+    };
+  }
+};
+
 export default {
   getCourierHandler,
-  bookShipment
+  bookShipment,
+  bookOrderWithCourier
 }; 

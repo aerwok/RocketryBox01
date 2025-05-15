@@ -1,7 +1,7 @@
 import { getPincodeDetails } from './pincode.js';
 
 // Sample rate card data structure (expand as needed)
-const rateCard = {
+export const rateCard = {
   'Bluedart air': {
     slabs: [0.5, 1, 2, 5, 10],
     zones: {
@@ -215,4 +215,60 @@ export async function calculateCourierRates({ weight, pickupPincode, deliveryPin
   return Object.keys(rateCard).map(courier => {
     return calculateRateForCourier(courier, weight, zone, isCOD);
   });
+}
+
+// Calculate rate for a package using the rate card
+export function calculateRate(packageDetails, deliveryDetails, partnerDetails) {
+  const { weight, dimensions, paymentMode } = packageDetails;
+  const { pickupPincode, deliveryPincode } = deliveryDetails;
+  const isCOD = paymentMode === 'COD';
+  
+  // Determine service type based on partner details
+  const serviceType = partnerDetails.name.toLowerCase().includes('surface') ? 'surface' : 'air';
+  const courierKey = `${partnerDetails.name} ${serviceType}`;
+  
+  // Get zone for this shipment
+  return determineZone(pickupPincode, deliveryPincode)
+    .then(zone => {
+      // Check if this courier exists in our rate card
+      if (!rateCard[courierKey]) {
+        // Fallback to generic calculation
+        return {
+          courier: partnerDetails.name,
+          serviceType,
+          weight,
+          total: Math.round(50 + weight * 20), // Generic calculation
+          estimatedDelivery: serviceType === 'air' ? '2-3 days' : '4-6 days'
+        };
+      }
+      
+      // Calculate the rate using our rate card
+      const calculatedRate = calculateRateForCourier(courierKey, weight, zone, isCOD);
+      
+      return {
+        courier: partnerDetails.name,
+        serviceType,
+        weight,
+        zone,
+        total: calculatedRate.total,
+        breakdown: {
+          base: calculatedRate.base,
+          additionalWeight: calculatedRate.addlCharge,
+          cod: calculatedRate.cod
+        },
+        estimatedDelivery: serviceType === 'air' ? '2-3 days' : '4-6 days'
+      };
+    })
+    .catch(error => {
+      console.error(`Error calculating rate: ${error.message}`);
+      // Return fallback calculation
+      return {
+        courier: partnerDetails.name,
+        serviceType,
+        weight,
+        total: Math.round(50 + weight * 20), // Generic calculation
+        estimatedDelivery: serviceType === 'air' ? '2-3 days' : '4-6 days',
+        error: 'Could not determine accurate rate'
+      };
+    });
 } 

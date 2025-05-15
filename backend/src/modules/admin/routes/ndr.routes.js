@@ -15,7 +15,7 @@ import {
   validateAssignNDR,
   validateInitiateRTO
 } from '../validators/ndr.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -23,7 +23,7 @@ const router = express.Router();
 // Get all NDRs with filtering and pagination
 router.get(
   '/',
-  authenticate,
+  protect,
   checkPermission('ordersShipping'),
   validateListNDRs,
   getNDRs
@@ -32,7 +32,7 @@ router.get(
 // Get NDR statistics for dashboard
 router.get(
   '/stats',
-  authenticate,
+  protect,
   checkPermission('ordersShipping', 'reportsAnalytics'),
   getNDRStats
 );
@@ -40,7 +40,7 @@ router.get(
 // Get single NDR by ID
 router.get(
   '/:id',
-  authenticate,
+  protect,
   checkPermission('ordersShipping'),
   getNDRById
 );
@@ -48,7 +48,7 @@ router.get(
 // Sync NDRs from seller NDRs
 router.post(
   '/sync',
-  authenticate,
+  protect,
   checkPermission('ordersShipping'),
   validateSyncNDRs,
   syncNDRs
@@ -57,7 +57,7 @@ router.post(
 // Update NDR status
 router.patch(
   '/:id/status',
-  authenticate,
+  protect,
   checkPermission('ordersShipping'),
   validateUpdateStatus,
   updateNDRStatus
@@ -66,7 +66,7 @@ router.patch(
 // Assign NDR to admin
 router.patch(
   '/:id/assign',
-  authenticate,
+  protect,
   checkPermission('ordersShipping', 'teamManagement'),
   validateAssignNDR,
   assignNDR
@@ -75,7 +75,7 @@ router.patch(
 // Initiate RTO
 router.post(
   '/:id/rto',
-  authenticate,
+  protect,
   checkPermission('ordersShipping'),
   validateInitiateRTO,
   initiateRTO

@@ -17,7 +17,7 @@ import {
   validateListTickets,
   validateExportTickets
 } from '../validators/ticket.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 import { upload } from '../../../middleware/fileUpload.js';
 
@@ -26,7 +26,7 @@ const router = express.Router();
 // Ticket listing and stats
 router.get(
   '/',
-  authenticate,
+  protect,
   checkPermission('supportTickets'),
   validateListTickets,
   getTickets
@@ -35,7 +35,7 @@ router.get(
 // Ticket statistics for dashboard
 router.get(
   '/stats',
-  authenticate,
+  protect,
   checkPermission('supportTickets', 'reportsAnalytics'),
   getTicketStats
 );
@@ -43,7 +43,7 @@ router.get(
 // Export tickets
 router.get(
   '/export',
-  authenticate,
+  protect,
   checkPermission('supportTickets', 'reportsAnalytics'),
   validateExportTickets,
   exportTickets
@@ -52,7 +52,7 @@ router.get(
 // Get single ticket
 router.get(
   '/:id',
-  authenticate,
+  protect,
   checkPermission('supportTickets'),
   getTicketById
 );
@@ -60,7 +60,7 @@ router.get(
 // Create new ticket
 router.post(
   '/',
-  authenticate,
+  protect,
   checkPermission('supportTickets'),
   upload.array('attachments', 5), // Allow up to 5 file attachments
   validateCreateTicket,
@@ -70,7 +70,7 @@ router.post(
 // Update ticket status
 router.patch(
   '/:id/status',
-  authenticate,
+  protect,
   checkPermission('supportTickets'),
   validateUpdateStatus,
   updateTicketStatus
@@ -79,7 +79,7 @@ router.patch(
 // Assign ticket to admin
 router.patch(
   '/:id/assign',
-  authenticate,
+  protect,
   checkPermission('supportTickets', 'teamManagement'),
   validateAssignTicket,
   assignTicket
@@ -88,7 +88,7 @@ router.patch(
 // Add response to ticket
 router.post(
   '/:id/responses',
-  authenticate,
+  protect,
   checkPermission('supportTickets'),
   upload.array('attachments', 5), // Allow up to 5 file attachments
   validateAddResponse,

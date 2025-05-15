@@ -4,7 +4,7 @@ import xlsx from 'xlsx';
 import PDFDocument from 'pdfkit';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS } from '../../../utils/sms.js';
-import { initiatePayment, verifyPayment } from '../../../utils/payment.js';
+import { createPaymentOrder, verifyPayment } from '../../../utils/payment.js';
 
 // Create new invoice
 export const createInvoice = async (req, res, next) => {
@@ -147,13 +147,11 @@ export const initiateInvoicePayment = async (req, res, next) => {
     if (!invoice) throw new AppError('Invoice not found', 404);
     if (invoice.status === 'paid') throw new AppError('Invoice already paid', 400);
 
-    const payment = await initiatePayment({
+    const payment = await createPaymentOrder({
       amount: invoice.total,
       currency: 'INR',
-      receipt: invoice.invoiceNumber,
-      notes: {
-        invoiceId: invoice._id.toString()
-      }
+      awbNumber: invoice.invoiceNumber,
+      paymentMethod: 'RAZORPAY'
     });
 
     res.status(200).json({

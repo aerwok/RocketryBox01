@@ -265,7 +265,27 @@ export const initSocketIO = (server) => {
  */
 export const getIO = () => {
   if (!io) {
-    throw new Error('Socket.IO not initialized');
+    logger.warn('Socket.IO not initialized, returning mock instance');
+    
+    // Return a mock IO instance that does nothing but logs
+    return {
+      to: () => ({
+        emit: (event, data) => {
+          logger.debug(`[MOCK SOCKET.IO] would emit '${event}' with data:`, data);
+          return true;
+        }
+      }),
+      emit: (event, data) => {
+        logger.debug(`[MOCK SOCKET.IO] would emit '${event}' with data:`, data);
+        return true;
+      },
+      on: () => {},
+      engine: { clientsCount: 0 },
+      sockets: { 
+        sockets: new Map(),
+        adapter: { rooms: new Map() }
+      }
+    };
   }
   return io;
 };
@@ -284,10 +304,8 @@ export const getConnectedAdminCount = () => {
  * @param {object} data - Data to emit
  */
 export const emitAdminDashboardUpdate = (event, data) => {
-  if (!io) {
-    logger.warn('Socket.IO not initialized, skipping emit');
-    return;
-  }
+  // Use getIO instead of checking io directly to leverage the mock implementation
+  const socketIo = getIO();
   
   // If no admin clients are connected, don't bother emitting
   if (connectedAdmins.size === 0) {
@@ -295,28 +313,32 @@ export const emitAdminDashboardUpdate = (event, data) => {
     return;
   }
   
-  // For section-specific updates, only emit to the specific section room
-  if (event === 'dashboard-section-update' && data) {
-    // Get section name
-    const section = Object.keys(data).find(key => 
-      key !== 'timestamp' && typeof data[key] === 'object'
-    );
-    
-    if (section) {
-      const roomName = `admin-dashboard-${section}`;
-      io.to(roomName).emit(event, data);
-      logger.debug(`Emitted ${event} to ${roomName} room`);
-      return;
+  try {
+    // For section-specific updates, only emit to the specific section room
+    if (event === 'dashboard-section-update' && data) {
+      // Get section name
+      const section = Object.keys(data).find(key => 
+        key !== 'timestamp' && typeof data[key] === 'object'
+      );
+      
+      if (section) {
+        const roomName = `admin-dashboard-${section}`;
+        socketIo.to(roomName).emit(event, data);
+        logger.debug(`Emitted ${event} to ${roomName} room`);
+        return;
+      }
     }
-  }
-  
-  // For complete dashboard updates, emit to the main dashboard room
-  io.to('admin-dashboard').emit(event, data);
-  logger.debug(`Emitted ${event} to admin-dashboard room`);
-  
-  // Add timestamp and compression metrics in development mode
-  if (process.env.NODE_ENV === 'development') {
-    const dataSize = JSON.stringify(data).length;
-    logger.debug(`Dashboard update size: ${(dataSize / 1024).toFixed(2)} KB`);
+    
+    // For complete dashboard updates, emit to the main dashboard room
+    socketIo.to('admin-dashboard').emit(event, data);
+    logger.debug(`Emitted ${event} to admin-dashboard room`);
+    
+    // Add timestamp and compression metrics in development mode
+    if (process.env.NODE_ENV === 'development') {
+      const dataSize = JSON.stringify(data).length;
+      logger.debug(`Dashboard update size: ${(dataSize / 1024).toFixed(2)} KB`);
+    }
+  } catch (error) {
+    logger.error(`Error emitting dashboard update: ${error.message}`);
   }
 }; 

@@ -1,6 +1,6 @@
 import express from 'express';
-import { sellerAuth } from '../../../middleware/auth.js';
-import { validate } from '../../../middleware/validate.js';
+import { protect } from '../../../middleware/auth.js';
+import { validationHandler } from '../../../middleware/validator.js';
 import { calculateRateSchema } from '../validators/ratecard.validator.js';
 import {
   getSellerRateCard,
@@ -12,13 +12,13 @@ import {
 const router = express.Router();
 
 // All routes require seller authentication
-router.use(sellerAuth);
+router.use(protect);
 
 // Get seller's current rate card
 router.get('/', getSellerRateCard);
 
 // Calculate shipping rate based on rate card
-router.post('/calculate', validate(calculateRateSchema), calculateShippingRate);
+router.post('/calculate', validationHandler(calculateRateSchema), calculateShippingRate);
 
 // Get rate card change history
 router.get('/history', getRateCardHistory);

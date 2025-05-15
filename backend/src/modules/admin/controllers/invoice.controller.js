@@ -1,4 +1,4 @@
-import Invoice from '../models/invoice.model.js';
+import AdminInvoice from '../models/invoice.model.js';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { logger } from '../../../utils/logger.js';
 import mongoose from 'mongoose';
@@ -62,10 +62,10 @@ export const getInvoices = async (req, res, next) => {
     }
     
     // Get total count for pagination
-    const total = await Invoice.countDocuments(query);
+    const total = await AdminInvoice.countDocuments(query);
     
     // Get invoices with pagination
-    const invoices = await Invoice.find(query)
+    const invoices = await AdminInvoice.find(query)
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
@@ -102,7 +102,7 @@ export const getInvoiceById = async (req, res, next) => {
     }
     
     // Find invoice
-    const invoice = await Invoice.findById(invoiceId)
+    const invoice = await AdminInvoice.findById(invoiceId)
       .populate('sellerId', 'name email')
       .exec();
     
@@ -139,7 +139,7 @@ export const createInvoice = async (req, res, next) => {
     } = req.body;
     
     // Generate invoice number (you can customize this as needed)
-    const invoiceCount = await Invoice.countDocuments();
+    const invoiceCount = await AdminInvoice.countDocuments();
     const invoiceNumber = `INV-${new Date().getFullYear()}${(invoiceCount + 1).toString().padStart(4, '0')}`;
     
     // Calculate total if not provided
@@ -150,7 +150,7 @@ export const createInvoice = async (req, res, next) => {
     }
     
     // Create new invoice
-    const newInvoice = await Invoice.create({
+    const newInvoice = await AdminInvoice.create({
       invoiceNumber,
       sellerId,
       sellerName,
@@ -192,7 +192,7 @@ export const updateInvoiceStatus = async (req, res, next) => {
     }
     
     // Find and update invoice
-    const invoice = await Invoice.findByIdAndUpdate(
+    const invoice = await AdminInvoice.findByIdAndUpdate(
       invoiceId,
       {
         status,
@@ -254,7 +254,7 @@ export const exportInvoices = async (req, res, next) => {
     }
     
     // Get invoices
-    const invoices = await Invoice.find(query)
+    const invoices = await AdminInvoice.find(query)
       .sort({ createdAt: -1 })
       .populate('sellerId', 'name email')
       .exec();

@@ -6,11 +6,11 @@ import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import { calculateShippingRates } from '../../../utils/shipping.js';
 import { createPaymentOrder, verifyPayment } from '../../../utils/payment.js';
 import { calculateCourierRates } from '../../../utils/courierRates.js';
-import { getDelhiveryRates } from '../../../utils/delhivery.js';
-import { getBluedartRates } from '../../../utils/bluedart.js';
-import { getDTDCRates } from '../../../utils/dtdc.js';
-import { getEkartRates } from '../../../utils/ekart.js';
-import { getXpressbeesRates } from '../../../utils/xpressbees.js';
+import { calculateRate as calculateDelhiveryRate } from '../../../utils/delhivery.js';
+import { calculateRate as calculateBluedartRate } from '../../../utils/bluedart.js';
+import { calculateRate as calculateDTDCRate } from '../../../utils/dtdc.js';
+import { calculateRate as calculateEkartRate } from '../../../utils/ekart.js';
+import { calculateRate as calculateXpressbeesRate } from '../../../utils/xpressbees.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 
 // Create new order
@@ -250,7 +250,7 @@ export const createPayment = async (req, res, next) => {
 };
 
 // Verify payment
-export const verifyPayment = async (req, res, next) => {
+export const verifyOrderPayment = async (req, res, next) => {
   try {
     const {
       awbNumber,
@@ -470,25 +470,68 @@ export const calculateRates = async (req, res, next) => {
     const { weight, pickupPincode, deliveryPincode, serviceType } = req.body;
     const isCOD = false; // COD not allowed for customers
 
+    // Prepare common parameters for all courier rate functions
+    const packageDetails = {
+      weight,
+      dimensions: { length: 10, width: 10, height: 10 }, // Default dimensions if not provided
+      paymentMode: isCOD ? 'COD' : 'PREPAID'
+    };
+    
+    const deliveryDetails = {
+      pickupPincode,
+      deliveryPincode
+    };
+    
+    const partnerDetails = {
+      name: 'Default',
+      rates: {}
+    };
+    
+    // Delhivery partner details
+    const delhiveryPartner = { ...partnerDetails, name: 'Delhivery' };
+    // Bluedart partner details
+    const bluedartPartner = { ...partnerDetails, name: 'Bluedart' };
+    // DTDC partner details
+    const dtdcPartner = { ...partnerDetails, name: 'DTDC' };
+    // Ekart partner details
+    const ekartPartner = { ...partnerDetails, name: 'Ekart' };
+    // Xpressbees partner details
+    const xpressbeesPartner = { ...partnerDetails, name: 'Xpressbees' };
+
     // Fetch real-time rates from all partners in parallel
     const [delhivery, bluedart, dtdc, ekart, xpressbees, staticRates] = await Promise.all([
-      getDelhiveryRates({ pickupPincode, deliveryPincode, weight, cod: isCOD }),
-      getBluedartRates({ pickupPincode, deliveryPincode, weight, cod: isCOD }),
-      getDTDCRates({ pickupPincode, deliveryPincode, weight, cod: isCOD }),
-      getEkartRates({ pickupPincode, deliveryPincode, weight, cod: isCOD }),
-      getXpressbeesRates({ pickupPincode, deliveryPincode, weight, cod: isCOD }),
+      calculateDelhiveryRate(packageDetails, deliveryDetails, delhiveryPartner),
+      calculateBluedartRate(packageDetails, deliveryDetails, bluedartPartner),
+      calculateDTDCRate(packageDetails, deliveryDetails, dtdcPartner),
+      calculateEkartRate(packageDetails, deliveryDetails, ekartPartner),
+      calculateXpressbeesRate(packageDetails, deliveryDetails, xpressbeesPartner),
       calculateCourierRates({ weight, pickupPincode, deliveryPincode, isCOD })
     ]);
 
+    // Format the responses to a consistent structure
+    const formatCourierRate = (rate) => {
+      if (!rate) return [];
+      
+      return [{
+        courier: rate.provider?.name || 'Unknown',
+        mode: rate.provider?.expressDelivery ? 'express' : 'standard',
+        service: rate.provider?.expressDelivery ? 'express' : 'standard',
+        rate: rate.totalRate,
+        estimatedDelivery: rate.provider?.estimatedDays || '3-5 days',
+        codCharge: rate.breakdown?.codCharge || 0,
+        available: true
+      }];
+    };
+
     // Merge and flatten all rates
     const rates = [
-      ...delhivery,
-      ...bluedart,
-      ...dtdc,
-      ...ekart,
-      ...xpressbees,
+      ...formatCourierRate(delhivery),
+      ...formatCourierRate(bluedart),
+      ...formatCourierRate(dtdc),
+      ...formatCourierRate(ekart),
+      ...formatCourierRate(xpressbees),
       ...staticRates
-    ];
+    ].filter(rate => rate); // Filter out any undefined/null values
 
     // Sort rates by price (lowest first)
     rates.sort((a, b) => a.rate - b.rate);

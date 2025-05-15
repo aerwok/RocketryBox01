@@ -8,8 +8,7 @@ const ledgerSchema = new mongoose.Schema({
   },
   transactionId: { 
     type: String, 
-    required: true, 
-    unique: true 
+    required: true,
   },
   date: {
     type: Date,
@@ -144,7 +143,7 @@ ledgerSchema.methods.reverse = async function(reason) {
 
 // Indexes for better query performance
 ledgerSchema.index({ seller: 1, createdAt: -1 });
-ledgerSchema.index({ transactionId: 1 });
+ledgerSchema.index({ transactionId: 1 }, { unique: true });
 ledgerSchema.index({ type: 1 });
 ledgerSchema.index({ status: 1 });
 ledgerSchema.index({ transactionAgainst: 1 });

@@ -31,7 +31,7 @@ import {
   validateCreateShippingCharge,
   validateUpdateShippingChargeStatus
 } from '../validators/shipping.validator.js';
-import { authenticate } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import { checkPermission } from '../../../middleware/permission.js';
 
 const router = express.Router();
@@ -39,7 +39,7 @@ const router = express.Router();
 // Wallet History Routes
 router.get(
   '/wallet-history',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetWalletTransactions,
   getWalletTransactions
@@ -47,7 +47,7 @@ router.get(
 
 router.get(
   '/wallet-history/export',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetWalletTransactions,
   exportWalletTransactions
@@ -55,14 +55,14 @@ router.get(
 
 router.get(
   '/wallet-history/:transactionId',
-  authenticate,
+  protect,
   checkPermission('billing'),
   getWalletTransactionById
 );
 
 router.post(
   '/wallet-history',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateAddWalletTransaction,
   addWalletTransaction
@@ -71,7 +71,7 @@ router.post(
 // Invoice Routes
 router.get(
   '/invoices',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetInvoices,
   getInvoices
@@ -79,7 +79,7 @@ router.get(
 
 router.get(
   '/invoices/export',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetInvoices,
   exportInvoices
@@ -87,14 +87,14 @@ router.get(
 
 router.get(
   '/invoices/:invoiceId',
-  authenticate,
+  protect,
   checkPermission('billing'),
   getInvoiceById
 );
 
 router.post(
   '/invoices',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateCreateInvoice,
   createInvoice
@@ -102,7 +102,7 @@ router.post(
 
 router.patch(
   '/invoices/:invoiceId/status',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateUpdateInvoiceStatus,
   updateInvoiceStatus
@@ -111,7 +111,7 @@ router.patch(
 // Shipping Charges Routes
 router.get(
   '/shipping-charges',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetShippingCharges,
   getShippingCharges
@@ -119,7 +119,7 @@ router.get(
 
 router.get(
   '/shipping-charges/export',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateGetShippingCharges,
   exportShippingCharges
@@ -127,14 +127,14 @@ router.get(
 
 router.get(
   '/shipping-charges/:id',
-  authenticate,
+  protect,
   checkPermission('billing'),
   getShippingChargeById
 );
 
 router.post(
   '/shipping-charges',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateCreateShippingCharge,
   createShippingCharge
@@ -142,7 +142,7 @@ router.post(
 
 router.patch(
   '/shipping-charges/:id/status',
-  authenticate,
+  protect,
   checkPermission('billing'),
   validateUpdateShippingChargeStatus,
   updateShippingChargeStatus
