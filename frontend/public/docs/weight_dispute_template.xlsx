@@ -1,0 +1,11 @@
+[Weight Dispute Template - Excel Format]
+
+This is a placeholder file that will be replaced with an actual Excel file on the server.
+The Excel file will contain the following columns:
+- AWB Number
+- Order ID
+- Given Weight (kg)
+- Applied Weight (kg)
+- Remarks
+
+And sample data rows similar to the CSV template. 

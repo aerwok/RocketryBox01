@@ -1,0 +1,21 @@
+/* Fix for recharts responsive container */
+.recharts-responsive-container {
+    height: initial !important;
+}
+
+/* Fix for pie chart rendering */
+.recharts-wrapper {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.recharts-surface {
+    width: 100%;
+    height: 100%;
+}
+
+/* Ensure chart container has proper height */
+[data-chart] {
+    min-height: 300px;
+    width: 100%;
+}

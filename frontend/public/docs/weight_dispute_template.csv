@@ -1,0 +1,4 @@
+AWB Number,Order ID,Given Weight (kg),Applied Weight (kg),Remarks
+SAMPLE12345,ORD-123456,1.5,2.2,Incorrect weight measurement
+SAMPLE67890,ORD-789012,3.2,4.5,Weight dispute for oversized package
+SAMPLE54321,ORD-543210,0.8,1.4,Package weighed correctly at origin 

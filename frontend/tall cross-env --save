@@ -1,0 +1,10 @@
+[33md6c0781[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m fix all the issues in create order weight dispute and admin log in page
+[33m0210548[m updated the routes for vercel
+[33mb6054ca[m added add team member page in admin section .
+[33mcacda32[m fixed the issues, optimized for using real time data, also added mock data for check, updated api documentation
+[33m97dc69a[m fixed  issues for deploying
+[33m92bce64[m added mock-api-indicator, mock-api-provider, mock-api-services, service-factory,helpers and ,env.production file to mock a backend for deploy, also changes made in app.tsx file and main.tsx file
+[33m0d11644[m added bypass forchehing and updated documentation
+[33m843d5ad[m a small issue fixed in useBulkorder page
+[33m839171c[m dleted all deployment file. running locally need to work on deployment
+[33m52c7d05[m trying again

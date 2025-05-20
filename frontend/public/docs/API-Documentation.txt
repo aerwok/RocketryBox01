@@ -1,0 +1,3882 @@
+# Rocketry Box - API Documentation
+
+## Table of Contents
+1. API Overview
+2. Authentication
+3. API Endpoints
+4. Data Models
+5. Error Handling
+6. Rate Limiting
+7. WebSocket Events
+8. File Upload
+9. Testing
+
+## API Overview
+
+### Base URL
+Development: http://localhost:8000
+Production: https://api.rocketrybox.com
+
+### API Version
+All endpoints are prefixed with `/api/v2/`
+
+### Content Type
+All requests and responses use `application/json`
+
+### Authentication
+All authenticated endpoints require a Bearer token in the Authorization header:
+```
+Authorization: Bearer <token>
+```
+
+## Authentication
+
+### Login
+Request Type: POST
+Endpoint: /api/v2/auth/login
+Headers: {
+  "Content-Type": "application/json"
+}
+Request Body: {
+  emailOrPhone: string,    // Email or 10-digit phone number
+  password: string,        // Password
+  otp: string,            // Optional, required for forgot password
+  rememberMe: boolean     // Optional, defaults to false
+}
+Response: {
+  token: string,
+  user: {
+    id: string,
+    name: string,
+    email: string,
+    phone: string,
+    role: "customer" | "seller" | "admin"
+  }
+}
+
+### Register
+Request Type: POST
+Endpoint: /api/v2/auth/register
+Headers: {
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name: string,          // min 2 characters
+  mobile: string,        // exactly 10 digits
+  mobileOtp: string,     // exactly 6 digits
+  email: string,         // valid email format
+  emailOtp: string,      // exactly 6 digits
+  password: string,      // see password rules below
+  confirmPassword: string,// must match password
+  address1: string,      // required
+  address2: string,      // optional
+  city: string,         // required
+  state: string,        // required
+  pincode: string,      // exactly 6 digits
+  acceptTerms: boolean   // must be true
+}
+Response: {
+  token: string,
+  user: {
+    id: string,
+    name: string,
+    email: string,
+    phone: string,
+    role: "customer" | "seller" | "admin"
+  }
+}
+
+### Password Rules
+{
+  minLength: 8,
+  requirements: [
+    "At least one uppercase letter",
+    "At least one lowercase letter",
+    "At least one number",
+    "At least one special character"
+  ]
+}
+
+### OTP Endpoints
+// Send Mobile OTP
+Request Type: POST
+Endpoint: /api/v2/auth/send-mobile-otp
+Headers: {
+  "Content-Type": "application/json"
+}
+Request Body: {
+  mobile: string
+}
+
+// Send Email OTP
+Request Type: POST
+Endpoint: /api/v2/auth/send-email-otp
+Headers: {
+  "Content-Type": "application/json"
+}
+Request Body: {
+  email: string
+}
+
+// Verify OTP
+Request Type: POST
+Endpoint: /api/v2/auth/verify-otp
+Headers: {
+  "Content-Type": "application/json"
+}
+Request Body: {
+  phoneOrEmail: string,
+  otp: string,      // 6 digits
+  type: "mobile" | "email"
+}
+
+## API Endpoints
+
+### Seller Endpoints
+
+#### Profile Management
+// Get Profile
+Request Type: GET
+Endpoint: /api/v2/seller/profile
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  id: string,
+  name: string,
+  email: string,
+  phone: string,
+  companyName: string,
+  companyCategory: string,
+  brandName?: string,
+  website?: string,
+  supportContact?: string,
+  supportEmail?: string,
+  operationsEmail?: string,
+  financeEmail?: string,
+  rechargeType?: string,
+  profileImage?: string,
+  storeLinks?: {
+    website?: string,
+    amazon?: string,
+    shopify?: string,
+    opencart?: string
+  },
+  address?: {
+    street: string,
+    city: string,
+    state: string,
+    country: string,
+    postalCode: string,
+    landmark?: string
+  },
+  documents?: {
+    gstin?: string,
+    pan?: string,
+    cin?: string,
+    tradeLicense?: string,
+    msmeRegistration?: string,
+    aadhaar?: string,
+    documents: [
+      {
+        name: string,
+        type: string,
+        url: string,
+        status: "verified" | "pending" | "rejected"
+      }
+    ]
+  },
+  bankDetails?: [
+    {
+      accountName: string,
+      accountNumber: string,
+      bankName: string,
+      branch: string,
+      ifscCode: string,
+      swiftCode?: string,
+      accountType: string,
+      isDefault: boolean,
+      cancelledCheque?: {
+        url: string,
+        status: "verified" | "pending"
+      }
+    }
+  ]
+}
+
+// Update Profile
+Request Type: PUT
+Endpoint: /api/v2/seller/profile
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name?: string,
+  phone?: string,
+  companyName?: string,
+  companyCategory?: string,
+  brandName?: string,
+  website?: string,
+  supportContact?: string,
+  supportEmail?: string,
+  operationsEmail?: string,
+  financeEmail?: string,
+  rechargeType?: string,
+  address?: {
+    street: string,
+    city: string,
+    state: string,
+    country: string,
+    postalCode: string,
+    landmark?: string
+  }
+}
+Response: {
+  success: boolean,
+  message: string,
+  data?: ProfileData
+}
+
+// Update Profile Image
+Request Type: POST
+Endpoint: /api/v2/seller/profile/image
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File
+}
+Response: {
+  imageUrl: string
+}
+
+// Update Store Links
+Request Type: PUT
+Endpoint: /api/v2/seller/profile/store-links
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  website?: string,
+  amazon?: string,
+  shopify?: string,
+  opencart?: string
+}
+Response: {
+  success: boolean,
+  message: string,
+  data?: ProfileData
+}
+
+#### Orders Management
+// Get Orders
+Request Type: GET
+Endpoint: /api/v2/seller/orders
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  status?: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error"
+  search?: string
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      orderId: string,
+      date: string,
+      customer: string,
+      contact: string,
+      items: [
+        {
+          name: string,
+          sku: string,
+          quantity: number,
+          price: number
+        }
+      ],
+      amount: string,
+      payment: "COD" | "Prepaid",
+      chanel: "MANUAL" | "EXCEL" | "SHOPIFY" | "WOOCOMMERCE" | "AMAZON" | "FLIPKART" | "OPENCART" | "API",
+      weight: string,
+      tags: string,
+      action: "Ship" | "Processing" | "In Transit" | "Cancelled" | "Error" | "Pending",
+      whatsapp: "Message Delivered" | "Message Read" | "Order Confirm" | "Order Cancelled",
+      status: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error",
+      awbNumber?: string,
+      pincode?: string
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Order Stats
+Request Type: GET
+Endpoint: /api/v2/seller/orders/stats
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  status?: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error"
+Response: {
+  data: {
+    total: number,
+    notBooked: number,
+    processing: number,
+    booked: number,
+    cancelled: number,
+    shipmentCancelled: number,
+    error: number
+  }
+}
+
+// Update Order Status
+Request Type: PATCH
+Endpoint: /api/v2/seller/orders/:orderId/status
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  status: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error"
+}
+
+// Bulk Update Order Status
+Request Type: PATCH
+Endpoint: /api/v2/seller/orders/bulk-status
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  orderIds: string[],
+  status: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error"
+}
+
+// Process Shipping
+Request Type: POST
+Endpoint: /api/v2/seller/orders/ship
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  orderIds: string[],
+  shippingOptions: {
+    warehouse: string,
+    rtoWarehouse: string,
+    shippingMode: "surface" | "air",
+    courier: string
+  }
+}
+
+// Get Shipping Options
+Request Type: GET
+Endpoint: /api/v2/seller/shipping-options
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    warehouses: [
+      {
+        id: string,
+        name: string,
+        address: string
+      }
+    ],
+    rtoWarehouses: [
+      {
+        id: string,
+        name: string,
+        address: string
+      }
+    ],
+    shippingModes: [
+      {
+        id: string,
+        name: string,
+        description: string
+      }
+    ],
+    couriers: [
+      {
+        id: string,
+        name: string,
+        description: string
+      }
+    ]
+  }
+}
+
+#### Weight Dispute Management
+// Get Weight Disputes
+Request Type: GET
+Endpoint: /api/v2/weight-disputes
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  fromDate?: string (YYYY-MM-DD)
+  toDate?: string (YYYY-MM-DD)
+  status?: "Action Required" | "Open Dispute" | "Closed Dispute" | "Closed Resolved"
+  accepted?: boolean
+  search?: string
+  awbNumber?: string
+  product?: string
+  courierPartner?: string
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      disputeDate: string,
+      awbNumber: string,
+      orderId: string,
+      given: number,
+      applied: number,
+      revised: number,
+      accepted: boolean,
+      difference: number,
+      product: string,
+      comments: string,
+      status: "Action Required" | "Open Dispute" | "Closed Dispute" | "Closed Resolved"
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Weight Dispute Details
+Request Type: GET
+Endpoint: /api/v2/weight-disputes/:awbNumber
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  orderId: string
+Response: {
+  data: {
+    disputeDate: string,
+    awbNumber: string,
+    orderId: string,
+    given: number,
+    applied: number,
+    revised: number,
+    accepted: boolean,
+    difference: number,
+    product: string,
+    comments: string,
+    status: "Action Required" | "Open Dispute" | "Closed Dispute" | "Closed Resolved",
+    customerName?: string,
+    customerPhone?: string,
+    address?: string,
+    price?: number,
+    quantity?: number,
+    courierPartner?: string,
+    trackingStatus?: string,
+    pickupDate?: string,
+    deliveryDate?: string,
+    deliveryAttempts?: number,
+    paymentMethod?: string,
+    codAmount?: number,
+    sellerName?: string,
+    sellerSKU?: string,
+    shippingCharge?: number,
+    weightChargeDiscount?: number,
+    weightDifferenceCharge?: number
+  }
+}
+
+// Upload Weight Dispute File
+Request Type: POST
+Endpoint: /api/v2/weight-disputes/upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File
+}
+Response: {
+  success: boolean,
+  message: string
+}
+
+#### Dashboard
+// Get Dashboard Stats
+Request Type: GET
+Endpoint: /api/v2/seller/dashboard/stats
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    orders: {
+      total: number,
+      pending: number,
+      processing: number,
+      shipped: number,
+      delivered: number,
+      cancelled: number,
+      todayCount: number
+    },
+    shipments: {
+      total: number,
+      todayCount: number
+    },
+    delivery: {
+      total: number,
+      todayCount: number
+    },
+    cod: {
+      expected: number,
+      totalDue: number
+    },
+    revenue: {
+      total: number,
+      dailyGrowth: number
+    },
+    ndr: {
+      pending: number,
+      actionRequired: number
+    },
+    weightDisputes: {
+      pending: number,
+      total: number,
+      resolved: number
+    }
+  }
+}
+
+// Get Dashboard Chart Data
+Request Type: GET
+Endpoint: /api/v2/seller/dashboard/chart-data
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  timeFilter?: "1D" | "1W" | "1M" | "3M" | "1Y" | "ALL"
+Response: {
+  data: {
+    orderStatusDistribution: {
+      delivered: number,
+      inTransit: number,
+      pending: number
+    },
+    shipmentTrends: [
+      {
+        day: string,
+        current: number,
+        previous: number
+      }
+    ],
+    revenueTrends: [
+      {
+        month: string,
+        value: number
+      }
+    ],
+    topProducts: [
+      {
+        month: string,
+        desktop: number
+      }
+    ],
+    deliveryPerformance: [
+      {
+        month: string,
+        desktop: number
+      }
+    ],
+    courierData: [
+      {
+        courier: string,
+        total: number,
+        notShipped: number,
+        pendingPickup: number,
+        inTransit: number,
+        ofd: number,
+        delivered: { count: number, percentage: string },
+        cancelled: { count: number, percentage: string },
+        exception: { count: number, percentage: string },
+        rto: number,
+        lostDamage: number
+      }
+    ],
+    productData: [
+      {
+        productName: string,
+        quantity: number,
+        totalShipments: number,
+        notShipped: number,
+        cancelled: number,
+        pendingPickup: number,
+        inTransit: number,
+        delivered: number,
+        rto: number
+      }
+    ],
+    weightDisputeStats: {
+      disputesByMonth: [
+        {
+          month: string,
+          pending: number,
+          approved: number,
+          rejected: number
+        }
+      ],
+      disputesByCourier: [
+        {
+          courier: string,
+          count: number,
+          approvalRate: string
+        }
+      ]
+    }
+  }
+}
+
+// Get Courier Performance
+Request Type: GET
+Endpoint: /api/v2/seller/dashboard/courier-performance
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: [
+    {
+      courier: string,
+      total: number,
+      notShipped: number,
+      pendingPickup: number,
+      inTransit: number,
+      ofd: number,
+      delivered: { count: number, percentage: string },
+      cancelled: { count: number, percentage: string },
+      exception: { count: number, percentage: string },
+      rto: number,
+      lostDamage: number
+    }
+  ]
+}
+
+// Get Top Products
+Request Type: GET
+Endpoint: /api/v2/seller/dashboard/top-products
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: [
+    {
+      productName: string,
+      quantity: number,
+      totalShipments: number,
+      notShipped: number,
+      cancelled: number,
+      pendingPickup: number,
+      inTransit: number,
+      delivered: number,
+      rto: number
+    }
+  ]
+}
+
+// Download Dashboard Report
+Request Type: GET
+Endpoint: /api/v2/seller/dashboard/report
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  format: "csv" | "pdf" | "xlsx"
+  report_type?: "shipments" | "orders" | "revenue" | "weight_disputes"
+Response: Blob (file download)
+
+#### Wallet
+// Get Wallet Balance
+Request Type: GET
+Endpoint: /api/v2/seller/wallet/balance
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    walletBalance: number,
+    lastRecharge: number,
+    remittanceBalance: number,
+    lastUpdated: string
+  }
+}
+
+// Get Wallet History
+Request Type: GET
+Endpoint: /api/v2/seller/wallet/history
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  page?: number
+  limit?: number
+Response: {
+  data: {
+    transactions: [
+      {
+        transactionId: string,
+        date: string,
+        type: "Credit" | "Debit",
+        amount: number,
+        balance: number,
+        description: string,
+        status: "Success" | "Pending" | "Failed",
+        paymentMethod?: string,
+        metadata?: Record<string, unknown>
+      }
+    ],
+    totalCount: number,
+    currentPage: number,
+    totalPages: number,
+    hasMore: boolean
+  }
+}
+
+// Recharge Wallet
+Request Type: POST
+Endpoint: /api/v2/seller/wallet/recharge
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  amount: number,
+  paymentMethod: string
+}
+Response: {
+  data: {
+    walletBalance: number,
+    lastRecharge: number,
+    remittanceBalance: number,
+    lastUpdated: string
+  }
+}
+
+// Verify Transaction
+Request Type: POST
+Endpoint: /api/v2/seller/wallet/verify-transaction
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  transactionId: string
+}
+Response: {
+  data: {
+    verified: boolean
+  }
+}
+
+#### Bulk Orders
+// Upload Bulk Order
+Request Type: POST
+Endpoint: /api/v2/seller/bulk-orders/upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File
+}
+Response: {
+  data: {
+    orderId: string,
+    status: "Processing" | "Completed" | "Failed",
+    totalRows: number,
+    processedRows: number,
+    failedRows: number,
+    errors?: [
+      {
+        row: number,
+        message: string
+      }
+    ],
+    createdAt: string,
+    updatedAt: string
+  }
+}
+
+// Get Bulk Order Status
+Request Type: GET
+Endpoint: /api/v2/seller/bulk-orders/:orderId/status
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    orderId: string,
+    status: "Processing" | "Completed" | "Failed",
+    progress: number,
+    totalRows: number,
+    processedRows: number,
+    failedRows: number,
+    errors?: [
+      {
+        row: number,
+        message: string
+      }
+    ],
+    createdAt: string,
+    updatedAt: string
+  }
+}
+
+// Cancel Bulk Order
+Request Type: POST
+Endpoint: /api/v2/seller/bulk-orders/:orderId/cancel
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    success: boolean
+  }
+}
+
+// Download Bulk Order Template
+Request Type: GET
+Endpoint: /api/v2/seller/bulk-orders/template
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: Blob (file download)
+
+#### Shipments Management
+
+// Get Shipments
+Request Type: GET
+Endpoint: /api/v2/seller/shipments
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  status?: "all" | "booked" | "pending-pickup" | "in-transit" | "delivered" | "cancelled" | "exception"
+  awb?: string
+  from?: string (ISO date)
+  to?: string (ISO date)
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      orderId: string,
+      orderDate: string,
+      booked: string,
+      pickupId: string,
+      customer: string,
+      product: string,
+      amount: string,
+      payment: "COD" | "Prepaid",
+      weight: string,
+      channel: string,
+      awb: string,
+      courier: string,
+      tracking: string,
+      status: string
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Shipment Details
+Request Type: GET
+Endpoint: /api/v2/seller/shipments/:shipmentId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    shipmentId: string,
+    orderId: string,
+    orderDate: string,
+    booked: string,
+    pickupId: string,
+    customer: {
+      name: string,
+      phone: string,
+      email: string,
+      address: {
+        street: string,
+        city: string,
+        state: string,
+        pincode: string,
+        country: string
+      }
+    },
+    product: {
+      name: string,
+      sku: string,
+      quantity: number,
+      price: number,
+      weight: string,
+      dimensions: {
+        length: number,
+        width: number,
+        height: number
+      }
+    },
+    payment: {
+      method: "COD" | "Prepaid",
+      amount: string,
+      codCharge: string,
+      shippingCharge: string,
+      gst: string,
+      total: string
+    },
+    channel: string,
+    awb: string,
+    courier: {
+      name: string,
+      trackingUrl: string
+    },
+    status: string,
+    trackingHistory: [
+      {
+        status: string,
+        location: string,
+        timestamp: string,
+        description: string
+      }
+    ]
+  }
+}
+
+// Track Shipment
+Request Type: GET
+Endpoint: /api/v2/seller/shipments/:awb/track
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    awb: string,
+    courier: string,
+    status: string,
+    expectedDelivery: string,
+    origin: string,
+    destination: string,
+    weight: string,
+    trackingHistory: [
+      {
+        status: string,
+        location: string,
+        timestamp: string,
+        description: string
+      }
+    ]
+  }
+}
+
+// Cancel Shipment
+Request Type: POST
+Endpoint: /api/v2/seller/shipments/:awb/cancel
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  reason: string
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string,
+    cancellationId: string
+  }
+}
+
+// Bulk Track Shipments
+Request Type: POST
+Endpoint: /api/v2/seller/shipments/bulk-track
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  awbs: string[]
+}
+Response: {
+  data: [
+    {
+      awb: string,
+      courier: string,
+      status: string,
+      lastUpdated: string
+    }
+  ]
+}
+
+// Get Shipping Rates
+Request Type: GET
+Endpoint: /api/v2/seller/shipments/rates
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  fromPincode: string
+  toPincode: string
+  weight: string
+  payment: "cod" | "prepaid"
+Response: {
+  data: [
+    {
+      courier: string,
+      mode: string,
+      zone: string,
+      baseCharge: number,
+      codCharge: number,
+      gst: number,
+      total: number,
+      expectedDelivery: string
+    }
+  ]
+}
+
+// Print Label
+Request Type: GET
+Endpoint: /api/v2/seller/shipments/:awb/label
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  format?: "pdf" | "thermal"
+  size?: "A4" | "4x6"
+Response: Blob (file download)
+
+// Print Manifest
+Request Type: POST
+Endpoint: /api/v2/seller/shipments/manifest
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  awbs: string[],
+  courier?: string
+}
+Response: Blob (file download)
+
+#### Received Management
+
+// Get Received Shipments
+Request Type: GET
+Endpoint: /api/v2/seller/received
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  status?: string
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      id: string,
+      awb: string,
+      courier: string,
+      customer: string,
+      product: string,
+      status: string,
+      receivedAt: string,
+      notes?: string
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Upload Received AWBs
+Request Type: POST
+Endpoint: /api/v2/seller/received/upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File // Excel/CSV file with AWB numbers
+}
+Response: {
+  data: {
+    uploadId: string,
+    totalAwbs: number,
+    validAwbs: number,
+    invalidAwbs: number,
+    status: "processing" | "completed",
+    errors?: {
+      awb: string,
+      message: string
+    }[]
+  }
+}
+
+// Download Sample AWB List
+Request Type: GET
+Endpoint: /api/v2/seller/received/sample
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: Blob (file download of Excel sample)
+
+// Update Received Shipment
+Request Type: PATCH
+Endpoint: /api/v2/seller/received/:id
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  status?: string,
+  notes?: string
+}
+Response: {
+  data: {
+    id: string,
+    awb: string,
+    courier: string,
+    status: string,
+    notes?: string,
+    updatedAt: string
+  }
+}
+
+// Bulk Update Received Shipments
+Request Type: PATCH
+Endpoint: /api/v2/seller/received/bulk
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json" 
+}
+Request Body: {
+  ids: string[],
+  status: string
+}
+Response: {
+  data: {
+    updated: number,
+    errors?: {
+      id: string,
+      message: string
+    }[]
+  }
+}
+
+#### NDR Management
+// Get NDR Shipments
+Request Type: GET
+Endpoint: /api/v2/seller/ndr
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  status?: "all" | "action-required" | "action-requested" | "in-transit" | "ofd" | "delivered"
+  page?: number
+  limit?: number
+  fromDate?: string (YYYY-MM-DD)
+  toDate?: string (YYYY-MM-DD)
+  searchQuery?: string
+Response: {
+  data: [
+    {
+      id: string,
+      awb: string,
+      order_date: string,
+      courier_name: string,
+      customer_name: string,
+      attempts: number,
+      last_attempt_date: string,
+      status: string,
+      ndr_reason: string,
+      recommended_action: string,
+      delivery_address: {
+        fullName: string,
+        contactNumber: string,
+        addressLine1: string,
+        addressLine2?: string,
+        landmark?: string,
+        pincode: string,
+        city: string,
+        state: string
+      }
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get NDR Details
+Request Type: GET
+Endpoint: /api/v2/seller/ndr/:awb
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    id: string,
+    awb: string,
+    order_id: string,
+    order_date: string,
+    courier_name: string,
+    customer_name: string,
+    attempts: number,
+    attempt_history: [
+      {
+        date: string,
+        time: string,
+        status: string,
+        reason: string,
+        agent_remarks?: string
+      }
+    ],
+    status: string,
+    ndr_reason: string,
+    recommended_action: string,
+    delivery_address: {
+      fullName: string,
+      contactNumber: string,
+      addressLine1: string,
+      addressLine2?: string,
+      landmark?: string,
+      pincode: string,
+      city: string,
+      state: string
+    }
+  }
+}
+
+// Return NDR Shipment
+Request Type: POST
+Endpoint: /api/v2/seller/ndr/:awb/return
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  reason: string,
+  remarks?: string
+}
+Response: {
+  data: {
+    id: string,
+    awb: string,
+    status: "return_initiated",
+    message: string,
+    return_id: string
+  }
+}
+
+// Reattempt NDR Shipment
+Request Type: POST
+Endpoint: /api/v2/seller/ndr/:awb/reattempt
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  address?: {
+    fullName: string,
+    contactNumber: string,
+    addressLine1: string,
+    addressLine2?: string,
+    landmark?: string,
+    pincode: string,
+    city: string,
+    state: string
+  },
+  preferredDate?: string,
+  remarks?: string
+}
+Response: {
+  data: {
+    id: string,
+    awb: string,
+    status: "reattempt_scheduled",
+    message: string,
+    reattempt_id: string,
+    scheduled_date?: string
+  }
+}
+
+// Get NDR Report
+Request Type: GET
+Endpoint: /api/v2/seller/ndr/report
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  status?: "all" | "action-required" | "action-requested" | "in-transit" | "ofd" | "delivered"
+  fromDate?: string (YYYY-MM-DD)
+  toDate?: string (YYYY-MM-DD)
+  format?: "xlsx" | "csv" (default: xlsx)
+Response: Blob (file download)
+
+// Bulk NDR Upload
+Request Type: POST
+Endpoint: /api/v2/seller/ndr/bulk-upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File,
+  action: "return" | "reattempt"
+}
+Response: {
+  data: {
+    upload_id: string,
+    total: number,
+    processed: number,
+    failed: number,
+    message: string,
+    errors?: {
+      awb: string,
+      error: string
+    }[]
+  }
+}
+
+#### Rate Card Management
+// Get Seller Rate Card
+Request Type: GET
+Endpoint: /api/v2/seller/rate-card
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    rateBand: string,
+    lastUpdated: string,
+    couriers: [
+      {
+        name: string,
+        rates: {
+          withinCity: number,
+          withinState: number,
+          metroToMetro: number,
+          restOfIndia: number,
+          northEastJK: number
+        },
+        codCharge: number,
+        codPercent: number
+      }
+    ]
+  }
+}
+
+// Calculate Shipping Rate
+Request Type: POST
+Endpoint: /api/v2/seller/rate-card/calculate
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  pickupPincode: string,
+  deliveryPincode: string,
+  paymentType: "COD" | "Prepaid",
+  purchaseAmount: string,
+  packageLength: string,
+  packageWidth: string,
+  packageHeight: string,
+  packageWeight: string
+}
+Response: {
+  data: {
+    zone: string,
+    weight: string,
+    rates: [
+      {
+        name: string,
+        baseCharge: number,
+        codCharge: number,
+        gst: number,
+        total: number
+      }
+    ]
+  }
+}
+
+#### Billing Management
+
+// Get Invoices
+Request Type: GET
+Endpoint: /api/v2/seller/billing/invoices
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (YYYY-MM-DD)
+  to?: string (YYYY-MM-DD)
+Response: {
+  success: boolean,
+  invoices: [
+    {
+      id: string,
+      invoiceNumber: string,
+      period: string,
+      shipments: number,
+      amount: string
+    }
+  ]
+}
+
+// Get Invoice Summary
+Request Type: GET
+Endpoint: /api/v2/seller/billing/invoices/summary
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (YYYY-MM-DD)
+  to?: string (YYYY-MM-DD)
+Response: {
+  success: boolean,
+  summary: {
+    totalInvoices: number,
+    pendingAmount: string,
+    overdueAmount: string,
+    totalPaid: string,
+    totalOutstanding: string
+  }
+}
+
+// Get Invoice Shipments
+Request Type: GET
+Endpoint: /api/v2/seller/billing/invoices/:id/shipments
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  format?: "excel" | "csv"
+Response: {
+  success: boolean,
+  invoice: {
+    id: string,
+    invoiceNumber: string,
+    period: string,
+    shipments: number,
+    amount: string
+  },
+  shipments: [
+    {
+      id: string,
+      date: string,
+      trackingNumber: string,
+      origin: string,
+      originCity: string,
+      destination: string,
+      destinationCity: string,
+      weight: string,
+      category: string,
+      courier: string,
+      status: string,
+      baseCharge: number,
+      additionalCharge: number,
+      codCharge: number,
+      gst: number,
+      total: number
+    }
+  ]
+}
+
+// Get Ledger Transactions
+Request Type: GET
+Endpoint: /api/v2/seller/billing/ledger
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json",
+  "Cache-Control": "no-cache"
+}
+Query Parameters: {
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD),
+  page?: number,
+  limit?: number,
+  transactionNumber?: string,
+  transactionBy?: string,
+  transactionType?: string,
+  transactionAgainst?: string,
+  creditDebit?: "Credit" | "Debit" | "Both",
+  amount?: string,
+  remark?: string
+}
+Response: {
+  success: boolean,
+  transactions: [
+    {
+      id: string,
+      date: string,
+      type: string,
+      transactionBy: string,
+      credit: string | null,
+      debit: string | null,
+      taxableAmount: string | null,
+      igst: string | null,
+      cgst: string | null,
+      sgst: string | null,
+      totalAmount: string,
+      closingBalance: string,
+      transactionNumber: string,
+      transactionAgainst: string,
+      remark: string | null
+    }
+  ],
+  pagination: {
+    totalEntries: number,
+    totalPages: number,
+    currentPage: number,
+    pageSize: number,
+    hasMore: boolean
+  }
+}
+
+// Get Ledger Summary
+Request Type: GET
+Endpoint: /api/v2/seller/billing/ledger/summary
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json",
+  "Cache-Control": "no-cache"
+}
+Response: {
+  success: boolean,
+  summary: {
+    totalRecharge: string,
+    totalDebit: string,
+    totalCredit: string,
+    closingBalance: string
+  }
+}
+
+// Export Ledger Transactions
+Request Type: GET
+Endpoint: /api/v2/seller/billing/ledger/export
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  format: "xlsx" | "csv",
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD),
+  transactionNumber?: string,
+  transactionBy?: string,
+  transactionType?: string,
+  transactionAgainst?: string,
+  creditDebit?: "Credit" | "Debit" | "Both",
+  amount?: string,
+  remark?: string
+}
+Response: Blob (file download)
+
+// Export Single Transaction
+Request Type: GET
+Endpoint: /api/v2/seller/billing/ledger/:transactionId/export
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  format: "xlsx" | "csv"
+}
+Response: Blob (file download)
+
+#### COD Remittance Management
+
+// Get COD Remittance Summary
+Request Type: GET
+Endpoint: /api/v2/seller/cod/summary
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    totalCOD: string,
+    remittedTillDate: string,
+    lastRemittance: string,
+    totalRemittanceDue: string,
+    nextRemittance: string
+  }
+}
+
+// Get COD Remittance History
+Request Type: GET
+Endpoint: /api/v2/seller/cod/remittance-history
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  status?: "Pending" | "Completed" | "Failed",
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD),
+  page?: number,
+  limit?: number
+}
+Response: {
+  data: {
+    remittances: [
+      {
+        remittanceId: string,
+        status: "Pending" | "Completed" | "Failed",
+        paymentDate: string,
+        remittanceAmount: string,
+        freightDeduction: string,
+        convenienceFee: string,
+        total: string,
+        paymentRef: string
+      }
+    ],
+    pagination: {
+      total: number,
+      page: number,
+      limit: number,
+      pages: number
+    }
+  }
+}
+
+// Get COD Remittance Details
+Request Type: GET
+Endpoint: /api/v2/seller/cod/remittance/:remittanceId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    remittanceId: string,
+    status: "Pending" | "Completed" | "Failed",
+    paymentDate: string,
+    remittanceAmount: string,
+    freightDeduction: string,
+    convenienceFee: string,
+    total: string,
+    paymentRef: string,
+    shipments: [
+      {
+        awb: string,
+        orderId: string,
+        orderDate: string,
+        deliveryDate: string,
+        customerName: string,
+        amount: string
+      }
+    ]
+  }
+}
+
+// Export COD Remittance Report
+Request Type: GET
+Endpoint: /api/v2/seller/cod/export
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  remittanceId?: string,
+  format: "xlsx" | "csv",
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD)
+}
+Response: Blob (file download)
+
+### Customer Endpoints
+
+#### Profile Management
+// Get Profile
+Request Type: GET
+Endpoint: /api/v2/customer/profile
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  id: string,
+  name: string,
+  email: string,
+  phone: string,
+  address: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string
+  }
+}
+
+// Update Profile
+Request Type: PUT
+Endpoint: /api/v2/customer/profile
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name: string,
+  phone: string,
+  address: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string
+  },
+  email: string,
+  password: {
+    current: string,
+    new: string
+  }
+}
+
+#### Orders
+// Create Order
+Request Type: POST
+Endpoint: /api/v2/customer/orders
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  pickupAddress: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string,
+    contactName: string,
+    contactPhone: string
+  },
+  deliveryAddress: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string,
+    contactName: string,
+    contactPhone: string
+  },
+  package: {
+    weight: number,
+    dimensions: {
+      length: number,
+      width: number,
+      height: number
+    },
+    declaredValue: number,
+    description: string
+  },
+  payment: {
+    mode: "COD" | "Prepaid",
+    amount: number
+  }
+}
+
+// Get Orders
+Request Type: GET
+Endpoint: /api/v2/customer/orders
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  status?: "pending" | "processing" | "delivered" | "cancelled"
+  page?: number
+  limit?: number
+Response: {
+  orders: [
+    {
+      id: string,
+      trackingNumber: string,
+      status: "pending" | "processing" | "delivered" | "cancelled",
+      createdAt: string,
+      updatedAt: string,
+      pickupAddress: {
+        street: string,
+        city: string,
+        state: string,
+        pincode: string,
+        country: string,
+        contactName: string,
+        contactPhone: string
+      },
+      deliveryAddress: {
+        street: string,
+        city: string,
+        state: string,
+        pincode: string,
+        country: string,
+        contactName: string,
+        contactPhone: string
+      },
+      package: {
+        weight: number,
+        dimensions: {
+          length: number,
+          width: number,
+          height: number
+        },
+        declaredValue: number,
+        description: string
+      },
+      payment: {
+        mode: "COD" | "Prepaid",
+        amount: number,
+        status: "pending" | "paid" | "failed"
+      }
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Order Status Counts
+Request Type: GET
+Endpoint: /api/v2/customer/orders/status-counts
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  success: boolean,
+  counts: {
+    All: number,
+    Booked: number,
+    Processing: number,
+    "In Transit": number,
+    "Out for Delivery": number,
+    Delivered: number,
+    Returned: number
+  }
+}
+
+// Get Order Details
+Request Type: GET
+Endpoint: /api/v2/customer/orders/:orderId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  id: string,
+  trackingNumber: string,
+  status: "pending" | "processing" | "delivered" | "cancelled",
+  createdAt: string,
+  updatedAt: string,
+  pickupAddress: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string,
+    contactName: string,
+    contactPhone: string
+  },
+  deliveryAddress: {
+    street: string,
+    city: string,
+    state: string,
+    pincode: string,
+    country: string,
+    contactName: string,
+    contactPhone: string
+  },
+  package: {
+    weight: number,
+    dimensions: {
+      length: number,
+      width: number,
+      height: number
+    },
+    declaredValue: number,
+    description: string
+  },
+  payment: {
+    mode: "COD" | "Prepaid",
+    amount: number,
+    status: "pending" | "paid" | "failed"
+  },
+  tracking: [
+    {
+      status: string,
+      location: string,
+      timestamp: string,
+      description: string
+    }
+  ]
+}
+
+// Cancel Order
+Request Type: POST
+Endpoint: /api/v2/customer/orders/:orderId/cancel
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  reason: string
+}
+
+### Admin Endpoints
+
+#### User Management
+// Get Users
+Request Type: GET
+Endpoint: /api/v2/admin/users
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  role?: "customer" | "seller" | "admin"
+  search?: string
+  status?: "active" | "inactive" | "suspended"
+  sortBy?: "name" | "email" | "createdAt" | "lastLogin"
+  sortOrder?: "asc" | "desc"
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      id: string,
+      name: string,
+      email: string,
+      phone: string,
+      role: "customer" | "seller" | "admin",
+      status: "active" | "inactive" | "suspended",
+      lastLogin: string,
+      createdAt: string,
+      walletBalance?: number,
+      orderCount?: number
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get User Details
+Request Type: GET
+Endpoint: /api/v2/admin/users/:userId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    email: string,
+    phone: string,
+    role: "customer" | "seller" | "admin",
+    status: "active" | "inactive" | "suspended",
+    lastLogin: string,
+    createdAt: string,
+    updatedAt: string,
+    verificationStatus: {
+      email: boolean,
+      phone: boolean,
+      documents: boolean
+    },
+    walletBalance?: number,
+    orderCount?: number,
+    address?: object,
+    permissions?: string[],
+    notes?: string
+  }
+}
+
+// Update User Status
+Request Type: PATCH
+Endpoint: /api/v2/admin/users/:userId/status
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  status: "active" | "inactive" | "suspended",
+  reason?: string
+}
+Response: {
+  data: {
+    id: string,
+    status: string,
+    message: string
+  }
+}
+
+// Update User Permissions
+Request Type: PATCH
+Endpoint: /api/v2/admin/users/:userId/permissions
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  permissions: string[]  // Array of permission keys
+}
+Response: {
+  data: {
+    id: string,
+    permissions: string[],
+    message: string
+  }
+}
+
+// Add Admin Notes
+Request Type: POST
+Endpoint: /api/v2/admin/users/:userId/notes
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  note: string
+}
+Response: {
+  data: {
+    id: string,
+    note: {
+      id: string,
+      content: string,
+      createdBy: string,
+      createdAt: string
+    },
+    message: string
+  }
+}
+
+#### Order Management
+// Get All Orders
+Request Type: GET
+Endpoint: /api/v2/admin/orders
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  status?: string | string[] // Can now accept multiple statuses as an array
+  sellerId?: string
+  customerId?: string
+  paymentType?: "COD" | "Prepaid"
+  priority?: "High" | "Medium" | "Low"
+  courier?: string
+  awbNumber?: string
+  search?: string
+  sortBy?: string
+  sortOrder?: "asc" | "desc"
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      id: string,
+      orderId: string,
+      sellerId: string,
+      customerId: string,
+      status: string,
+      actualStatus: string,
+      paymentType: string,
+      amount: string,
+      weight: string,
+      courier?: string,
+      awbNumber?: string,
+      createdAt: string,
+      updatedAt: string,
+      details: object,
+      seller: {
+        name: string,
+        email: string
+      },
+      customer: {
+        name: string,
+        email: string
+      }
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Order Details
+Request Type: GET
+Endpoint: /api/v2/admin/orders/:orderId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    id: string,
+    orderId: string,
+    sellerId: string,
+    customerId: string,
+    status: string,
+    actualStatus: string,
+    paymentType: string,
+    amount: string,
+    weight: string,
+    courier?: string,
+    awbNumber?: string,
+    createdAt: string,
+    updatedAt: string,
+    seller: {
+      id: string,
+      name: string,
+      email: string,
+      phone: string
+    },
+    customer: {
+      name: string,
+      email: string,
+      phone: string,
+      address: {
+        street: string,
+        city: string,
+        state: string,
+        pincode: string,
+        country: string
+      }
+    },
+    shippingDetails: {
+      origin: {
+        warehouse: string,
+        address: string
+      },
+      destination: {
+        address: string,
+        city: string,
+        state: string,
+        pincode: string
+      },
+      package: {
+        items: [
+          {
+            name: string,
+            sku: string,
+            quantity: number,
+            price: number,
+            weight: number
+          }
+        ],
+        dimensions: {
+          length: number,
+          width: number,
+          height: number,
+          weight: number
+        }
+      },
+      courier: {
+        name: string,
+        trackingUrl: string,
+        awbNumber: string
+      },
+      tracking: [
+        {
+          status: string,
+          location: string,
+          timestamp: string,
+          description: string
+        }
+      ]
+    },
+    payment: {
+      type: "COD" | "Prepaid",
+      status: string,
+      subtotal: number,
+      shippingCharge: number,
+      codCharge: number,
+      tax: number,
+      discount: number,
+      total: number
+    },
+    notes: string,
+    history: [
+      {
+        action: string,
+        performedBy: string,
+        timestamp: string,
+        details: string
+      }
+    ]
+  }
+}
+
+// Update Order
+Request Type: PATCH
+Endpoint: /api/v2/admin/orders/:orderId
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  status?: string,
+  notes?: string,
+  courier?: string,
+  awbNumber?: string,
+  trackingUrl?: string,
+  payment?: {
+    status?: string,
+    shippingCharge?: number,
+    codCharge?: number,
+    tax?: number,
+    discount?: number
+  }
+}
+Response: {
+  data: {
+    id: string,
+    orderId: string,
+    status: string,
+    message: string
+  }
+}
+
+// Add Order History Entry
+Request Type: POST
+Endpoint: /api/v2/admin/orders/:orderId/history
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  action: string,
+  details: string
+}
+Response: {
+  data: {
+    id: string,
+    action: string,
+    performedBy: string,
+    timestamp: string,
+    details: string
+  }
+}
+
+// Get Order Status Counts
+Request Type: GET
+Endpoint: /api/v2/admin/orders/status-counts
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+  sellerId?: string
+Response: {
+  data: {
+    total: number,
+    booked: number,
+    processing: number,
+    inTransit: number,
+    outForDelivery: number,
+    delivered: number,
+    returned: number,
+    cancelled: number
+  }
+}
+
+#### Admin Dashboard
+// Get Dashboard Stats
+Request Type: GET
+Endpoint: /api/v2/admin/dashboard/stats
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  period?: "today" | "yesterday" | "week" | "month" | "year"
+Response: {
+  data: {
+    users: {
+      total: number,
+      sellers: number,
+      customers: number,
+      newToday: number,
+      activeToday: number
+    },
+    orders: {
+      total: number,
+      pending: number,
+      processing: number,
+      shipped: number,
+      delivered: number,
+      cancelled: number,
+      todayCount: number
+    },
+    revenue: {
+      total: number,
+      today: number,
+      growth: number
+    },
+    shipments: {
+      total: number,
+      inTransit: number,
+      delivered: number,
+      returned: number,
+      todayCount: number
+    },
+    disputes: {
+      total: number,
+      open: number,
+      resolved: number
+    },
+    tickets: {
+      total: number,
+      open: number,
+      closed: number
+    }
+  }
+}
+
+// Get Key Performance Indicators
+Request Type: GET
+Endpoint: /api/v2/admin/dashboard/kpi
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  from?: string (ISO date)
+  to?: string (ISO date)
+Response: {
+  data: {
+    averageOrderValue: number,
+    orderCompletionRate: number,
+    returnRate: number,
+    averageDeliveryTime: number,
+    userAcquisitionCost: number,
+    revenueGrowth: number,
+    activeSellers: number,
+    topPerformingSellers: [
+      {
+        id: string,
+        name: string,
+        orderCount: number,
+        revenue: number
+      }
+    ],
+    topCouriers: [
+      {
+        name: string,
+        shipmentCount: number,
+        performanceScore: number
+      }
+    ]
+  }
+}
+
+// Get Order Trends
+Request Type: GET
+Endpoint: /api/v2/admin/dashboard/order-trends
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  granularity: "daily" | "weekly" | "monthly"
+  from?: string (ISO date)
+  to?: string (ISO date)
+Response: {
+  data: [
+    {
+      period: string,
+      orders: number,
+      revenue: number,
+      returnRate: number
+    }
+  ]
+}
+
+// Get System Health
+Request Type: GET
+Endpoint: /api/v2/admin/dashboard/system-health
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    apiStatus: "operational" | "degraded" | "maintenance",
+    serverLoad: number,
+    responseTime: number,
+    databaseStatus: "healthy" | "degraded" | "critical",
+    serviceStatus: {
+      payment: "operational" | "degraded" | "down",
+      email: "operational" | "degraded" | "down",
+      sms: "operational" | "degraded" | "down",
+      tracking: "operational" | "degraded" | "down"
+    },
+    errors: {
+      count: number,
+      recentErrors: [
+        {
+          timestamp: string,
+          endpoint: string,
+          errorType: string,
+          count: number
+        }
+      ]
+    }
+  }
+}
+
+#### Rate Band Management
+// Get Rate Bands
+Request Type: GET
+Endpoint: /api/v2/admin/rate-bands
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  search?: string
+  isDefault?: boolean
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      id: string,
+      name: string,
+      description: string,
+      isDefault: boolean,
+      sellerCount: number,
+      createdAt: string,
+      updatedAt: string
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Create Rate Band
+Request Type: POST
+Endpoint: /api/v2/admin/rate-bands
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name: string,
+  description: string,
+  isDefault: boolean,
+  copyFromId?: string  // Optional - copy rates from existing band
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    description: string,
+    isDefault: boolean,
+    createdAt: string,
+    updatedAt: string
+  }
+}
+
+// Get Rate Band Details
+Request Type: GET
+Endpoint: /api/v2/admin/rate-bands/:bandId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    description: string,
+    isDefault: boolean,
+    rates: [
+      {
+        courier: string,
+        courierName: string,
+        rates: {
+          withinCity: {
+            base: string,
+            additional: string,
+            rto: string
+          },
+          withinState: {
+            base: string,
+            additional: string,
+            rto: string
+          },
+          metroToMetro: {
+            base: string,
+            additional: string,
+            rto: string
+          },
+          restOfIndia: {
+            base: string,
+            additional: string,
+            rto: string
+          },
+          northEastJK: {
+            base: string,
+            additional: string,
+            rto: string
+          }
+        },
+        cod: string,
+        codPercent: string,
+        weightSlabs: [
+          {
+            from: number,
+            to: number,
+            price: number
+          }
+        ]
+      }
+    ],
+    createdAt: string,
+    updatedAt: string,
+    assignedSellers: [
+      {
+        id: string,
+        name: string,
+        email: string
+      }
+    ]
+  }
+}
+
+// Update Rate Band
+Request Type: PUT
+Endpoint: /api/v2/admin/rate-bands/:bandId
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name?: string,
+  description?: string,
+  isDefault?: boolean,
+  rates?: [RateObject]
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    description: string,
+    isDefault: boolean,
+    updatedAt: string
+  }
+}
+
+// Delete Rate Band
+Request Type: DELETE
+Endpoint: /api/v2/admin/rate-bands/:bandId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string
+  }
+}
+
+// Upload Rate Card
+Request Type: POST
+Endpoint: /api/v2/admin/rate-bands/:bandId/upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File // Excel file with rate card data
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string,
+    processedRows: number,
+    errors?: [
+      {
+        row: number,
+        message: string
+      }
+    ]
+  }
+}
+
+// Download Rate Card Template
+Request Type: GET
+Endpoint: /api/v2/admin/rate-bands/template
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: Blob (Excel file download)
+
+// Assign Rate Band to Seller
+Request Type: POST
+Endpoint: /api/v2/admin/users/:userId/rate-band
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  rateBandId: string
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string,
+    userId: string,
+    rateBandId: string,
+    rateBandName: string
+  }
+}
+
+// Get Custom Seller Rates
+Request Type: GET
+Endpoint: /api/v2/admin/users/:userId/custom-rates
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    userId: string,
+    userName: string,
+    rates: [
+      {
+        courier: string,
+        rates: {
+          withinCity: number,
+          withinState: number,
+          metroToMetro: number,
+          restOfIndia: number,
+          northEastJK: number
+        },
+        codCharge: number,
+        codPercent: number,
+        weightSlabs: [
+          {
+            from: number,
+            to: number,
+            price: number
+          }
+        ]
+      }
+    ],
+    lastUpdated: string
+  }
+}
+
+// Update Custom Seller Rates
+Request Type: PUT
+Endpoint: /api/v2/admin/users/:userId/custom-rates
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  rates: [
+    {
+      courier: string,
+      rates: {
+        withinCity: number,
+        withinState: number,
+        metroToMetro: number,
+        restOfIndia: number,
+        northEastJK: number
+      },
+      codCharge: number,
+      codPercent: number,
+      weightSlabs?: [
+        {
+          from: number,
+          to: number,
+          price: number
+        }
+      ]
+    }
+  ]
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string,
+    userId: string,
+    lastUpdated: string
+  }
+}
+
+#### COD Management
+
+// Initiate COD Remittance
+Request Type: POST
+Endpoint: /api/v2/admin/cod/remittance
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  sellerId: string,
+  transactionType: string,
+  amount: string,
+  paymentType: "credit" | "wallet",
+  paymentStatus?: "due" | "paid",
+  transactionDate?: string,
+  orders?: string[] // Array of order IDs included in this remittance
+}
+Response: {
+  data: {
+    remittanceId: string,
+    sellerId: string,
+    sellerName: string,
+    status: "Pending" | "Completed" | "Failed",
+    paymentDate: string,
+    remittanceAmount: string,
+    freightDeduction: string,
+    convenienceFee: string,
+    total: string,
+    paymentRef: string,
+    message: string
+  }
+}
+
+// Bulk Upload COD Remittance
+Request Type: POST
+Endpoint: /api/v2/admin/cod/remittance/bulk
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Request Body: {
+  file: File // Excel file containing remittance details
+}
+Response: {
+  data: {
+    batchId: string,
+    totalRemittances: number,
+    processedRemittances: number,
+    failedRemittances: number,
+    errors?: [
+      {
+        row: number,
+        sellerId: string,
+        message: string
+      }
+    ]
+  }
+}
+
+// Get All COD Remittances
+Request Type: GET
+Endpoint: /api/v2/admin/cod/remittance
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  status?: "Pending" | "Completed" | "Failed",
+  sellerId?: string,
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD),
+  page?: number,
+  limit?: number
+}
+Response: {
+  data: {
+    remittances: [
+      {
+        remittanceId: string,
+        sellerId: string,
+        sellerName: string,
+        status: "Pending" | "Completed" | "Failed",
+        paymentDate: string,
+        remittanceAmount: string,
+        freightDeduction: string,
+        convenienceFee: string,
+        total: string,
+        paymentRef: string
+      }
+    ],
+    pagination: {
+      total: number,
+      page: number,
+      limit: number,
+      pages: number
+    }
+  }
+}
+
+// Get COD Remittance Details
+Request Type: GET
+Endpoint: /api/v2/admin/cod/remittance/:remittanceId
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    remittanceId: string,
+    sellerId: string,
+    sellerName: string,
+    status: "Pending" | "Completed" | "Failed",
+    paymentDate: string,
+    remittanceAmount: string,
+    freightDeduction: string,
+    convenienceFee: string,
+    total: string,
+    paymentRef: string,
+    orders: [
+      {
+        orderId: string,
+        awb: string,
+        orderDate: string,
+        deliveryDate: string,
+        customerName: string,
+        amount: string
+      }
+    ]
+  }
+}
+
+// Update Remittance Status
+Request Type: PATCH
+Endpoint: /api/v2/admin/cod/remittance/:remittanceId/status
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  status: "Pending" | "Completed" | "Failed",
+  paymentRef?: string
+}
+Response: {
+  data: {
+    remittanceId: string,
+    status: "Pending" | "Completed" | "Failed",
+    message: string
+  }
+}
+
+// Export COD Remittance Report
+Request Type: GET
+Endpoint: /api/v2/admin/cod/remittance/export
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters: {
+  sellerId?: string,
+  remittanceId?: string,
+  format: "xlsx" | "csv",
+  from?: string (YYYY-MM-DD),
+  to?: string (YYYY-MM-DD)
+}
+Response: Blob (file download)
+
+#### Shipping Partners Management
+
+// Get All Partners
+Request Type: GET
+Endpoint: /api/v2/admin/partners
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Query Parameters:
+  status?: "active" | "inactive" | "maintenance" | "all"
+  search?: string
+  page?: number
+  limit?: number
+Response: {
+  data: [
+    {
+      id: string,
+      name: string,
+      logoUrl?: string,
+      apiStatus: "active" | "inactive" | "maintenance",
+      performanceScore: string,
+      lastUpdated: string,
+      shipmentCount: number,
+      deliverySuccess: string,
+      supportContact: string,
+      supportEmail: string,
+      serviceTypes: string[],
+      serviceAreas: string[],
+      weightLimits: {
+        min: number,
+        max: number
+      },
+      dimensionLimits?: {
+        maxLength: number,
+        maxWidth: number,
+        maxHeight: number,
+        maxSum: number
+      },
+      rates: {
+        baseRate: number,
+        weightRate: number,
+        dimensionalFactor: number
+      }
+    }
+  ],
+  pagination: {
+    total: number,
+    page: number,
+    limit: number,
+    pages: number
+  }
+}
+
+// Get Partner Details
+Request Type: GET
+Endpoint: /api/v2/admin/partners/:id
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    logoUrl?: string,
+    apiStatus: "active" | "inactive" | "maintenance",
+    performanceScore: string,
+    lastUpdated: string,
+    shipmentCount: number,
+    deliverySuccess: string,
+    supportContact: string,
+    supportEmail: string,
+    apiKey?: string,
+    apiEndpoint?: string,
+    serviceTypes: string[],
+    serviceAreas: string[],
+    weightLimits: {
+      min: number,
+      max: number
+    },
+    dimensionLimits?: {
+      maxLength: number,
+      maxWidth: number,
+      maxHeight: number,
+      maxSum: number
+    },
+    rates: {
+      baseRate: number,
+      weightRate: number,
+      dimensionalFactor: number
+    },
+    zones?: [
+      {
+        name: string,
+        baseRate: number,
+        additionalRate: number
+      }
+    ],
+    trackingUrl?: string,
+    integrationDate: string,
+    notes?: string
+  }
+}
+
+// Create Partner
+Request Type: POST
+Endpoint: /api/v2/admin/partners
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name: string,
+  logoUrl?: string,
+  apiStatus: "active" | "inactive" | "maintenance",
+  supportContact: string,
+  supportEmail: string,
+  apiKey?: string,
+  apiEndpoint?: string,
+  serviceTypes: string[],
+  serviceAreas: string[],
+  weightLimits: {
+    min: number,
+    max: number
+  },
+  dimensionLimits?: {
+    maxLength: number,
+    maxWidth: number,
+    maxHeight: number,
+    maxSum: number
+  },
+  rates: {
+    baseRate: number,
+    weightRate: number,
+    dimensionalFactor: number
+  },
+  zones?: [
+    {
+      name: string,
+      baseRate: number,
+      additionalRate: number
+    }
+  ],
+  trackingUrl?: string,
+  notes?: string
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    apiStatus: string,
+    createdAt: string,
+    message: string
+  }
+}
+
+// Update Partner
+Request Type: PUT
+Endpoint: /api/v2/admin/partners/:id
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  name?: string,
+  logoUrl?: string,
+  apiStatus?: "active" | "inactive" | "maintenance",
+  supportContact?: string,
+  supportEmail?: string,
+  apiKey?: string,
+  apiEndpoint?: string,
+  serviceTypes?: string[],
+  serviceAreas?: string[],
+  weightLimits?: {
+    min: number,
+    max: number
+  },
+  dimensionLimits?: {
+    maxLength: number,
+    maxWidth: number,
+    maxHeight: number,
+    maxSum: number
+  },
+  rates?: {
+    baseRate: number,
+    weightRate: number,
+    dimensionalFactor: number
+  },
+  zones?: [
+    {
+      name: string,
+      baseRate: number,
+      additionalRate: number
+    }
+  ],
+  trackingUrl?: string,
+  notes?: string
+}
+Response: {
+  data: {
+    id: string,
+    name: string,
+    apiStatus: string,
+    updatedAt: string,
+    message: string
+  }
+}
+
+// Delete Partner
+Request Type: DELETE
+Endpoint: /api/v2/admin/partners/:id
+Headers: {
+  "Authorization": "Bearer ${token}"
+}
+Response: {
+  data: {
+    success: boolean,
+    message: string
+  }
+}
+
+// Delete Multiple Partners
+Request Type: POST
+Endpoint: /api/v2/admin/partners/batch-delete
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  ids: string[]
+}
+Response: {
+  data: {
+    success: boolean,
+    count: number,
+    message: string
+  }
+}
+
+// Refresh Partner APIs
+Request Type: POST
+Endpoint: /api/v2/admin/partners/refresh-api
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "application/json"
+}
+Request Body: {
+  ids: string[]
+}
+Response: {
+  data: {
+    successful: string[],
+    failed: string[],
+    message: string
+  }
+}
+
+## Data Models
+
+### Invoice
+```typescript
+interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  period: string;
+  shipments: number;
+  amount: string;
+}
+
+interface InvoiceSummary {
+  totalInvoices: number;
+  pendingAmount: string;
+  overdueAmount: string;
+  totalPaid: string;
+  totalOutstanding: string;
+}
+
+interface Shipment {
+  id: string;
+  date: string;
+  trackingNumber: string;
+  origin: string;
+  originCity: string;
+  destination: string;
+  destinationCity: string;
+  weight: string;
+  category: string;
+  courier: string;
+  status: string;
+  baseCharge: number;
+  additionalCharge: number;
+  codCharge: number;
+  gst: number;
+  total: number;
+}
+```
+
+### LedgerTransaction
+```typescript
+interface LedgerTransaction {
+  id: string;
+  date: string;
+  type: string;
+  transactionBy: string;
+  credit: string | null;
+  debit: string | null;
+  taxableAmount: string | null;
+  igst: string | null;
+  cgst: string | null;
+  sgst: string | null;
+  totalAmount: string;
+  closingBalance: string;
+  transactionNumber: string;
+  transactionAgainst: string;
+  remark: string | null;
+}
+
+interface LedgerSummary {
+  totalRecharge: string;
+  totalDebit: string;
+  totalCredit: string;
+  closingBalance: string;
+}
+
+interface LedgerFilters {
+  date?: string;
+  transactionNumber?: string;
+  transactionBy?: string;
+  transactionType?: string;
+  transactionAgainst?: string;
+  creditDebit?: "Credit" | "Debit" | "Both";
+  amount?: string;
+  remark?: string;
+}
+
+interface DateRange {
+  start: Date | null;
+  end: Date | null;
+}
+
+interface LedgerPagination {
+  totalEntries: number;
+  totalPages: number;
+  currentPage: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+```
+
+### OrderData
+```typescript
+interface OrderItem {
+  name: string;
+  sku: string;
+  quantity: number;
+  price: number;
+}
+
+interface OrderData {
+  orderId: string;
+  date: string;
+  customer: string;
+  contact: string;
+  items: OrderItem[];
+  amount: string;
+  payment: "COD" | "Prepaid";
+  chanel: "MANUAL" | "EXCEL" | "SHOPIFY" | "WOOCOMMERCE" | "AMAZON" | "FLIPKART" | "OPENCART" | "API";
+  weight: string;
+  tags: string;
+  action: "Ship" | "Processing" | "In Transit" | "Cancelled" | "Error" | "Pending";
+  whatsapp: "Message Delivered" | "Message Read" | "Order Confirm" | "Order Cancelled";
+  status: "not-booked" | "processing" | "booked" | "cancelled" | "shipment-cancelled" | "error";
+  awbNumber?: string;
+  pincode?: string;
+}
+```
+
+### OrderFilters
+```typescript
+interface OrderFilters {
+  dateRange?: {
+    from: Date;
+    to: Date;
+  };
+  status?: OrderData['status'];
+  search?: string;
+}
+```
+
+### OrderStats
+```typescript
+interface OrderStats {
+  total: number;
+  notBooked: number;
+  processing: number;
+  booked: number;
+  cancelled: number;
+  shipmentCancelled: number;
+  error: number;
+}
+```
+
+### ShippingOptions
+```typescript
+interface ShippingOptions {
+  warehouse: string;
+  rtoWarehouse: string;
+  shippingMode: string;
+  courier: string;
+}
+```
+
+### ProfileData
+```typescript
+interface ProfileData {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+  companyCategory: string;
+  brandName?: string;
+  website?: string;
+  supportContact?: string;
+  supportEmail?: string;
+  operationsEmail?: string;
+  financeEmail?: string;
+  rechargeType?: string;
+  profileImage?: string;
+  storeLinks?: {
+    website?: string;
+    amazon?: string;
+    shopify?: string;
+    opencart?: string;
+  };
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    postalCode: string;
+    landmark?: string;
+  };
+  documents?: {
+    gstin?: string;
+    pan?: string;
+    cin?: string;
+    tradeLicense?: string;
+    msmeRegistration?: string;
+    aadhaar?: string;
+    documents: {
+      name: string;
+      type: string;
+      url: string;
+      status: 'verified' | 'pending' | 'rejected';
+    }[];
+  };
+  bankDetails?: {
+    accountName: string;
+    accountNumber: string;
+    bankName: string;
+    branch: string;
+    ifscCode: string;
+    swiftCode?: string;
+    accountType: string;
+    isDefault: boolean;
+    cancelledCheque?: {
+      url: string;
+      status: 'verified' | 'pending';
+    };
+  }[];
+}
+```
+
+### WalletBalance
+```typescript
+interface WalletBalance {
+  walletBalance: number;
+  lastRecharge: number;
+  remittanceBalance: number;
+  lastUpdated: string;
+}
+```
+
+### WalletTransaction
+```typescript
+interface WalletTransaction {
+  transactionId: string;
+  date: string;
+  type: "Credit" | "Debit";
+  amount: number;
+  balance: number;
+  description: string;
+  status: "Success" | "Pending" | "Failed";
+  paymentMethod?: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+### DashboardStats
+```typescript
+interface DashboardStats {
+  orders: {
+    total: number;
+    pending: number;
+    processing: number;
+    shipped: number;
+    delivered: number;
+    cancelled: number;
+    todayCount: number;
+  };
+  shipments: {
+    total: number;
+    todayCount: number;
+  };
+  delivery: {
+    total: number;
+    todayCount: number;
+  };
+  cod: {
+    expected: number;
+    totalDue: number;
+  };
+  revenue: {
+    total: number;
+    dailyGrowth: number;
+  };
+  ndr: {
+    pending: number;
+    actionRequired: number;
+  };
+}
+```
+
+### Shipment
+```typescript
+interface Shipment {
+  orderId: string;
+  orderDate: string;
+  booked: string;
+  pickupId: string;
+  customer: string;
+  product: string;
+  amount: string;
+  payment: "COD" | "Prepaid";
+  weight: string;
+  channel: string;
+  awb: string;
+  courier: string;
+  tracking: string;
+  status: string;
+}
+```
+
+### ShipmentDetail
+```typescript
+interface ShipmentDetail {
+  shipmentId: string;
+  orderId: string;
+  orderDate: string;
+  booked: string;
+  pickupId: string;
+  customer: {
+    name: string;
+    phone: string;
+    email: string;
+    address: {
+      street: string;
+      city: string;
+      state: string;
+      pincode: string;
+      country: string;
+    };
+  };
+  product: {
+    name: string;
+    sku: string;
+    quantity: number;
+    price: number;
+    weight: string;
+    dimensions: {
+      length: number;
+      width: number;
+      height: number;
+    };
+  };
+  payment: {
+    method: "COD" | "Prepaid";
+    amount: string;
+    codCharge: string;
+    shippingCharge: string;
+    gst: string;
+    total: string;
+  };
+  channel: string;
+  awb: string;
+  courier: {
+    name: string;
+    trackingUrl: string;
+  };
+  status: string;
+  trackingHistory: TrackingEvent[];
+}
+```
+
+### TrackingEvent
+```typescript
+interface TrackingEvent {
+  status: string;
+  location: string;
+  timestamp: string;
+  description: string;
+}
+```
+
+### ShippingRate
+```typescript
+interface ShippingRate {
+  courier: string;
+  mode: string;
+  zone: string;
+  baseCharge: number;
+  codCharge: number;
+  gst: number;
+  total: number;
+  expectedDelivery: string;
+}
+```
+
+### RateCard
+```typescript
+interface CourierRate {
+  name: string;
+  rates: {
+    withinCity: number;
+    withinState: number;
+    metroToMetro: number;
+    restOfIndia: number;
+    northEastJK: number;
+  };
+  codCharge: number;
+  codPercent: number;
+}
+
+interface SellerRateCard {
+  rateBand: string;
+  lastUpdated: string;
+  couriers: CourierRate[];
+}
+```
+
+### DetailedRateObject
+```typescript
+interface ZoneRate {
+  base: string;
+  additional: string;
+  rto: string;
+}
+
+interface DetailedRateObject {
+  courier: string;
+  rates: {
+    withinCity: ZoneRate;
+    withinState: ZoneRate;
+    metroToMetro: ZoneRate;
+    restOfIndia: ZoneRate;
+    northEastJK: ZoneRate;
+  };
+  cod: string;
+  codPercent: string;
+}
+```
+
+### RateCalculationResult
+```typescript
+interface RateResult {
+  name: string;
+  baseCharge: number;
+  codCharge: number;
+  gst: number;
+  total: number;
+}
+
+interface RateCalculationResult {
+  zone: string;
+  weight: string;
+  rates: RateResult[];
+}
+```
+
+### RateBand
+```typescript
+interface RateBand {
+  id: string;
+  name: string;
+  description: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  rates?: DetailedRateObject[];
+}
+```
+
+### WeightDisputeData
+```typescript
+interface WeightDisputeData {
+  disputeDate: string;
+  awbNumber: string;
+  orderId: string;
+  given: number;
+  applied: number;
+  revised: number;
+  accepted: boolean;
+  difference: number;
+  product: string;
+  comments: string;
+  status: "Action Required" | "Open Dispute" | "Closed Dispute" | "Closed Resolved";
+}
+
+interface OrderDetails {
+  awbNumber: string;
+  orderId: string;
+  customerName: string;
+  customerPhone: string;
+  address: string;
+  product: string;
+  price: number;
+  quantity: number;
+  status: string;
+  courierPartner: string;
+  trackingStatus: string;
+  pickupDate: string;
+  deliveryDate: string;
+  deliveryAttempts: number;
+  paymentMethod: string;
+  codAmount: number;
+  sellerName: string;
+  sellerSKU: string;
+  givenWeight: number;
+  appliedWeight: number;
+  revisedWeight: number;
+  shippingCharge: number;
+  weightChargeDiscount: number;
+  weightDifferenceCharge: number;
+  comments: string;
+}
+```
+
+### CODRemittance
+```typescript
+interface CODRemittance {
+  remittanceId: string;
+  sellerId: string;
+  sellerName: string;
+  status: "Pending" | "Completed" | "Failed";
+  paymentDate: string;
+  remittanceAmount: string;
+  freightDeduction: string;
+  convenienceFee: string;
+  total: string;
+  paymentRef: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CODRemittanceDetail extends CODRemittance {
+  orders: Array<{
+    orderId: string;
+    awb: string;
+    orderDate: string;
+    deliveryDate: string;
+    customerName: string;
+    amount: string;
+  }>;
+}
+
+interface CODRemittanceSummary {
+  totalCOD: string;
+  remittedTillDate: string;
+  lastRemittance: string;
+  totalRemittanceDue: string;
+  nextRemittance: string;
+}
+
+interface CODRemittanceFilters {
+  status?: "Pending" | "Completed" | "Failed";
+  sellerId?: string;
+  dateRange?: {
+    from: string;
+    to: string;
+  };
+}
+```
+
+### Partner
+```typescript
+interface Zone {
+  name: string;
+  baseRate: number;
+  additionalRate: number;
+}
+
+interface Partner {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  apiStatus: "active" | "inactive" | "maintenance";
+  performanceScore: string;
+  lastUpdated: string;
+  shipmentCount: number;
+  deliverySuccess: string;
+  supportContact: string;
+  supportEmail: string;
+  apiKey?: string;
+  apiEndpoint?: string;
+  serviceTypes: string[];
+  serviceAreas: string[];
+  weightLimits: {
+    min: number;
+    max: number;
+  };
+  dimensionLimits?: {
+    maxLength: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxSum: number;
+  };
+  rates: {
+    baseRate: number;
+    weightRate: number;
+    dimensionalFactor: number;
+  };
+  zones?: Zone[];
+  trackingUrl?: string;
+  integrationDate: string;
+  notes?: string;
+}
+```
+
+## Error Handling
+
+All API responses follow a standard format:
+
+```typescript
+// Success Response
+{
+  "data": T,
+  "message": string,
+  "status": number
+}
+
+// Error Response
+{
+  "message": string,
+  "code": string,
+  "status": number,
+  "details": unknown
+}
+```
+
+Common error codes:
+- `UNAUTHORIZED`: Authentication required or token expired
+- `FORBIDDEN`: User doesn't have permission
+- `NOT_FOUND`: Resource not found
+- `VALIDATION_ERROR`: Request validation failed
+- `SERVER_ERROR`: Internal server error
+- `DUPLICATE_ENTITY`: Entity already exists
+- `RESOURCE_EXHAUSTED`: Rate limit exceeded
+
+## Rate Limiting
+
+API requests are limited to:
+- 100 requests per minute for authenticated users
+- 20 requests per minute for unauthenticated users
+
+Rate limit headers are included in responses:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1620000000
+```
+
+## WebSocket Events
+
+WebSocket connection: `wss://api.rocketrybox.com/ws`
+
+The following events are available for real-time updates:
+
+### Order Status Updates
+Event: order_status_update
+Data: {
+  order_id: string,
+  status: string,
+  timestamp: string
+}
+
+### New Orders
+Event: new_order
+Data: {
+  order_id: string,
+  customer: {
+    name: string,
+    email: string
+  },
+  total: number,
+  timestamp: string
+}
+
+### Ledger Transaction Updates
+Event: ledger_transaction
+Data: {
+  transactionId: string,
+  transactionNumber: string,
+  transactionType: string,
+  amount: string,
+  creditDebit: "Credit" | "Debit",
+  closingBalance: string,
+  timestamp: string
+}
+
+### Weight Dispute Updates
+Event: weight_dispute_update
+Data: {
+  disputeId: string,
+  orderId: string,
+  awbNumber: string,
+  status: "Raised" | "Under Review" | "Resolved" | "Rejected",
+  originalWeight: string,
+  chargedWeight: string,
+  difference: string,
+  timestamp: string
+}
+
+## File Upload
+
+### Upload File
+Request Type: POST
+Endpoint: /api/v2/upload
+Headers: {
+  "Authorization": "Bearer ${token}",
+  "Content-Type": "multipart/form-data"
+}
+Form Data:
+  file: File
+  type?: "invoice" | "evidence" | "profile" | "product" | "document"
+Response: {
+  data: {
+    url: string,
+    filename: string,
+    mimeType: string,
+    size: number,
+    uploadedAt: string
+  }
+}
+
+## Testing
+
+### Test Environment
+Base URL: https://test-api.rocketrybox.com
+
+### Test Credentials
+Customer: customer@test.com / Test123!
+Seller: seller@test.com / Test123!
+Admin: admin@test.com / Test123!
+
+### API Status
+Request Type: GET
+Endpoint: /api/v2/status
+Response: {
+  status: "operational" | "maintenance" | "partial_outage" | "major_outage",
+  version: string,
+  uptime: string,
+  timestamp: string
+} 

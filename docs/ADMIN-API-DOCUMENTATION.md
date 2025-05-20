@@ -16,6 +16,10 @@
 13. [NDR Management](#ndr-management)
 14. [Billing Management](#billing-management)
 15. [Escalation Management](#escalation-management)
+16. [Policy Management](#policy-management)
+17. [Notification Management](#notification-management)
+18. [System Settings](#system-settings)
+19. [Audit Logs & Activity Tracking](#audit-logs--activity-tracking)
 
 ## Authentication & Authorization
 
@@ -5089,5 +5093,786 @@ interface TechIssue {
     }
 }
 ```
+
+## Policy Management
+
+### Overview
+The Policy Management system allows administrators to manage various policies across the platform. This includes terms of service, privacy policy, shipping policy, return policy, refund policy, cookie policy, user agreement, and seller agreement.
+
+### Policy Types
+
+1. **Terms of Service**
+2. **Privacy Policy**
+3. **Shipping Policy**
+4. **Return Policy**
+5. **Refund Policy**
+6. **Cookie Policy**
+7. **User Agreement**
+8. **Seller Agreement**
+
+### Policy Management Endpoints
+
+#### List Policies
+```http
+GET /policies
+```
+Returns a paginated list of all policies.
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 10)
+- `type`: Filter by policy type
+- `search`: Search in policy title or content
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "policies": [
+      {
+        "id": "POL123",
+        "title": "Privacy Policy",
+        "slug": "privacy-policy",
+        "type": "legal",
+        "content": "Policy content...",
+        "version": "1.0",
+        "status": "active",
+        "createdAt": "2024-03-01T10:00:00Z",
+        "updatedAt": "2024-03-20T10:00:00Z"
+      }
+    ],
+    "pagination": {
+      "total": 100,
+      "page": 1,
+      "limit": 10,
+      "pages": 10
+    }
+  }
+}
+```
+
+#### Get Policy by Slug
+```http
+GET /policies/:slug
+```
+Returns a specific policy by its slug.
+
+**Path Parameters:**
+- `slug`: Policy slug (e.g., "privacy-policy")
+
+#### Create Policy
+```http
+POST /policies
+```
+Creates a new policy.
+
+**Request Body:**
+```json
+{
+  "title": "New Policy",
+  "type": "legal",
+  "content": "Policy content...",
+  "status": "draft"
+}
+```
+
+#### Update Policy
+```http
+PUT /policies/:slug
+```
+Updates an existing policy.
+
+**Path Parameters:**
+- `slug`: Policy slug
+
+**Request Body:**
+```json
+{
+  "title": "Updated Policy",
+  "content": "Updated content...",
+  "status": "active"
+}
+```
+
+#### Delete Policy
+```http
+DELETE /policies/:slug
+```
+Deletes a policy.
+
+**Path Parameters:**
+- `slug`: Policy slug
+
+#### Get Policies by Type
+```http
+GET /policies/type/:type
+```
+Returns all policies of a specific type.
+
+**Path Parameters:**
+- `type`: Policy type (e.g., "legal", "terms", "shipping")
+
+## Notification Management
+
+### Overview
+The Notification Management system allows administrators to manage various notification settings, including email notifications, SMS notifications, and push notifications.
+
+### Notification Types
+
+1. **Email Notifications**
+   - Email templates
+   - SMTP configuration
+   - Delivery methods
+   - Test functionality
+
+2. **SMS Notifications**
+   - SMS templates
+   - API configuration
+   - Delivery methods
+   - Test functionality
+
+3. **Push Notifications**
+   - Firebase configuration
+   - Test functionality
+
+### Notification Management Endpoints
+
+#### Email Configuration
+
+##### Get Email Config
+```http
+GET /notifications/email
+```
+Returns the current email configuration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "provider": "smtp",
+    "host": "smtp.example.com",
+    "port": 587,
+    "secure": true,
+    "auth": {
+      "user": "user@example.com",
+      "pass": "********"
+    },
+    "from": {
+      "name": "RocketryBox",
+      "email": "noreply@rocketrybox.com"
+    },
+    "replyTo": "support@rocketrybox.com",
+    "templates": {
+      "path": "/templates/email",
+      "defaultLocale": "en"
+    }
+  }
+}
+```
+
+##### Update Email Config
+```http
+PUT /notifications/email
+```
+Updates the email configuration.
+
+**Request Body:**
+```json
+{
+  "provider": "smtp",
+  "host": "smtp.example.com",
+  "port": 587,
+  "secure": true,
+  "auth": {
+    "user": "user@example.com",
+    "pass": "new_password"
+  },
+  "from": {
+    "name": "RocketryBox",
+    "email": "noreply@rocketrybox.com"
+  }
+}
+```
+
+#### SMS Configuration
+
+##### Get SMS Config
+```http
+GET /notifications/sms
+```
+Returns the current SMS configuration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "provider": "twilio",
+    "accountSid": "AC123...",
+    "authToken": "********",
+    "from": "+1234567890",
+    "templates": {
+      "path": "/templates/sms",
+      "defaultLocale": "en"
+    }
+  }
+}
+```
+
+##### Update SMS Config
+```http
+PUT /notifications/sms
+```
+Updates the SMS configuration.
+
+**Request Body:**
+```json
+{
+  "provider": "twilio",
+  "accountSid": "AC123...",
+  "authToken": "new_token",
+  "from": "+1234567890"
+}
+```
+
+#### Email Templates
+
+##### List Email Templates
+```http
+GET /notifications/email/templates
+```
+Returns a list of all email templates.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "templates": [
+      {
+        "id": "TEMP123",
+        "name": "Welcome Email",
+        "subject": "Welcome to RocketryBox",
+        "content": "Template content...",
+        "variables": ["name", "email"],
+        "status": "active",
+        "createdAt": "2024-03-01T10:00:00Z",
+        "updatedAt": "2024-03-20T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+##### Create Email Template
+```http
+POST /notifications/email/templates
+```
+Creates a new email template.
+
+**Request Body:**
+```json
+{
+  "name": "New Template",
+  "subject": "Template Subject",
+  "content": "Template content...",
+  "variables": ["name", "email"],
+  "status": "active"
+}
+```
+
+##### Update Email Template
+```http
+PUT /notifications/email/templates/:id
+```
+Updates an existing email template.
+
+**Path Parameters:**
+- `id`: Template ID
+
+**Request Body:**
+```json
+{
+  "name": "Updated Template",
+  "subject": "Updated Subject",
+  "content": "Updated content...",
+  "variables": ["name", "email", "orderId"],
+  "status": "active"
+}
+```
+
+#### SMS Templates
+
+##### List SMS Templates
+```http
+GET /notifications/sms/templates
+```
+Returns a list of all SMS templates.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "templates": [
+      {
+        "id": "TEMP123",
+        "name": "Order Confirmation",
+        "content": "Your order {orderId} has been confirmed.",
+        "variables": ["orderId"],
+        "status": "active",
+        "createdAt": "2024-03-01T10:00:00Z",
+        "updatedAt": "2024-03-20T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+##### Create SMS Template
+```http
+POST /notifications/sms/templates
+```
+Creates a new SMS template.
+
+**Request Body:**
+```json
+{
+  "name": "New Template",
+  "content": "Template content...",
+  "variables": ["name", "orderId"],
+  "status": "active"
+}
+```
+
+##### Update SMS Template
+```http
+PUT /notifications/sms/templates/:id
+```
+Updates an existing SMS template.
+
+**Path Parameters:**
+- `id`: Template ID
+
+**Request Body:**
+```json
+{
+  "name": "Updated Template",
+  "content": "Updated content...",
+  "variables": ["name", "orderId", "trackingNumber"],
+  "status": "active"
+}
+```
+
+#### Push Notifications
+
+##### Get Push Config
+```http
+GET /notifications/push
+```
+Returns the current push notification configuration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "provider": "firebase",
+    "apiKey": "********"
+  }
+}
+```
+
+##### Update Push Config
+```http
+PUT /notifications/push
+```
+Updates the push notification configuration.
+
+**Request Body:**
+```json
+{
+  "provider": "firebase",
+  "apiKey": "new_api_key"
+}
+```
+
+## System Settings
+
+### Overview
+The System Settings system allows administrators to manage various system-wide settings, including general settings, security settings, notification settings, and maintenance settings.
+
+### System Settings Endpoints
+
+#### Get System Config
+```http
+GET /settings/system
+```
+Returns the current system configuration.
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "general": {
+      "appName": "RocketryBox",
+      "appUrl": "https://rocketrybox.com",
+      "supportEmail": "support@rocketrybox.com",
+      "supportPhone": "+1234567890"
+    },
+    "security": {
+      "passwordPolicy": {
+        "minLength": 8,
+        "requireUppercase": true,
+        "requireLowercase": true,
+        "requireNumbers": true,
+        "requireSpecialChars": true
+      },
+      "sessionTimeout": 3600,
+      "maxLoginAttempts": 5,
+      "lockoutDuration": 900
+    },
+    "notifications": {
+      "email": {
+        "enabled": true,
+        "provider": "smtp"
+      },
+      "sms": {
+        "enabled": true,
+        "provider": "twilio"
+      },
+      "push": {
+        "enabled": true,
+        "provider": "firebase"
+      }
+    },
+    "maintenance": {
+      "enabled": false,
+      "message": "System under maintenance",
+      "allowedIPs": ["192.168.1.1"]
+    }
+  }
+}
+```
+
+#### Update System Config
+```http
+PUT /settings/system
+```
+Updates the system configuration.
+
+**Request Body:**
+```json
+{
+  "general": {
+    "appName": "RocketryBox",
+    "appUrl": "https://rocketrybox.com",
+    "supportEmail": "support@rocketrybox.com"
+  },
+  "security": {
+    "passwordPolicy": {
+      "minLength": 8,
+      "requireUppercase": true
+    }
+  }
+}
+```
+
+#### Reset System Config
+```http
+POST /settings/system/reset
+```
+Resets the system configuration to default values.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "System configuration reset to default values"
+}
+```
+
+### 31. Audit Logs & Activity Tracking
+Base path: `/audit-logs`
+
+#### Overview
+The Audit Logs & Activity Tracking system provides comprehensive logging of all administrative actions and system events. This includes user actions, system changes, security events, and performance metrics.
+
+#### Get Activity Logs
+```http
+GET /audit-logs
+```
+Returns a paginated list of activity logs.
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `action`: Filter by action type
+- `userId`: Filter by user ID
+- `module`: Filter by module
+- `severity`: Filter by severity level (info|warning|error|critical)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "logs": [
+      {
+        "id": "LOG123",
+        "timestamp": "2024-03-20T10:00:00Z",
+        "action": "user.login",
+        "module": "auth",
+        "severity": "info",
+        "userId": "ADM123",
+        "userName": "Admin Name",
+        "ipAddress": "192.168.1.1",
+        "userAgent": "Mozilla/5.0...",
+        "details": {
+          "status": "success",
+          "deviceType": "desktop",
+          "browser": "Chrome"
+        }
+      }
+    ],
+    "pagination": {
+      "total": 1000,
+      "page": 1,
+      "limit": 50,
+      "pages": 20
+    }
+  }
+}
+```
+
+#### Get User Activity
+```http
+GET /audit-logs/user/:userId
+```
+Returns activity logs for a specific user.
+
+**Path Parameters:**
+- `userId`: User ID
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `action`: Filter by action type
+- `module`: Filter by module
+
+#### Get Module Activity
+```http
+GET /audit-logs/module/:module
+```
+Returns activity logs for a specific module.
+
+**Path Parameters:**
+- `module`: Module name (e.g., "users", "orders", "settings")
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `action`: Filter by action type
+- `severity`: Filter by severity level
+
+#### Get System Events
+```http
+GET /audit-logs/system
+```
+Returns system-level events and changes.
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `severity`: Filter by severity level
+- `type`: Filter by event type
+
+#### Export Activity Logs
+```http
+GET /audit-logs/export
+```
+Exports activity logs to CSV format.
+
+**Query Parameters:**
+- `startDate`: Start date for export (ISO format)
+- `endDate`: End date for export (ISO format)
+- `action`: Filter by action type
+- `module`: Filter by module
+- `severity`: Filter by severity level
+- `format`: Export format (csv|xlsx)
+
+**Response:**
+- File download with exported logs
+
+#### Get Activity Statistics
+```http
+GET /audit-logs/stats
+```
+Returns activity statistics and metrics.
+
+**Query Parameters:**
+- `startDate`: Start date for stats (ISO format)
+- `endDate`: End date for stats (ISO format)
+- `groupBy`: Group by time period (hour|day|week|month)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalActions": 1500,
+    "actionsByType": {
+      "user.login": 450,
+      "user.logout": 420,
+      "settings.update": 180,
+      "order.create": 150,
+      "order.update": 120,
+      "other": 180
+    },
+    "actionsByModule": {
+      "auth": 870,
+      "settings": 180,
+      "orders": 270,
+      "users": 90,
+      "other": 90
+    },
+    "actionsBySeverity": {
+      "info": 1200,
+      "warning": 200,
+      "error": 80,
+      "critical": 20
+    },
+    "timeDistribution": {
+      "2024-03-20": {
+        "total": 150,
+        "byHour": {
+          "00": 5,
+          "01": 3,
+          // ... other hours
+        }
+      }
+    }
+  }
+}
+```
+
+#### Get User Session History
+```http
+GET /audit-logs/sessions/:userId
+```
+Returns session history for a specific user.
+
+**Path Parameters:**
+- `userId`: User ID
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `status`: Filter by session status (active|expired|terminated)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "sessions": [
+      {
+        "id": "SESS123",
+        "startTime": "2024-03-20T10:00:00Z",
+        "endTime": "2024-03-20T11:00:00Z",
+        "duration": 3600,
+        "status": "expired",
+        "ipAddress": "192.168.1.1",
+        "deviceInfo": {
+          "type": "desktop",
+          "browser": "Chrome",
+          "os": "Windows",
+          "userAgent": "Mozilla/5.0..."
+        },
+        "actions": [
+          {
+            "action": "user.login",
+            "timestamp": "2024-03-20T10:00:00Z"
+          },
+          {
+            "action": "dashboard.view",
+            "timestamp": "2024-03-20T10:01:00Z"
+          }
+        ]
+      }
+    ],
+    "pagination": {
+      "total": 100,
+      "page": 1,
+      "limit": 50,
+      "pages": 2
+    }
+  }
+}
+```
+
+#### Get Security Events
+```http
+GET /audit-logs/security
+```
+Returns security-related events and alerts.
+
+**Query Parameters:**
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+- `startDate`: Filter by start date (ISO format)
+- `endDate`: Filter by end date (ISO format)
+- `severity`: Filter by severity level
+- `type`: Filter by security event type
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "events": [
+      {
+        "id": "SEC123",
+        "timestamp": "2024-03-20T10:00:00Z",
+        "type": "failed_login",
+        "severity": "warning",
+        "userId": "ADM123",
+        "ipAddress": "192.168.1.1",
+        "details": {
+          "attempts": 3,
+          "reason": "Invalid password",
+          "userAgent": "Mozilla/5.0..."
+        }
+      }
+    ],
+    "pagination": {
+      "total": 50,
+      "page": 1,
+      "limit": 50,
+      "pages": 1
+    }
+  }
+}
+```
+
+### Security Notes
+- All audit log endpoints require 'audit' permission
+- Logs are retained for 90 days by default
+- Sensitive data is automatically redacted
+- Export requests are rate limited
+- Real-time alerts are sent for critical security events
 
 // ... existing code ... 

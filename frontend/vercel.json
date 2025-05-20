@@ -1,0 +1,36 @@
+{
+    "rewrites": [
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ],
+    "headers": [
+        {
+            "source": "/(.*)",
+            "headers": [
+                { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+            ]
+        },
+        {
+            "source": "/(.*)\\.(.*)$",
+            "headers": [
+                { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+            ]
+        }
+    ],
+    "buildCommand": "npm run build --legacy-peer-deps",
+    "outputDirectory": "dist",
+    "framework": "vite",
+    "installCommand": "npm install --legacy-peer-deps",
+    "build": {
+        "env": {
+            "SKIP_CACHE": "true",
+            "VERCEL_FORCE_NO_BUILD_CACHE": "1"
+        }
+    },
+    "github": {
+        "enabled": true,
+        "silent": false
+    }
+}
