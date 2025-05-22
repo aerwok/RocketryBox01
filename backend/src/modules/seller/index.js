@@ -16,6 +16,7 @@ import storeRoutes from './routes/store.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import rateCardRoutes from './routes/ratecard.routes.js';
 import teamUserRoutes from './routes/teamUser.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 
 const router = express.Router();
 
@@ -59,5 +60,8 @@ router.use('/rate-card', rateCardRoutes);
 
 // Team Management
 router.use('/team', teamUserRoutes);
+
+// Dashboard
+router.use('/dashboard', dashboardRoutes);
 
 export default router; 

@@ -1,7 +1,9 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
-import axios from 'axios';
 import { generateOTP } from '../../../utils/otp.js';
 import { setOTP, getOTP } from '../../../utils/redis.js';
+import { sendSMS } from '../../../utils/sms.js';
+import { sendEmail } from '../../../utils/email.js';
+import { logger } from '../../../utils/logger.js';
 
 // Initialize AWS SES client
 const sesClient = new SESClient({
@@ -16,11 +18,6 @@ const sesClient = new SESClient({
 const sendSMSOTP = async (mobile, otp) => {
     try {
         console.log('Attempting to send SMS OTP to:', mobile);
-        console.log('Environment variables:', {
-            FAST2SMS_API_KEY: process.env.FAST2SMS_API_KEY ? 'Set' : 'Not set',
-            FAST2SMS_SENDER_ID: process.env.FAST2SMS_SENDER_ID,
-            NODE_ENV: process.env.NODE_ENV
-        });
         
         // Validate mobile number
         if (!mobile || mobile.length !== 10) {
@@ -28,113 +25,76 @@ const sendSMSOTP = async (mobile, otp) => {
             return false;
         }
 
+        // In development mode, always return success
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Development mode: Returning dummy OTP:', otp);
+            return true;
+        }
+
         // Validate Fast2SMS API key
         if (!process.env.FAST2SMS_API_KEY) {
             console.error('Fast2SMS API key is not configured');
             return false;
         }
-        
-        const payload = {
-            route: 'v3',
-            sender_id: process.env.FAST2SMS_SENDER_ID || 'RKTBOX',
-            message: `Your RocketryBox verification code is: ${otp}. Valid for 5 minutes.`,
-            language: 'english',
-            flash: 0,
-            numbers: mobile,
-        };
 
-        console.log('Fast2SMS Request Payload:', { ...payload, numbers: '***' + mobile.slice(-4) });
-        console.log('Fast2SMS Headers:', {
-            authorization: process.env.FAST2SMS_API_KEY ? 'Present' : 'Missing',
-            'Content-Type': 'application/json'
-        });
-
-        const response = await axios.post('https://www.fast2sms.com/dev/bulkV2', payload, {
-            headers: {
-                'authorization': process.env.FAST2SMS_API_KEY,
-                'Content-Type': 'application/json'
+        // Send OTP using SMS service
+        const result = await sendSMS({
+            to: mobile,
+            templateId: 'OTP',
+            variables: {
+                otp: otp,
+                expiry: '5 minutes'
             }
         });
 
-        console.log('Fast2SMS Response:', response.data);
-        
-        if (response.data.return === true) {
-            console.log('SMS OTP sent successfully');
-            return true;
-        }
-
-        // Handle specific Fast2SMS error cases
-        if (response.data.message) {
-            console.error('Fast2SMS Error Message:', response.data.message);
-        }
-        if (response.data.status === 'error') {
-            console.error('Fast2SMS Status Error:', response.data);
-        }
-        
-        return false;
+        return result.success;
     } catch (error) {
-        console.error('SMS OTP Error Details:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status,
-            config: {
-                url: error.config?.url,
-                method: error.config?.method,
-                headers: error.config?.headers ? 'Headers present' : 'No headers'
-            }
-        });
-        return false;
+        console.error('SMS OTP Error:', error.message);
+        return process.env.NODE_ENV === 'development'; // Return true in development, false otherwise
     }
 };
 
 // Send OTP via Email using AWS SES
 const sendEmailOTP = async (email, otp) => {
     try {
-        console.log('Attempting to send Email OTP to:', email);
-        const params = {
-            Source: process.env.SES_FROM_EMAIL,
-            Destination: {
-                ToAddresses: [email],
-            },
-            Message: {
-                Subject: {
-                    Data: 'Your RocketryBox Verification Code',
-                    Charset: 'UTF-8',
-                },
-                Body: {
-                    Html: {
-                        Data: `
-                            <h1>Email Verification</h1>
-                            <p>Your verification code is: <strong>${otp}</strong></p>
-                            <p>This code is valid for 5 minutes.</p>
-                            <p>If you didn't request this code, please ignore this email.</p>
-                        `,
-                        Charset: 'UTF-8',
-                    },
-                },
-            },
-        };
+        logger.info('Attempting to send Email OTP:', { 
+            email,
+            hasOTP: !!otp,
+            sesClient: !!sesClient
+        });
+        
+        // Validate email format
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            logger.error('Invalid email format:', { email });
+            return false;
+        }
 
-        console.log('SES Configuration:', {
-            region: process.env.AWS_REGION,
-            hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-            hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
-            fromEmail: process.env.SES_FROM_EMAIL
+        if (!sesClient) {
+            logger.error('AWS SES client not initialized');
+            return false;
+        }
+
+        const result = await sendEmail({
+            to: email,
+            subject: 'Your RocketryBox Verification Code',
+            templateId: 'OTP',
+            variables: {
+                otp,
+                expiry: '5 minutes'
+            }
         });
 
-        const command = new SendEmailCommand(params);
-        const result = await sesClient.send(command);
-        console.log('Email OTP sent successfully:', result);
+        logger.info('Email OTP sent successfully:', { 
+            email,
+            messageId: result.messageId 
+        });
         return true;
     } catch (error) {
-        console.error('Email OTP Error Details:', {
-            message: error.message,
-            code: error.code,
-            requestId: error.$metadata?.requestId,
-            cfId: error.$metadata?.cfId,
-            extendedRequestId: error.$metadata?.extendedRequestId,
-            attempts: error.$metadata?.attempts,
-            totalRetryDelay: error.$metadata?.totalRetryDelay
+        logger.error('Email OTP Error:', {
+            email,
+            error: error.message,
+            stack: error.stack,
+            sesClient: !!sesClient
         });
         return false;
     }
@@ -143,31 +103,79 @@ const sendEmailOTP = async (email, otp) => {
 // Generate and send mobile OTP
 const generateAndSendMobileOTP = async (mobile) => {
     try {
-        console.log('Generating mobile OTP for:', mobile);
+        console.log('\n=== Mobile OTP Generation ===');
+        console.log('Mobile:', mobile);
         const otp = generateOTP();
-        console.log('OTP generated:', otp);
         
+        // Make OTP clearly visible in development mode
+        if (process.env.NODE_ENV === 'development') {
+            console.log('\n🔑 DEVELOPMENT MODE - MOBILE OTP 🔑');
+            console.log('┌─────────────────────────────────┐');
+            console.log(`│  Mobile: ${mobile.padEnd(25)}│`);
+            console.log(`│  OTP: ${otp.padEnd(28)}│`);
+            console.log('└─────────────────────────────────┘\n');
+        } else {
+            console.log('Generated OTP:', otp);
+        }
+        
+        // Store OTP in Redis or memory store
         const stored = await setOTP(`mobile:${mobile}`, otp);
-        console.log('OTP stored in Redis:', stored);
+        console.log('OTP stored:', stored);
         
         if (!stored) {
-            console.error('Failed to store OTP in Redis');
+            console.error('Failed to store OTP');
             return false;
         }
         
-        return await sendSMSOTP(mobile, otp);
+        // In development mode, always return success
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Development mode: Returning dummy OTP:', otp);
+            return true;
+        }
+
+        // Validate Fast2SMS API key
+        if (!process.env.FAST2SMS_API_KEY) {
+            console.error('Fast2SMS API key is not configured');
+            return false;
+        }
+
+        // Send OTP using SMS service
+        const result = await sendSMS({
+            to: mobile,
+            templateId: 'OTP',
+            variables: {
+                otp: otp,
+                expiry: '5 minutes'
+            }
+        });
+
+        console.log('SMS OTP sent:', result.success);
+        console.log('=== End Mobile OTP ===\n');
+        
+        return result.success;
     } catch (error) {
         console.error('Error in generateAndSendMobileOTP:', error);
-        return false;
+        return process.env.NODE_ENV === 'development'; // Return true in development, false otherwise
     }
 };
 
 // Generate and send email OTP
 const generateAndSendEmailOTP = async (email) => {
     try {
-        console.log('Generating email OTP for:', email);
+        console.log('\n=== Email OTP Generation ===');
+        console.log('Email:', email);
         const otp = generateOTP();
-        console.log('OTP generated:', otp);
+        
+        // Make OTP clearly visible in development mode
+        if (process.env.NODE_ENV === 'development') {
+            console.log('\n📧 DEVELOPMENT MODE - EMAIL OTP 📧');
+            console.log('┌─────────────────────────────────────────────┐');
+            console.log(`│  Email: ${email.padEnd(38)}│`);
+            console.log(`│  OTP: ${otp.padEnd(41)}│`);
+            console.log('└─────────────────────────────────────────────┘\n');
+        } else {
+            console.log('Generated OTP:', otp);
+        }
         
         const stored = await setOTP(`email:${email}`, otp);
         console.log('OTP stored in Redis:', stored);
@@ -177,9 +185,28 @@ const generateAndSendEmailOTP = async (email) => {
             return false;
         }
         
-        return await sendEmailOTP(email, otp);
+        // In development mode, always return success
+        if (process.env.NODE_ENV === 'development') {
+            console.log('Development mode: Email OTP sending bypassed');
+            return true;
+        }
+        
+        const sent = await sendEmailOTP(email, otp);
+        console.log('Email OTP sent:', sent);
+        console.log('=== End Email OTP ===\n');
+        
+        return sent;
     } catch (error) {
-        console.error('Error in generateAndSendEmailOTP:', error);
+        console.error('Error in generateAndSendEmailOTP:', {
+            email,
+            error: error.message,
+            stack: error.stack
+        });
+        
+        // Return success in development mode
+        if (process.env.NODE_ENV === 'development') {
+            return true;
+        }
         return false;
     }
 };

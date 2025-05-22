@@ -18,12 +18,12 @@ export const registerSchema = Joi.object({
       'string.empty': 'Email is required',
       'string.email': 'Please provide a valid email address'
     }),
-  phone: Joi.string()
+  mobile: Joi.string()
     .required()
     .pattern(/^[6-9]\d{9}$/)
     .messages({
-      'string.empty': 'Phone number is required',
-      'string.pattern.base': 'Please provide a valid Indian phone number'
+      'string.empty': 'Mobile number is required',
+      'string.pattern.base': 'Please provide a valid Indian mobile number'
     }),
   password: Joi.string()
     .required()
@@ -47,7 +47,15 @@ export const registerSchema = Joi.object({
     .messages({
       'boolean.base': 'You must accept the terms and conditions',
       'any.only': 'You must accept the terms and conditions'
-    })
+    }),
+  mobileOtp: Joi.string().optional(),
+  emailOtp: Joi.string().optional(),
+  address1: Joi.string().optional(),
+  address2: Joi.string().allow('').optional(),
+  city: Joi.string().optional(),
+  state: Joi.string().optional(),
+  pincode: Joi.string().optional(),
+  role: Joi.string().optional()
 });
 
 // Login validation schema
@@ -82,7 +90,7 @@ export const otpSchema = Joi.object({
     }),
   purpose: Joi.string()
     .required()
-    .valid('login', 'reset', 'verify')
+    .valid('login', 'reset', 'verify', 'register')
     .messages({
       'string.empty': 'Purpose is required',
       'any.only': 'Invalid purpose'

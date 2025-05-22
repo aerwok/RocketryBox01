@@ -1,14 +1,90 @@
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { logger } from './logger.js';
 
-// Create SES client
-const sesClient = new SESClient({
-  region: process.env.AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
+// Debug log all environment variables (without sensitive values)
+logger.info('Checking AWS environment variables:', {
+  AWS_REGION: process.env.AWS_REGION ? 'Set' : 'Not set',
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set',
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set',
+  SES_FROM_EMAIL: process.env.SES_FROM_EMAIL ? 'Set' : 'Not set',
+  NODE_ENV: process.env.NODE_ENV
 });
+
+// Create SES client
+let sesClient = null;
+
+const initializeSESClient = () => {
+  try {
+    // Check if required environment variables are present
+    if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.SES_FROM_EMAIL) {
+      logger.error('Missing required AWS environment variables');
+      return false;
+    }
+
+    // Validate AWS credentials format
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID.trim();
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY.trim();
+    const region = process.env.AWS_REGION.trim();
+
+    // Validate region format
+    if (!region.match(/^[a-z]{2}-[a-z]+-\d{1}$/)) {
+      logger.error('Invalid AWS Region format. Expected format: xx-xxxxx-x (e.g., ap-south-1)');
+      return false;
+    }
+
+    // Log detailed region information
+    logger.info('AWS Region details:', {
+      region,
+      format: region.match(/^[a-z]{2}-[a-z]+-\d{1}$/) ? 'Valid' : 'Invalid',
+      expectedFormat: 'xx-xxxxx-x (e.g., ap-south-1)'
+    });
+
+    if (!accessKeyId.match(/^[A-Z0-9]{20}$/)) {
+      logger.error('Invalid AWS Access Key ID format');
+      return false;
+    }
+
+    if (!secretAccessKey.match(/^[A-Za-z0-9/+=]{40}$/)) {
+      logger.error('Invalid AWS Secret Access Key format');
+      return false;
+    }
+
+    // Log AWS region and credentials presence (without sensitive data)
+    logger.info('Initializing AWS SES client with:', {
+      region,
+      hasAccessKey: true,
+      hasSecretKey: true,
+      fromEmail: process.env.SES_FROM_EMAIL.trim()
+    });
+
+    // Create SES client with explicit credentials and additional configuration
+    sesClient = new SESClient({
+      region,
+      credentials: {
+        accessKeyId,
+        secretAccessKey
+      },
+      maxAttempts: 3,
+      endpoint: `https://email.${region}.amazonaws.com`,
+      forcePathStyle: false,
+      signatureVersion: 'v4'
+    });
+
+    logger.info('AWS SES client initialized successfully');
+    return true;
+  } catch (error) {
+    logger.error('Failed to initialize AWS SES client:', { 
+      error: error.message,
+      stack: error.stack,
+      region: process.env.AWS_REGION
+    });
+    sesClient = null;
+    return false;
+  }
+};
+
+// Initialize the client immediately
+initializeSESClient();
 
 /**
  * Send email using AWS SES
@@ -22,6 +98,18 @@ const sesClient = new SESClient({
  */
 export const sendEmail = async ({ to, subject, text, html, templateId, variables }) => {
   try {
+    // Try to reinitialize the client if it's not available
+    if (!sesClient && !initializeSESClient()) {
+      console.error('AWS SES client initialization failed');
+      throw new Error('AWS SES client not initialized. Please check your AWS credentials.');
+    }
+
+    // Validate email parameters
+    if (!to || !subject) {
+      console.error('Missing required email parameters:', { to, subject });
+      throw new Error('Recipient email and subject are required');
+    }
+
     // Prepare content based on template or direct content
     let finalHtml = html;
     let finalText = text;
@@ -42,9 +130,9 @@ export const sendEmail = async ({ to, subject, text, html, templateId, variables
     }
 
     const params = {
-      Source: `${process.env.EMAIL_FROM_NAME} <${process.env.EMAIL_FROM_ADDRESS}>`,
+      Source: process.env.SES_FROM_EMAIL.trim(),
       Destination: {
-        ToAddresses: Array.isArray(to) ? to : [to]
+        ToAddresses: Array.isArray(to) ? to.map(email => email.trim()) : [to.trim()]
       },
       Message: {
         Subject: {
@@ -68,10 +156,20 @@ export const sendEmail = async ({ to, subject, text, html, templateId, variables
       }
     };
 
+    console.log('Email parameters:', {
+      from: process.env.SES_FROM_EMAIL,
+      to,
+      subject,
+      hasHtml: !!finalHtml,
+      hasText: !!finalText,
+      templateId,
+      variables
+    });
+
     const command = new SendEmailCommand(params);
     const result = await sesClient.send(command);
     
-    logger.info('Email sent successfully', { 
+    console.log('Email sent successfully:', { 
       messageId: result.MessageId,
       recipient: to
     });
@@ -82,10 +180,18 @@ export const sendEmail = async ({ to, subject, text, html, templateId, variables
       message: 'Email sent successfully'
     };
   } catch (error) {
-    logger.error('Error sending email', { 
+    console.error('Detailed email error:', {
       error: error.message,
+      code: error.code,
+      requestId: error.$metadata?.requestId,
+      cfId: error.$metadata?.cfId,
+      extendedRequestId: error.$metadata?.extendedRequestId,
+      attempts: error.$metadata?.attempts,
+      totalRetryDelay: error.$metadata?.totalRetryDelay,
       recipient: to,
-      subject
+      subject,
+      from: process.env.SES_FROM_EMAIL,
+      sesClient: !!sesClient
     });
     throw new Error(`Failed to send email: ${error.message}`);
   }

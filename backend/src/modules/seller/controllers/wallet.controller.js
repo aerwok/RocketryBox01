@@ -3,6 +3,36 @@ import { AppError } from '../../../middleware/errorHandler.js';
 import xlsx from 'xlsx';
 import Seller from '../models/seller.model.js';
 
+// Get wallet balance
+export const getWalletBalance = async (req, res, next) => {
+  try {
+    const sellerId = req.user.id;
+    const seller = await Seller.findById(sellerId);
+    
+    if (!seller) {
+      throw new AppError('Seller not found', 404);
+    }
+    
+    // Get latest transaction for last recharge date
+    const lastRecharge = await WalletTransaction.findOne({ 
+      seller: sellerId, 
+      type: 'Recharge' 
+    }).sort({ date: -1 });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        walletBalance: parseFloat(seller.walletBalance || '0'),
+        lastRecharge: lastRecharge ? lastRecharge.date.getTime() : null,
+        remittanceBalance: 0, // If you track remittance balance separately
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // List wallet transactions with filters and pagination
 export const listWalletTransactions = async (req, res, next) => {
   try {

@@ -24,7 +24,7 @@ interface StatusButton {
 // Function to fetch status counts from API
 async function fetchStatusCounts(): Promise<Record<string, number>> {
     try {
-        const response = await fetch('/api/customer/orders/status-counts');
+        const response = await fetch('/api/v2/customer/orders/status-counts');
         if (!response.ok) throw new Error('Failed to fetch status counts');
         
         const data = await response.json();

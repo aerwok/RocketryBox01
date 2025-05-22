@@ -1,6 +1,17 @@
 import { Button } from "@/components/ui/button";
-import { StoreIcon, TruckIcon, ReceiptTextIcon, UserCogIcon, MessageSquareTextIcon, TerminalIcon } from "lucide-react";
+import { 
+    StoreIcon, 
+    TruckIcon, 
+    ReceiptTextIcon, 
+    UserCogIcon, 
+    MessageSquareTextIcon, 
+    TerminalIcon,
+    LogOutIcon
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { sellerAuthService } from "@/services/seller-auth.service";
+import { toast } from "sonner";
+import { useState } from "react";
 
 const SETTINGS_CARDS = [
     {
@@ -55,12 +66,39 @@ const SETTINGS_CARDS = [
 
 const SellerSettingsPage = () => {
     const navigate = useNavigate();
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+    const handleLogout = async () => {
+        try {
+            setIsLoggingOut(true);
+            await sellerAuthService.logout();
+            toast.success("Logged out successfully");
+            navigate("/seller/login");
+        } catch (error) {
+            console.error("Logout error:", error);
+            toast.error("Failed to logout. Please try again.");
+        } finally {
+            setIsLoggingOut(false);
+        }
+    };
 
     return (
         <div className="w-full space-y-8">
-            <h1 className="text-xl lg:text-2xl font-semibold">
-                Settings
-            </h1>
+            <div className="flex justify-between items-center">
+                <h1 className="text-xl lg:text-2xl font-semibold">
+                    Settings
+                </h1>
+
+                <Button 
+                    variant="outline" 
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    className="bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border-red-200"
+                >
+                    <LogOutIcon className="w-4 h-4 mr-2" />
+                    {isLoggingOut ? "Logging out..." : "Logout"}
+                </Button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {SETTINGS_CARDS.map((card) => (

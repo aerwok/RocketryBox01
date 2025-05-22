@@ -57,25 +57,25 @@ const router = express.Router();
 router.use(defaultLimiter);
 
 // Auth routes
-router.post('/auth/register', authLimiter, validateRequest(registerSchema), register);
-router.post('/auth/login', authLimiter, validateRequest(loginSchema), login);
-router.post('/auth/otp/send', authLimiter, validateRequest(otpSchema), sendOTP);
-router.post('/auth/otp/verify', authLimiter, validateRequest(otpSchema), verifyOTPHandler);
+router.post('/auth/register', authLimiter, validateRequest([registerSchema]), register);
+router.post('/auth/login', authLimiter, validateRequest([loginSchema]), login);
+router.post('/auth/otp/send', authLimiter, validateRequest([otpSchema]), sendOTP);
+router.post('/auth/otp/verify', authLimiter, validateRequest([otpSchema]), verifyOTPHandler);
 
 // Protected routes
 router.use(protect);
 
 // Profile routes
 router.get('/profile', getProfile);
-router.put('/profile', validateRequest(profileUpdateSchema), updateProfile);
-router.post('/profile/addresses', validateRequest(addressSchema), addAddress);
-router.put('/profile/addresses/:id', validateRequest(addressSchema), updateAddress);
+router.put('/profile', validateRequest([profileUpdateSchema]), updateProfile);
+router.post('/profile/addresses', validateRequest([addressSchema]), addAddress);
+router.put('/profile/addresses/:id', validateRequest([addressSchema]), updateAddress);
 router.delete('/profile/addresses/:id', deleteAddress);
 
 // Order routes
-router.post('/orders/rates', validateRequest(calculateRatesSchema), calculateRates);
-router.post('/orders', validateRequest(createOrderSchema), createOrder);
-router.get('/orders', validateRequest(listOrdersSchema), listOrders);
+router.post('/orders/rates', validateRequest([calculateRatesSchema]), calculateRates);
+router.post('/orders', validateRequest([createOrderSchema]), createOrder);
+router.get('/orders', validateRequest([listOrdersSchema]), listOrders);
 router.get('/orders/:id', getOrderDetails);
 router.get('/orders/:id/label', downloadLabel);
 
@@ -83,13 +83,13 @@ router.get('/orders/:id/label', downloadLabel);
 router.post(
   '/orders/:id/payment',
   paymentLimiter,
-  validateRequest(createPaymentSchema),
+  validateRequest([createPaymentSchema]),
   createPayment
 );
 router.post(
   '/orders/:id/payment/verify',
   paymentLimiter,
-  validateRequest(verifyPaymentSchema),
+  validateRequest([verifyPaymentSchema]),
   verifyOrderPayment
 );
 router.get('/orders/:id/payment/status', checkPaymentStatus);
@@ -98,7 +98,7 @@ router.get('/orders/:id/payment/status', checkPaymentStatus);
 router.post(
   '/orders/:id/tracking',
   trackingLimiter,
-  validateRequest(subscribeTrackingSchema),
+  validateRequest([subscribeTrackingSchema]),
   subscribeTracking
 );
 
@@ -106,7 +106,7 @@ router.post(
 router.post(
   '/orders/:id/refund',
   refundLimiter,
-  validateRequest(refundSchema),
+  validateRequest([refundSchema]),
   refundPayment
 );
 
@@ -114,7 +114,7 @@ router.post(
 router.get('/services', listServices);
 router.post(
   '/services/check',
-  validateRequest(checkAvailabilitySchema),
+  validateRequest([checkAvailabilitySchema]),
   checkAvailability
 );
 

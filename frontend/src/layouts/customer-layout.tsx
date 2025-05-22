@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import CustomerNavbar from '@/components/customer/customer-navbar';
 import { ReactNode, useEffect, useState } from 'react';
+import { secureStorage } from '@/utils/secureStorage';
 
 interface CustomerLayoutProps {
     children?: ReactNode;
@@ -11,10 +12,13 @@ const CustomerLayout = ({ children }: CustomerLayoutProps) => {
 
     useEffect(() => {
         // Check if we're using the development bypass token
-        const token = localStorage.getItem('customer_token');
-        if (token === 'DEVELOPMENT_BYPASS_TOKEN') {
-            setIsDevBypass(true);
-        }
+        const checkDevBypass = async () => {
+            const token = await secureStorage.getItem('auth_token');
+            if (token === 'DEVELOPMENT_BYPASS_TOKEN') {
+                setIsDevBypass(true);
+            }
+        };
+        checkDevBypass();
     }, []);
 
     return (

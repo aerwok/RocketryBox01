@@ -11,11 +11,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { sellerRegisterSchema, type SellerRegisterInput } from "@/lib/validations/seller";
+import { sellerAuthService } from "@/services/seller-auth.service";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const features = [
     "Automated NDR Management",
@@ -37,6 +39,7 @@ const SellerRegisterPage = () => {
     
     const [showPassword, setShowPassword] = useState<boolean>(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -59,16 +62,85 @@ const SellerRegisterPage = () => {
 
     const onSubmit = async (data: SellerRegisterInput) => {
         try {
-            console.log("Form data:", data);
+            setIsLoading(true);
+            
+            // Validate password requirements
+            const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+            if (!passwordRegex.test(data.password)) {
+                form.setError("password", {
+                    type: "validation",
+                    message: "Password must contain at least one uppercase letter, one lowercase letter, one number and one special character"
+                });
+                return;
+            }
 
-            navigate("/seller/otp", {
-                state: {
-                    phone: data.phone,
-                    email: data.email
+            // Validate phone number format (Indian format)
+            const phoneRegex = /^[6-9]\d{9}$/;
+            if (!phoneRegex.test(data.phone)) {
+                form.setError("phone", {
+                    type: "validation",
+                    message: "Please provide a valid Indian phone number"
+                });
+                return;
+            }
+
+            // First check if the email/phone is already registered
+            try {
+                // Send OTP to the email for verification
+                await sellerAuthService.sendOTP(data.email, 'register');
+                toast.success("Verification code sent successfully");
+                
+                // Navigate to OTP verification page with form data
+                navigate("/seller/otp", {
+                    state: {
+                        name: `${data.firstName} ${data.lastName}`,
+                        phone: data.phone,
+                        email: data.email,
+                        password: data.password,
+                        companyName: data.companyName,
+                        monthlyShipments: data.monthlyShipments
+                    }
+                });
+            } catch (error: any) {
+                console.error("Failed to send OTP:", error);
+                
+                // Handle specific validation errors
+                if (error.response?.data?.message) {
+                    if (error.response.data.message.includes('already registered')) {
+                        if (error.response.data.message.includes('email')) {
+                            form.setError("email", {
+                                type: "validation",
+                                message: "This email is already registered"
+                            });
+                        } else if (error.response.data.message.includes('phone')) {
+                            form.setError("phone", {
+                                type: "validation",
+                                message: "This phone number is already registered"
+                            });
+                        }
+                    } else {
+                        toast.error(error.response.data.message);
+                    }
+                } else {
+                    toast.error("Failed to send verification code. Please try again.");
                 }
-            });
-        } catch (error) {
+            }
+        } catch (error: any) {
             console.error("Registration error:", error);
+            
+            // Handle validation errors
+            if (error.response?.data?.errors) {
+                Object.entries(error.response.data.errors).forEach(([field, message]) => {
+                    form.setError(field as keyof SellerRegisterInput, {
+                        type: "validation",
+                        message: message as string
+                    });
+                });
+            } else {
+                toast.error(error.message || "Registration failed. Please try again.");
+            }
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -340,9 +412,9 @@ const SellerRegisterPage = () => {
                                     type="submit"
                                     variant="customer"
                                     className="w-full bg-[#2B4EA8] hover:bg-[#2B4EA8]/90"
-                                    disabled={!form.watch("acceptTerms")}
+                                    disabled={!form.watch("acceptTerms") || isLoading}
                                 >
-                                    Sign up for free
+                                    {isLoading ? "Processing..." : "Sign up for free"}
                                 </Button>
 
                                 <div className="text-center text-sm text-gray-600">

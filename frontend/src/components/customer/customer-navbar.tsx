@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { secureStorage } from "@/utils/secureStorage";
 
 interface NavLink {
     label: string;
@@ -23,22 +24,25 @@ const CustomerNavbar = () => {
 
     useEffect(() => {
         // Check if user is authenticated
-        const isAuthenticated = localStorage.getItem('customer_token');
-        const isAuthPage = location.pathname === "/customer/login" || location.pathname === "/customer/register";
-        
-        // TEMPORARY BYPASS: Comment this out before deployment
-        // This bypass allows access to customer sections without authentication
-        /*
-        if (!isAuthenticated && !isAuthPage) {
-            navigate('/customer/login');
-        }
-        */
-        
-        // TEMPORARY: Set a dummy token for development
-        if (!isAuthenticated && !isAuthPage) {
-            localStorage.setItem('customer_token', 'DEVELOPMENT_BYPASS_TOKEN');
-            console.warn('⚠️ DEVELOPMENT MODE: Using authentication bypass for customer. REMOVE BEFORE DEPLOYMENT!');
-        }
+        const checkAuth = async () => {
+            const isAuthenticated = await secureStorage.getItem('auth_token');
+            const isAuthPage = location.pathname === "/customer/auth/login" || location.pathname === "/customer/auth/register";
+            
+            // TEMPORARY BYPASS: Comment this out before deployment
+            // This bypass allows access to customer sections without authentication
+            /*
+            if (!isAuthenticated && !isAuthPage) {
+                navigate('/customer/auth/login');
+            }
+            */
+            
+            // TEMPORARY: Set a dummy token for development
+            if (!isAuthenticated && !isAuthPage) {
+                await secureStorage.setItem('auth_token', 'DEVELOPMENT_BYPASS_TOKEN');
+                console.warn('⚠️ DEVELOPMENT MODE: Using authentication bypass for customer. REMOVE BEFORE DEPLOYMENT!');
+            }
+        };
+        checkAuth();
     }, [navigate, location.pathname]);
 
     const isActiveLink = (href: string) => {
@@ -48,7 +52,7 @@ const CustomerNavbar = () => {
         return location.pathname === href;
     };
 
-    const isAuthPage = location.pathname === "/customer/login" || location.pathname === "/customer/register";
+    const isAuthPage = location.pathname === "/customer/auth/login" || location.pathname === "/customer/auth/register";
 
     if (isAuthPage) {
         return (

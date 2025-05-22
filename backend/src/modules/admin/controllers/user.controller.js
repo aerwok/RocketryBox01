@@ -9,6 +9,7 @@ import { getIO } from '../../../utils/socketio.js';
 import { getSellerProfile } from '../../seller/services/realtime.service.js';
 import { getCustomerProfile } from '../../customer/services/realtime.service.js';
 import { invalidateCachePattern, CACHE_PATTERNS } from '../../../utils/cache.js';
+import mongoose from 'mongoose';
 
 /**
  * Get all sellers with pagination and filters
@@ -114,48 +115,185 @@ export const getAllSellers = async (req, res, next) => {
  */
 export const getSellerDetails = async (req, res, next) => {
     try {
-        const { id } = req.params;
-
-        // Get real-time seller profile data
-        let sellerProfile;
-        try {
-            sellerProfile = await getSellerProfile(id);
-        } catch (error) {
-            logger.warn(`Failed to get seller profile from cache: ${error.message}`);
-            // Fall back to database query if cache fails
-            sellerProfile = null;
-        }
-
-        // Get seller details from database if not available from real-time service
-        const seller = sellerProfile || await Seller.findById(id);
+        const { id: sellerId } = req.params;
         
-        if (!seller) {
+        // Use MongoDB to find the seller with comprehensive details
+        const sellerDetails = await Seller.aggregate([
+            { 
+                $match: { 
+                    _id: new mongoose.Types.ObjectId(sellerId)
+                } 
+            },
+            {
+                $lookup: {
+                    from: 'ratecards',
+                    localField: 'rateCard',
+                    foreignField: '_id',
+                    as: 'rateCardDetails'
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sellerorders',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'orders',
+                    pipeline: [
+                        { 
+                            $sort: { 
+                                createdAt: -1 
+                            } 
+                        },
+                        { 
+                            $limit: 10 
+                        }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sellershipments',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'shipments',
+                    pipeline: [
+                        { 
+                            $sort: { 
+                                createdAt: -1 
+                            } 
+                        },
+                        { 
+                            $limit: 10 
+                        }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sellerorders',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'orderStats',
+                    pipeline: [
+                        {
+                            $group: {
+                                _id: '$status',
+                                count: { $sum: 1 }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                $lookup: {
+                    from: 'sellershipments',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'shipmentStats',
+                    pipeline: [
+                        {
+                            $group: {
+                                _id: '$status',
+                                count: { $sum: 1 }
+                            }
+                        }
+                    ]
+                }
+            },
+            // Include wallet transactions
+            {
+                $lookup: {
+                    from: 'wallettransactions',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'walletTransactions',
+                    pipeline: [
+                        { 
+                            $sort: { 
+                                createdAt: -1 
+                            } 
+                        },
+                        { 
+                            $limit: 10 
+                        }
+                    ]
+                }
+            },
+            // Include any account issues
+            {
+                $lookup: {
+                    from: 'supporttickets',
+                    localField: '_id',
+                    foreignField: 'seller',
+                    as: 'supportTickets',
+                    pipeline: [
+                        { 
+                            $sort: { 
+                                createdAt: -1 
+                            } 
+                        },
+                        { 
+                            $limit: 5 
+                        }
+                    ]
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    name: 1,
+                    email: 1,
+                    phone: 1,
+                    businessName: 1,
+                    companyCategory: 1,
+                    brandName: 1,
+                    website: 1,
+                    supportContact: 1,
+                    supportEmail: 1,
+                    operationsEmail: 1,
+                    financeEmail: 1,
+                    gstin: 1,
+                    documents: 1,
+                    status: 1,
+                    walletBalance: 1,
+                    lastLogin: 1,
+                    lastActive: 1,
+                    createdAt: 1,
+                    updatedAt: 1,
+                    orders: 1,
+                    shipments: 1,
+                    orderStats: 1,
+                    shipmentStats: 1,
+                    walletTransactions: 1,
+                    supportTickets: 1,
+                    rateCardDetails: { $arrayElemAt: ['$rateCardDetails', 0] }
+                }
+            }
+        ]);
+
+        if (!sellerDetails || sellerDetails.length === 0) {
             return next(new AppError('Seller not found', 404));
         }
 
-        // Extract KYC details from the seller model
+        // Extract KYC details from the seller model for backward compatibility
         const kycDetails = {
-            status: seller.status,
-            documents: seller.documents || {},
+            status: sellerDetails[0].status,
+            documents: sellerDetails[0].documents || {},
             businessDetails: {
-                name: seller.businessName,
-                gstin: seller.gstin
+                name: sellerDetails[0].businessName,
+                gstin: sellerDetails[0].gstin
             }
         };
 
         // Get agreements
-        const agreements = await Agreement.find({ seller: id });
+        const agreements = await Agreement.find({ seller: sellerId });
 
-        // Get rate cards
-        const rateCards = await RateCard.find({ seller: id });
-
-        // Add real-time flag to indicate if data came from real-time cache
+        // Construct response in the expected format
         const responseData = {
-            seller,
+            seller: sellerDetails[0],
             kycDetails,
             agreements,
-            rateCards,
-            isRealtime: !!sellerProfile
+            isRealtime: false
         };
 
         res.status(200).json({

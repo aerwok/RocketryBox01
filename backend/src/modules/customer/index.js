@@ -24,8 +24,10 @@ router.get('/test', (req, res) => {
     res.json({ message: 'Customer routes are working!' });
 });
 
-// Mount routes
-router.use('/auth', otpRoutes); // Mount OTP routes first (public)
-router.use('/', customerRoutes); // Mount other customer routes (protected)
+// Mount OTP routes first (before any auth middleware)
+router.use('/auth/otp', otpRoutes);
+
+// Mount other customer routes
+router.use('/', customerRoutes);
 
 export default router; 

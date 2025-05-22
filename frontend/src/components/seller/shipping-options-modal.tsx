@@ -5,6 +5,7 @@ import { calculateShippingRate, determineZone } from "@/lib/shipping-calculator"
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RateData } from "@/types/shipping";
+import { ApiService } from "@/services/api.service";
 
 interface ShippingOptionsModalProps {
     open: boolean;
@@ -40,15 +41,13 @@ export function ShippingOptionsModal({
     
     const destinationPincode = "110001";
     const weight = 0.5;
+    const apiService = new ApiService();
 
     const { data: rateData, isLoading } = useQuery<RateData[]>({
         queryKey: ['rateCards'],
         queryFn: async () => {
-            const response = await fetch('/api/rate-cards');
-            if (!response.ok) {
-                throw new Error('Failed to fetch rate cards');
-            }
-            return response.json();
+            const response = await apiService.get<RateData[]>('/rate-cards');
+            return response.data;
         }
     });
 

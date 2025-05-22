@@ -4,6 +4,10 @@ import MarketingLayout from "./layouts/marketing-layout";
 import ScrollToTop from "./components/shared/scroll-to-top";
 import "./styles/chart-fix.css";
 import AdminRegisterHandler from "./pages/admin/dashboard/teams/handler";
+import { NavigationProvider } from "./contexts/navigation-context";
+import { ApiService } from "./services/api.service";
+import { useNavigation } from "./contexts/navigation-context";
+import { useEffect } from "react";
 
 // Marketing Pages
 import ContactPage from "./pages/marketing/contact";
@@ -108,138 +112,156 @@ import WhatsAppSettingsPage from "./pages/seller/dashboard/settings/whatsapp";
 import ApiSettingsPage from "./pages/seller/dashboard/settings/api";
 import PolicyCreatePage from "./pages/admin/dashboard/settings/policy/create";
 
+const AppRoutes = () => {
+  const { setNavigate } = useNavigation();
+  const apiService = new ApiService();
+
+  useEffect(() => {
+    setNavigate((navigate) => {
+      apiService.setNavigate(navigate);
+    });
+  }, [setNavigate]);
+
+  return (
+    <Routes>
+      {/* Marketing Routes */}
+      <Route element={<MarketingLayout />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/services" element={<ServicesPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/support" element={<SupportPage />} />
+        <Route path="/track" element={<TrackPage />} />
+        <Route path="/faqs" element={<FaqsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        {/* Partner Marketing Pages */}
+        <Route path="/partner/carrier" element={<CarrierPartnerPage />} />
+        <Route path="/partner/technology" element={<TechnologyPartnerPage />} />
+        <Route path="/partner/join" element={<BecomePartnerPage />} />
+      </Route>
+
+      {/* Customer Routes */}
+      <Route path="/customer" element={<CustomerLayout />}>
+        <Route index element={<Navigate to="/customer/home" replace />} />
+        <Route path="home" element={<CustomerHomePage />} />
+        <Route path="auth">
+          <Route path="login" element={<CustomerLoginPage />} />
+          <Route path="register" element={<CustomerRegisterPage />} />
+        </Route>
+        <Route path="login" element={<Navigate to="/customer/auth/login" replace />} />
+        <Route path="register" element={<Navigate to="/customer/auth/register" replace />} />
+        <Route path="profile" element={<CustomerProfile />} />
+        <Route path="orders" element={<CustomerOrdersPage />} />
+        <Route path="orders/:id" element={<OrderDetailsPage />} />
+        <Route path="create-order" element={<CustomerCreateOrderPage />} />
+        <Route path="payment" element={<CustomerPaymentPage />} />
+      </Route>
+
+      {/* Seller Auth Routes */}
+      <Route path="/seller" element={<SellerLayout />}>
+        <Route index element={<Navigate to="/seller/login" replace />} />
+        <Route path="login" element={<SellerLoginPage />} />
+        <Route path="register" element={<SellerRegisterPage />} />
+        <Route path="otp" element={<SellerOTPPage />} />
+        <Route path="onboarding">
+          <Route path="company-details" element={<SellerCompanyDetailsPage />} />
+          <Route path="bank-details" element={<SellerBankDetailsPage />} />
+        </Route>
+      </Route>
+
+      {/* Seller Dashboard Routes */}
+      <Route path="/seller/dashboard" element={<SellerDashboardLayout />}>
+        <Route index element={<SellerDashboardPage />} />
+        <Route path="orders" element={<SellerOrdersPage />} />
+        <Route path="orders/edit/:id" element={<EditOrderPage />} />
+        <Route path="orders/:id" element={<SellerOrderDetailsPage />} />
+        <Route path="shipments" element={<SellerShipmentsPage />} />
+        <Route path="shipments/:id" element={<SellerShipmentDetailsPage />} />
+        <Route path="received" element={<SellerReceivedPage />} />
+        <Route path="disputes" element={<SellerDisputePage />} />
+        <Route path="disputes/:id" element={<SellerDisputeDetailsPage />} />
+        <Route path="ndr" element={<SellerNDRPage />} />
+        <Route path="ndr/:id" element={<SellerNDRDetailsPage />} />
+        <Route path="weight-dispute" element={<SellerWeightDisputePage />} />
+        <Route path="billing" element={<SellerBillingPage />} />
+        <Route path="tools" element={<SellerToolsPage />} />
+        <Route path="warehouse" element={<SellerWarehousePage />} />
+        <Route path="service-check" element={<SellerServiceCheckPage />} />
+        <Route path="products" element={<SellerProductsPage />} />
+        <Route path="rate-calculator" element={<SellerRateCalculatorPage />} />
+        <Route path="cod" element={<SellerCODPage />} />
+        <Route path="profile" element={<SellerProfilePage />} />
+        <Route path="new-order" element={<SellerNewOrderPage />} />
+        <Route path="settings" element={<SellerSettingsPage />} />
+        <Route path="settings/manage-store" element={<ManageStorePage />} />
+        <Route path="settings/couriers" element={<CouriersSettingsPage />} />
+        <Route path="settings/labels" element={<LabelSettingsPage />} />
+        <Route path="settings/users" element={<ManageUsersPage />} />
+        <Route path="settings/whatsapp" element={<WhatsAppSettingsPage />} />
+        <Route path="settings/api" element={<ApiSettingsPage />} />
+        <Route path="support" element={<SellerSupportPage />} />
+        <Route path="bulk-orders" element={<SellerBulkOrdersPage />} />
+        <Route path="reports" element={<SellerReportsPage />} />
+      </Route>
+
+      {/* Admin Routes */}
+      <Route path="/admin" element={<AdminLayout />}>
+        <Route index element={<Navigate to="/admin/login" replace />} />
+        <Route path="login" element={<AdminLoginPage />} />
+        <Route path="register" element={<AdminRegisterPage />} />
+        <Route path="auth/register" element={<AdminRegisterPage />} />
+        <Route path="profile" element={<MyProfilePage />} />
+        <Route path="dashboard" element={<AdminDashboardLayout />}>
+          <Route index element={<AdminDashboardPage />} />
+          <Route path="customer" element={<AdminCustomerDashboardPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="users/:id" element={<AdminUserProfilePage />} />
+          <Route path="teams" element={<AdminTeamsPage />} />
+          <Route path="teams/:id" element={<AdminTeamProfilePage />} />
+          <Route path="teams/handler" element={<AdminRegisterHandler />} />
+          <Route path="partners" element={<AdminPartnersPage />} />
+          <Route path="orders" element={<AdminOrdersPage />} />
+          <Route path="orders/edit/:id" element={<AdminEditOrderPage />} />
+          <Route path="orders/:id" element={<AdminOrderDetailsPage />} />
+          <Route path="shipments" element={<AdminShipmentsPage />} />
+          <Route path="shipments/:id" element={<AdminShipmentDetailsPage />} />
+          <Route path="tickets" element={<AdminTicketsPage />} />
+          <Route path="ndr" element={<AdminNDRPage />} />
+          <Route path="ndr/:id" element={<AdminNDRDetailsPage />} />
+          <Route path="billing" element={<AdminBillingPage />} />
+          <Route path="reports" element={<AdminReportsPage />} />
+          <Route path="escalation" element={<AdminEscalationLayout />}>
+            <Route path="search" element={<AdminEscalationSearchPage />} />
+            <Route path="statistics" element={<AdminEscalationStatisticsPage />} />
+            <Route path="pickups" element={<AdminEscalationPickupsPage />} />
+            <Route path="shipments" element={<AdminEscalationShipmentsPage />} />
+            <Route path="billing" element={<AdminEscalationBillingPage />} />
+            <Route path="weight-issues" element={<AdminEscalationWeightIssuesPage />} />
+            <Route path="tech-issues" element={<AdminEscalationTechIssuesPage />} />
+          </Route>
+          <Route path="settings" element={<AdminSettingsPage />} />
+          <Route path="settings/system" element={<SystemSettings />} />
+          <Route path="settings/notification" element={<NotificationSettings />} />
+          <Route path="settings/policy" element={<PolicySettings />} />
+          <Route path="settings/policy/:slug/edit" element={<PolicyEditPage />} />
+          <Route path="settings/policy/create" element={<PolicyCreatePage />} />
+          <Route path="settings/maintenance" element={<MaintenanceSettings />} />
+        </Route>
+      </Route>
+    </Routes>
+  );
+};
+
 const App = () => {
   return (
     <BrowserRouter>
-      <ScrollToTop />
-      <Toaster richColors theme="light" position="top-center" />
-      <Routes>
-        {/* Marketing Routes */}
-        <Route element={<MarketingLayout />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/support" element={<SupportPage />} />
-          <Route path="/track" element={<TrackPage />} />
-          <Route path="/faqs" element={<FaqsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          {/* Partner Marketing Pages */}
-          <Route path="/partner/carrier" element={<CarrierPartnerPage />} />
-          <Route path="/partner/technology" element={<TechnologyPartnerPage />} />
-          <Route path="/partner/join" element={<BecomePartnerPage />} />
-        </Route>
-
-        {/* Customer Routes */}
-        <Route path="/customer" element={<CustomerLayout />}>
-          <Route index element={<Navigate to="/customer/home" replace />} />
-          <Route path="home" element={<CustomerHomePage />} />
-          <Route path="login" element={<CustomerLoginPage />} />
-          <Route path="register" element={<CustomerRegisterPage />} />
-          <Route path="profile" element={<CustomerProfile />} />
-          <Route path="orders" element={<CustomerOrdersPage />} />
-          <Route path="orders/:id" element={<OrderDetailsPage />} />
-          <Route path="create-order" element={<CustomerCreateOrderPage />} />
-          <Route path="payment" element={<CustomerPaymentPage />} />
-        </Route>
-
-        {/* Seller Auth Routes */}
-        <Route path="/seller" element={<SellerLayout />}>
-          <Route index element={<Navigate to="/seller/login" replace />} />
-          <Route path="login" element={<SellerLoginPage />} />
-          <Route path="register" element={<SellerRegisterPage />} />
-          <Route path="otp" element={<SellerOTPPage />} />
-          <Route path="onboarding">
-            <Route path="company" element={<SellerCompanyDetailsPage />} />
-            <Route path="bank" element={<SellerBankDetailsPage />} />
-          </Route>
-        </Route>
-
-        {/* Seller Dashboard Routes */}
-        <Route path="/seller/dashboard" element={<SellerDashboardLayout />}>
-          <Route index element={<SellerDashboardPage />} />
-          <Route path="orders" element={<SellerOrdersPage />} />
-          <Route path="orders/edit/:id" element={<EditOrderPage />} />
-          <Route path="orders/:id" element={<SellerOrderDetailsPage />} />
-          <Route path="shipments" element={<SellerShipmentsPage />} />
-          <Route path="shipments/:id" element={<SellerShipmentDetailsPage />} />
-          <Route path="received" element={<SellerReceivedPage />} />
-          <Route path="disputes" element={<SellerDisputePage />} />
-          <Route path="disputes/:id" element={<SellerDisputeDetailsPage />} />
-          <Route path="ndr" element={<SellerNDRPage />} />
-          <Route path="ndr/:id" element={<SellerNDRDetailsPage />} />
-          <Route path="weight-dispute" element={<SellerWeightDisputePage />} />
-          <Route path="billing" element={<SellerBillingPage />} />
-          <Route path="tools" element={<SellerToolsPage />} />
-          <Route path="warehouse" element={<SellerWarehousePage />} />
-          <Route path="service-check" element={<SellerServiceCheckPage />} />
-          <Route path="products" element={<SellerProductsPage />} />
-          <Route path="rate-calculator" element={<SellerRateCalculatorPage />} />
-          <Route path="cod" element={<SellerCODPage />} />
-          <Route path="profile" element={<SellerProfilePage />} />
-          <Route path="new-order" element={<SellerNewOrderPage />} />
-          <Route path="settings" element={<SellerSettingsPage />} />
-          <Route path="settings/manage-store" element={<ManageStorePage />} />
-          <Route path="settings/couriers" element={<CouriersSettingsPage />} />
-          <Route path="settings/labels" element={<LabelSettingsPage />} />
-          <Route path="settings/users" element={<ManageUsersPage />} />
-          <Route path="settings/whatsapp" element={<WhatsAppSettingsPage />} />
-          <Route path="settings/api" element={<ApiSettingsPage />} />
-          <Route path="support" element={<SellerSupportPage />} />
-          <Route path="bulk-orders" element={<SellerBulkOrdersPage />} />
-          <Route path="reports" element={<SellerReportsPage />} />
-        </Route>
-
-        {/* Catch-all route - Redirect to home */}
-        {/* <Route path="*" element={<Navigate to="/" replace />} /> */}
-
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="/admin/login" replace />} />
-          <Route path="login" element={<AdminLoginPage />} />
-          <Route path="register" element={<AdminRegisterPage />} />
-          <Route path="auth/register" element={<AdminRegisterPage />} />
-          <Route path="profile" element={<MyProfilePage />} />
-          <Route path="dashboard" element={<AdminDashboardLayout />}>
-            <Route index element={<AdminDashboardPage />} />
-            <Route path="customer" element={<AdminCustomerDashboardPage />} />
-            <Route path="users" element={<AdminUsersPage />} />
-            <Route path="users/:id" element={<AdminUserProfilePage />} />
-            <Route path="teams" element={<AdminTeamsPage />} />
-            <Route path="teams/:id" element={<AdminTeamProfilePage />} />
-            <Route path="teams/handler" element={<AdminRegisterHandler />} />
-            <Route path="partners" element={<AdminPartnersPage />} />
-            <Route path="orders" element={<AdminOrdersPage />} />
-            <Route path="orders/edit/:id" element={<AdminEditOrderPage />} />
-            <Route path="orders/:id" element={<AdminOrderDetailsPage />} />
-            <Route path="shipments" element={<AdminShipmentsPage />} />
-            <Route path="shipments/:id" element={<AdminShipmentDetailsPage />} />
-            <Route path="tickets" element={<AdminTicketsPage />} />
-            <Route path="ndr" element={<AdminNDRPage />} />
-            <Route path="ndr/:id" element={<AdminNDRDetailsPage />} />
-            <Route path="billing" element={<AdminBillingPage />} />
-            <Route path="reports" element={<AdminReportsPage />} />
-            <Route path="escalation" element={<AdminEscalationLayout />}>
-              <Route path="search" element={<AdminEscalationSearchPage />} />
-              <Route path="statistics" element={<AdminEscalationStatisticsPage />} />
-              <Route path="pickups" element={<AdminEscalationPickupsPage />} />
-              <Route path="shipments" element={<AdminEscalationShipmentsPage />} />
-              <Route path="billing" element={<AdminEscalationBillingPage />} />
-              <Route path="weight-issues" element={<AdminEscalationWeightIssuesPage />} />
-              <Route path="tech-issues" element={<AdminEscalationTechIssuesPage />} />
-            </Route>
-            <Route path="settings" element={<AdminSettingsPage />} />
-            <Route path="settings/system" element={<SystemSettings />} />
-            <Route path="settings/notification" element={<NotificationSettings />} />
-            <Route path="settings/policy" element={<PolicySettings />} />
-            <Route path="settings/policy/:slug/edit" element={<PolicyEditPage />} />
-            <Route path="settings/policy/create" element={<PolicyCreatePage />} />
-            <Route path="settings/maintenance" element={<MaintenanceSettings />} />
-          </Route>
-        </Route>
-      </Routes>
+      <NavigationProvider>
+        <ScrollToTop />
+        <Toaster richColors theme="light" position="top-center" />
+        <AppRoutes />
+      </NavigationProvider>
     </BrowserRouter>
   );
 };

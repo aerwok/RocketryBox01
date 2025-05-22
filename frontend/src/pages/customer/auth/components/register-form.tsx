@@ -20,6 +20,7 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { AuthService } from "@/services/auth.service";
+import { secureStorage } from "@/utils/secureStorage";
 
 const RegisterForm = () => {
     const [showPassword, setShowPassword] = useState(false);
@@ -52,12 +53,15 @@ const RegisterForm = () => {
         mutationFn: async (mobile: string) => {
             try {
                 console.log('Sending mobile OTP request for:', mobile);
-                const response = await fetch('http://localhost:8000/api/customer/auth/send-mobile-otp', {
+                const response = await fetch('http://localhost:8000/api/v2/customer/auth/otp/send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ mobile }),
+                    body: JSON.stringify({ 
+                        phoneOrEmail: mobile,
+                        purpose: 'register'
+                    }),
                     credentials: 'include',
                 });
                 
@@ -100,24 +104,42 @@ const RegisterForm = () => {
     const sendEmailOtp = useMutation({
         mutationFn: async (email: string) => {
             try {
-                const response = await fetch('/api/customer/auth/send-email-otp', {
+                console.log('Sending email OTP request for:', email);
+                const response = await fetch('http://localhost:8000/api/v2/customer/auth/otp/send', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ email }),
+                    body: JSON.stringify({ 
+                        phoneOrEmail: email,
+                        purpose: 'register'
+                    }),
                     credentials: 'include',
                 });
                 
+                console.log('Response status:', response.status);
+                const responseText = await response.text();
+                console.log('Response text:', responseText);
+                
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                    let errorMessage;
+                    try {
+                        const errorData = JSON.parse(responseText);
+                        errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
+                    } catch (e) {
+                        errorMessage = `HTTP error! status: ${response.status}, response: ${responseText}`;
+                    }
+                    throw new Error(errorMessage);
                 }
                 
-                const data = await response.json();
+                const data = JSON.parse(responseText);
                 return data;
-            } catch (error) {
-                console.error('Email OTP request error:', error);
+            } catch (error: any) {
+                console.error('Email OTP request error:', {
+                    error,
+                    message: error?.message || 'Unknown error',
+                    stack: error?.stack
+                });
                 throw error;
             }
         },
@@ -133,14 +155,47 @@ const RegisterForm = () => {
 
     const registerMutation = useMutation({
         mutationFn: async (data: CustomerRegisterInput) => {
-            return await authService.register({ ...data, role: 'customer' });
+            try {
+                return await authService.register(data);
+            } catch (error: any) {
+                console.error('Registration error:', error);
+                
+                // Handle HTML error responses
+                if (typeof error.data === 'string' && error.data.includes('<!DOCTYPE html>')) {
+                    // Extract error message from HTML
+                    const errorMatch = error.data.match(/Error: ([^<]+)</);
+                    if (errorMatch && errorMatch[1]) {
+                        throw new Error(errorMatch[1].trim());
+                    }
+                }
+                
+                throw error;
+            }
         },
-        onSuccess: () => {
-            toast.success("Registration successful! Please login.");
+        onSuccess: async (response) => {
+            // Store the auth token and handle login automatically
+            if (response.data?.accessToken) {
+                await secureStorage.setItem('auth_token', response.data.accessToken);
+                toast.success("Registration successful! You're now logged in.");
+                navigate("/customer/home", { replace: true }); // Redirect to customer home page
+            } else {
+                // Fallback for any unexpected response format
+                toast.success("Registration successful!");
             navigate("/customer/login");
+            }
         },
         onError: (error: any) => {
-            toast.error(error?.message || "Registration failed");
+            // Display user-friendly error message
+            const errorMessage = error.message || "Registration failed";
+            
+            // Check for specific error messages to provide more helpful feedback
+            if (errorMessage.includes("Email is already registered")) {
+                toast.error("This email is already registered. Please use a different email or try logging in.");
+            } else if (errorMessage.includes("Mobile number is already registered")) {
+                toast.error("This mobile number is already registered. Please use a different number or try logging in.");
+            } else {
+                toast.error(errorMessage);
+            }
         },
     });
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import * as otpController from '../controllers/otp.controller.js';
 import { logger } from '../../../utils/logger.js';
+import { authLimiter } from '../../../middleware/rateLimiter.js';
 
 const router = express.Router();
 
@@ -24,9 +25,9 @@ router.get('/test', (req, res) => {
 });
 
 // Public OTP routes (no authentication required)
-router.post('/send-mobile-otp', otpController.sendMobileOTP);
-router.post('/send-email-otp', otpController.sendEmailOTP);
-router.post('/verify-mobile-otp', otpController.verifyMobileOTP);
-router.post('/verify-email-otp', otpController.verifyEmailOTP);
+router.post('/send-mobile-otp', authLimiter, otpController.sendMobileOTP);
+router.post('/send-email-otp', authLimiter, otpController.sendEmailOTP);
+router.post('/verify-mobile-otp', authLimiter, otpController.verifyMobileOTP);
+router.post('/verify-email-otp', authLimiter, otpController.verifyEmailOTP);
 
 export default router; 

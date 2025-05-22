@@ -10,10 +10,14 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
+import { secureStorage } from "@/utils/secureStorage";
 
 const CustomerLoginPage = () => {
 
     const navigate = useNavigate();
+    const { login } = useAuth();
 
     const [showPassword, setShowPassword] = useState<boolean>(false);
     const [isForgotPassword, setIsForgotPassword] = useState<boolean>(false);
@@ -30,6 +34,7 @@ const CustomerLoginPage = () => {
             otp: "",
             rememberMe: false,
         },
+        mode: "onChange"
     });
 
     useEffect(() => {
@@ -41,6 +46,13 @@ const CustomerLoginPage = () => {
         }
         return () => clearInterval(interval);
     }, [otpTimer]);
+
+    useEffect(() => {
+        const subscription = form.watch((value) => {
+            console.log('Form values changed:', value);
+        });
+        return () => subscription.unsubscribe();
+    }, [form.watch]);
 
     const handleSendOtp = async () => {
         const phoneOrEmail = form.watch("phoneOrEmail");
@@ -67,46 +79,63 @@ const CustomerLoginPage = () => {
 
         try {
             setIsLoading(true);
-            // Generate random 6-digit OTP
-            const otp = Math.floor(100000 + Math.random() * 900000).toString();
-            console.log("Generated OTP:", otp);
-            setGeneratedOtp(otp);
+            const response = await fetch('/api/v2/customer/auth/send-otp', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ phoneOrEmail }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send OTP');
+            }
 
             setIsOtpSent(true);
             setOtpTimer(30);
             form.setValue("otp", "");
-            setIsLoading(false);
+            toast.success('OTP sent successfully');
         } catch (error) {
             console.error("Error sending OTP:", error);
             form.setError("phoneOrEmail", {
                 message: "Failed to send OTP. Please try again.",
             });
+            toast.error('Failed to send OTP');
+        } finally {
             setIsLoading(false);
         }
     };
 
     const onSubmit = async (data: CustomerLoginInput) => {
-        if (isForgotPassword) {
-            if (!isOtpSent) {
-                await handleSendOtp();
-                return;
-            }
+        console.log('=== Login Form Submit STARTED ===');
+        console.log('Form Data:', data);
 
-            // Verify OTP
-            if (data.otp !== generatedOtp) {
-                form.setError("otp", {
-                    message: "Invalid OTP. Please try again.",
-                });
-                return;
+        try {
+            setIsLoading(true);
+            console.log('=== Login Attempt STARTED ===');
+            
+            // Call the login function directly
+            console.log('Calling login function...');
+            const response = await login(data.phoneOrEmail, data.password, data.rememberMe);
+            console.log('=== Login Response ===');
+            console.log('Response:', response);
+            
+            if (response.success && response.data?.accessToken) {
+                console.log('Login successful, storing token and navigating to home');
+                await secureStorage.setItem('auth_token', response.data.accessToken);
+                toast.success('Login successful');
+                navigate("/customer/home", { replace: true });
+            } else {
+                console.error('Login failed:', response);
+                toast.error(response.message || 'Login failed. Please check your credentials.');
             }
+        } catch (error: any) {
+            console.error('=== Login Error ===');
+            console.error('Error details:', error);
+            toast.error(error.response?.data?.message || 'Login failed. Please check your credentials.');
+        } finally {
+            setIsLoading(false);
         }
-
-        setIsLoading(true);
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log(data);
-        setIsLoading(false);
-        navigate("/customer/home");
     };
 
     const handleForgotPassword = () => {
@@ -160,11 +189,15 @@ const CustomerLoginPage = () => {
                         </motion.h1>
 
                         <Form {...form}>
-                            <motion.form
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ duration: 0.5, delay: 0.3 }}
-                                onSubmit={form.handleSubmit(onSubmit)}
+                            <form
+                                noValidate
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    console.log('Form submitted');
+                                    const values = form.getValues();
+                                    console.log('Form values:', values);
+                                    onSubmit(values);
+                                }}
                                 className="space-y-4"
                             >
                                 <FormField
@@ -315,19 +348,15 @@ const CustomerLoginPage = () => {
                                     )}
                                 </div>
 
-                                <motion.div
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
+                                <Button
+                                    type="submit"
+                                    variant="customer"
+                                    className="w-full"
+                                    disabled={(isForgotPassword && !isOtpSent) || isLoading}
+                                    onClick={() => console.log('Login button clicked')}
                                 >
-                                    <Button
-                                        type="submit"
-                                        variant="customer"
-                                        className="w-full"
-                                        disabled={(isForgotPassword && !isOtpSent) || isLoading}
-                                    >
-                                        {isLoading ? "Please wait..." : isForgotPassword ? "Reset Password" : "Login"}
-                                    </Button>
-                                </motion.div>
+                                    {isLoading ? "Please wait..." : isForgotPassword ? "Reset Password" : "Login"}
+                                </Button>
 
                                 <motion.div
                                     initial={{ opacity: 0 }}
@@ -354,7 +383,7 @@ const CustomerLoginPage = () => {
                                         </div>
                                     </div>
                                 )}
-                            </motion.form>
+                            </form>
                         </Form>
                     </div>
                 </motion.div>

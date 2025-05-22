@@ -10,12 +10,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { sellerLoginSchema, type SellerLoginInput } from "@/lib/validations/seller";
+import { sellerAuthService } from "@/services/seller-auth.service";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { toast } from "sonner";
 
 const features = [
     "Branded Order Tracking Page",
@@ -23,7 +25,30 @@ const features = [
     "Up To 45% Lesser RTOs",
 ];
 
-const SellerLoginPage = () => {
+interface ValidationError {
+    response: {
+        data: {
+            errors: Record<string, string>;
+        };
+    };
+}
+
+function isValidationError(error: unknown): error is ValidationError {
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        typeof (error as any).response === 'object' &&
+        (error as any).response !== null &&
+        'data' in (error as any).response &&
+        typeof (error as any).response.data === 'object' &&
+        (error as any).response.data !== null &&
+        'errors' in (error as any).response.data &&
+        typeof (error as any).response.data.errors === 'object'
+    );
+}
+
+function SellerLoginPage() {
 
     const navigate = useNavigate();
     
@@ -48,10 +73,21 @@ const SellerLoginPage = () => {
             newPassword: "",
             confirmPassword: "",
             rememberMe: false,
-        },
+        }
     });
 
-    const handleSendOtp = async () => {
+    // Debug form state changes
+    useEffect(() => {
+        const subscription = form.watch((value) => {
+            console.log('Form values changed:', {
+                ...value,
+                password: value.password ? '***' : undefined
+            });
+        });
+        return () => subscription.unsubscribe();
+    }, [form]);
+
+    const handleSendOTP = async () => {
         const emailOrPhone = form.watch("emailOrPhone");
         form.clearErrors("emailOrPhone");
 
@@ -76,9 +112,11 @@ const SellerLoginPage = () => {
 
         try {
             setIsLoading(true);
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
+            
+            // Use the seller auth service to send OTP
+            await sellerAuthService.sendOTP(emailOrPhone, 'reset-password');
+            
+            // For dev purposes, we'll still generate a mock OTP
             const otp = Math.floor(100000 + Math.random() * 900000).toString();
             console.log("Generated OTP:", otp);
             setGeneratedOtp(otp);
@@ -86,6 +124,7 @@ const SellerLoginPage = () => {
             setIsOtpSent(true);
             setOtpTimer(30);
             form.setValue("otp", "");
+            toast.success("OTP sent successfully!");
             setIsLoading(false);
         } catch (error) {
             console.error("Error sending OTP:", error);
@@ -97,9 +136,15 @@ const SellerLoginPage = () => {
     };
 
     const onSubmit = async (data: SellerLoginInput) => {
+        console.log('onSubmit function called with:', {
+            emailOrPhone: data.emailOrPhone,
+            hasPassword: !!data.password,
+            rememberMe: data.rememberMe
+        });
+
         if (isForgotPassword) {
             if (!isOtpSent) {
-                await handleSendOtp();
+                await handleSendOTP();
                 return;
             }
 
@@ -111,7 +156,21 @@ const SellerLoginPage = () => {
             }
 
             if (!isOtpVerified) {
-                setIsOtpVerified(true);
+                try {
+                    setIsLoading(true);
+                    // Verify OTP with the server
+                    await sellerAuthService.verifyOTP(
+                        data.emailOrPhone || "", 
+                        data.otp || "", 
+                        'reset-password'
+                    );
+                    setIsOtpVerified(true);
+                    toast.success("OTP verified successfully!");
+                    setIsLoading(false);
+                } catch (error) {
+                    setIsLoading(false);
+                    return;
+                }
                 return;
             }
 
@@ -121,20 +180,98 @@ const SellerLoginPage = () => {
                 });
                 return;
             }
-        }
-
-        setIsLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        console.log(data);
-        setIsLoading(false);
-
-        if (isForgotPassword) {
-            alert("Password updated successfully! Please login with your new password.");
-            handleBackToLogin();
+            
+            try {
+                setIsLoading(true);
+                // Reset password with the server
+                await sellerAuthService.resetPassword(
+                    data.emailOrPhone || "", 
+                    data.otp || "", 
+                    data.newPassword || "", 
+                    data.confirmPassword || ""
+                );
+                setIsLoading(false);
+                toast.success("Password reset successfully! Please login with your new password.");
+                handleBackToLogin();
+            } catch (error) {
+                setIsLoading(false);
+            }
             return;
         }
 
-        navigate("/seller/dashboard");
+        // Normal login flow
+        try {
+            if (!data.emailOrPhone || !data.password) {
+                console.error('Missing required fields:', {
+                    hasEmailOrPhone: !!data.emailOrPhone,
+                    hasPassword: !!data.password
+                });
+                toast.error('Please fill in all required fields');
+                return;
+            }
+
+            setIsLoading(true);
+            console.log('Calling sellerAuthService.login...');
+
+            const loginData = {
+                emailOrPhone: data.emailOrPhone,
+                password: data.password,
+                rememberMe: data.rememberMe || false
+            };
+
+            console.log('Login request data:', {
+                emailOrPhone: loginData.emailOrPhone,
+                hasPassword: !!loginData.password,
+                rememberMe: loginData.rememberMe
+            });
+
+            const response = await sellerAuthService.login(loginData);
+            console.log('Login response received:', {
+                success: response.success,
+                hasData: !!response.data,
+                hasToken: !!(response.data?.accessToken)
+            });
+
+            if (response.success && response.data?.accessToken) {
+                toast.success('Welcome back!');
+                // Brief delay to show the welcome message
+                await new Promise(resolve => setTimeout(resolve, 500));
+                navigate('/seller/dashboard');
+            } else {
+                console.warn('Login response without success or token:', response);
+                toast.error(response.message || 'Login failed. Please check your credentials.');
+            }
+        } catch (error: any) {
+            console.error('Login error:', {
+                name: error.name,
+                message: error.message,
+                status: error.status,
+                code: error.code
+            });
+
+            if (error.status === 401) {
+                toast.error('Invalid email/phone or password');
+                form.setError('password', {
+                    type: 'manual',
+                    message: 'Invalid password'
+                });
+            } else if (error.status === 404) {
+                toast.error('Account not found. Please check your email/phone or register a new account.');
+                form.setError('emailOrPhone', {
+                    type: 'manual',
+                    message: 'Account not found with this email/phone'
+                });
+                // Add a helper message with registration link
+                form.setError('root', {
+                    type: 'manual',
+                    message: 'Don\'t have an account? Register now!'
+                });
+            } else {
+                toast.error(error.message || 'Login failed. Please try again.');
+            }
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -155,6 +292,7 @@ const SellerLoginPage = () => {
     const handleBackToLogin = () => {
         setIsForgotPassword(false);
         setIsOtpSent(false);
+        setIsOtpVerified(false);
         setOtpTimer(0);
         form.setValue("otp", "");
         setGeneratedOtp("");
@@ -202,7 +340,73 @@ const SellerLoginPage = () => {
                         </div>
 
                         <Form {...form}>
-                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 h-full">
+                            <form 
+                                noValidate
+                                onSubmit={form.handleSubmit(async (formData) => {
+                                    console.log('Form submit event triggered');
+                                    
+                                    try {
+                                        // Clear any existing errors
+                                        form.clearErrors();
+                                        
+                                        // Validate required fields
+                                        if (!formData.emailOrPhone) {
+                                            form.setError("emailOrPhone", {
+                                                type: "required",
+                                                message: "Email or phone number is required"
+                                            });
+                                            return;
+                                        }
+
+                                        if (!formData.password) {
+                                            form.setError("password", {
+                                                type: "required",
+                                                message: "Password is required"
+                                            });
+                                            return;
+                                        }
+
+                                        // Validate email/phone format
+                                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                                        const phoneRegex = /^[0-9]{10}$/;
+                                        if (!emailRegex.test(formData.emailOrPhone) && !phoneRegex.test(formData.emailOrPhone)) {
+                                            form.setError("emailOrPhone", {
+                                                type: "format",
+                                                message: "Please enter a valid email address or phone number (10 digits)"
+                                            });
+                                            return;
+                                        }
+
+                                        // Validate password length
+                                        if (formData.password.length < 6) {
+                                            form.setError("password", {
+                                                type: "minLength",
+                                                message: "Password must be at least 6 characters"
+                                            });
+                                            return;
+                                        }
+
+                                        // Call the onSubmit function
+                                        await onSubmit(formData);
+                                    } catch (error: unknown) {
+                                        console.error('Error in form submission:', error);
+                                        
+                                        // Handle specific validation errors
+                                        if (isValidationError(error)) {
+                                            const validationErrors = error.response.data.errors;
+                                            Object.keys(validationErrors).forEach(field => {
+                                                form.setError(field as keyof SellerLoginInput, {
+                                                    type: "server",
+                                                    message: validationErrors[field]
+                                                });
+                                            });
+                                        } else {
+                                            toast.error('An error occurred while submitting the form');
+                                        }
+                                    }
+                                })}
+                                className="space-y-4 h-full"
+                            >
                                 <FormField
                                     control={form.control}
                                     name="emailOrPhone"
@@ -211,9 +415,15 @@ const SellerLoginPage = () => {
                                             <FormLabel>Email address/ Mobile Number</FormLabel>
                                             <FormControl>
                                                 <Input
+                                                    required
                                                     placeholder="Enter email address/ mobile number"
                                                     className="bg-[#99BCDDB5]"
                                                     {...field}
+                                                    onChange={(e) => {
+                                                        field.onChange(e);
+                                                        // Clear errors when user starts typing
+                                                        form.clearErrors("emailOrPhone");
+                                                    }}
                                                 />
                                             </FormControl>
                                             <FormMessage />
@@ -231,10 +441,16 @@ const SellerLoginPage = () => {
                                                 <FormControl>
                                                     <div className="relative">
                                                         <Input
+                                                            required
                                                             type={showPassword ? "text" : "password"}
                                                             placeholder="Enter password"
                                                             className="bg-[#99BCDDB5]"
                                                             {...field}
+                                                            onChange={(e) => {
+                                                                field.onChange(e);
+                                                                // Clear errors when user starts typing
+                                                                form.clearErrors("password");
+                                                            }}
                                                         />
                                                         <button
                                                             type="button"
@@ -293,7 +509,7 @@ const SellerLoginPage = () => {
                                             <Button
                                                 type="button"
                                                 variant="outline"
-                                                onClick={handleSendOtp}
+                                                onClick={handleSendOTP}
                                                 disabled={otpTimer > 0 || isLoading}
                                                 size="sm"
                                             >
@@ -342,6 +558,11 @@ const SellerLoginPage = () => {
                                         type="submit"
                                         className="w-full bg-[#2B4EA8] hover:bg-[#2B4EA8]/90 text-white"
                                         disabled={isLoading || (isForgotPassword && !isOtpSent)}
+                                        onClick={() => {
+                                            console.log('Login button clicked');
+                                            console.log('Form state:', form.getValues());
+                                            console.log('Form errors:', form.formState.errors);
+                                        }}
                                     >
                                         {isLoading ? (
                                             <>
@@ -382,7 +603,7 @@ const SellerLoginPage = () => {
                                 )}
 
                                 {/* Testing Info Section */}
-                                {isForgotPassword && (
+                                {process.env.NODE_ENV === 'development' && isForgotPassword && (
                                     <div className="mt-8 p-4 space-y-2">
                                         <div className="text-sm space-y-1">
                                             <p>
@@ -394,6 +615,19 @@ const SellerLoginPage = () => {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Display any root level errors */}
+                                {form.formState.errors.root && (
+                                    <div className="text-sm text-red-600 flex items-center justify-between">
+                                        <span>{form.formState.errors.root.message}</span>
+                                        <Link 
+                                            to="/seller/register" 
+                                            className="text-[#2B4EA8] hover:underline font-medium"
+                                        >
+                                            Register Now
+                                        </Link>
+                                    </div>
+                                )}
                             </form>
                         </Form>
                     </div>
@@ -401,6 +635,6 @@ const SellerLoginPage = () => {
             </div>
         </div>
     );
-};
+}
 
 export default SellerLoginPage; 

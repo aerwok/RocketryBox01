@@ -247,6 +247,7 @@ export interface ApiError {
     code: string;
     status: number;
     details?: unknown;
+    data?: any; // Raw error response data
 }
 
 // Pagination Types

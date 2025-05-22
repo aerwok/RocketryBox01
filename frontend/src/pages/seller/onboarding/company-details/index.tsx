@@ -19,12 +19,12 @@ import {
 } from "@/components/ui/select";
 import { sellerCompanySchema, type SellerCompanyInput } from "@/lib/validations/seller";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, Upload } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, CheckCircle2, Upload } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-
+import { profileService } from "@/services/profile.service";
 const features = [
     "Branded Order Tracking Page",
     "Automated NDR Management",
@@ -32,10 +32,20 @@ const features = [
 ];
 
 const SellerCompanyDetailsPage = () => {
+    const location = useLocation();
+    const { isNewRegistration, name, email, phone, companyName } = location.state || {};
 
     const [uploadType, setUploadType] = useState<"gst" | "pan" | "aadhaar" | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
     const navigate = useNavigate();
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    useEffect(() => {
+        // If coming from registration, show a welcome message
+        if (isNewRegistration) {
+            toast.success(`Welcome, ${name || 'Seller'}! Let's complete your profile.`);
+        }
+    }, [isNewRegistration, name]);
 
     const form = useForm<SellerCompanyInput>({
         resolver: zodResolver(sellerCompanySchema),
@@ -54,25 +64,123 @@ const SellerCompanyDetailsPage = () => {
         },
     });
 
-    const onSubmit = (data: SellerCompanyInput) => {
+    const onSubmit = async (data: SellerCompanyInput) => {
         try {
-            console.log(data);
-            // TODO: Implement API call to save company details
-            navigate("/seller/onboarding/bank");
-        } catch (error) {
+            // Check if all required documents are uploaded
+            if (!data.gstDocument || !data.panDocument || !data.aadhaarDocument) {
+                toast.error("Please upload all required documents");
+                return;
+            }
+
+            setIsLoading(true);
+
+            // Upload documents first
+            const uploadPromises = [
+                                profileService.uploadDocument(data.gstDocument, 'gst'),                profileService.uploadDocument(data.panDocument, 'pan'),                profileService.uploadDocument(data.aadhaarDocument, 'aadhaar')
+            ];
+
+            const uploadResults = await Promise.allSettled(uploadPromises);
+            
+            // Check for upload failures
+            const failedUploads = uploadResults.filter(result => result.status === 'rejected');
+            if (failedUploads.length > 0) {
+                toast.error("Failed to upload some documents. Please try again.");
+                return;
+            }
+
+            // Get successful upload URLs
+            const [gstUrl, panUrl, aadhaarUrl] = uploadResults.map(result => 
+                result.status === 'fulfilled' ? result.value.data.url : null
+            );
+
+            // Prepare company details with document URLs
+            const companyDetails = {
+                category: data.category,
+                gstNumber: data.gstNumber,
+                panNumber: data.panNumber,
+                aadhaarNumber: data.aadhaarNumber,
+                monthlyShipments: data.monthlyShipments,
+                address: {
+                    address1: data.address1,
+                    address2: data.address2,
+                    city: data.city,
+                    state: data.state,
+                    pincode: data.pincode,
+                    country: 'India'
+                },
+                documents: {
+                    gstin: {
+                        number: data.gstNumber,
+                        url: gstUrl,
+                        status: 'pending' as const
+                    },
+                    pan: {
+                        number: data.panNumber,
+                        url: panUrl,
+                        status: 'pending' as const
+                    },
+                    aadhaar: {
+                        number: data.aadhaarNumber,
+                        url: aadhaarUrl,
+                        status: 'pending' as const
+                    }
+                }
+            };
+
+            // Save company details
+            const response = await profileService.updateCompanyDetails(companyDetails);
+            
+            if (response.success) {
+                toast.success("Company details saved successfully!");
+                // Navigate to bank details with the onboarding state
+                navigate("/seller/onboarding/bank-details", {
+                    state: {
+                        isOnboarding: true,
+                        name,
+                        email,
+                        phone,
+                        companyName
+                    }
+                });
+            } else {
+                throw new Error(response.message || "Failed to save company details");
+            }
+        } catch (error: any) {
             console.error("Error submitting company details:", error);
-            toast.error("Failed to save company details. Please try again.");
+            toast.error(error.message || "Failed to save company details. Please try again.");
+        } finally {
+            setIsLoading(false);
         }
     };
 
     const handleUpload = (file: File) => {
         console.log("Uploaded file:", file);
-        // Handle file upload logic here
+        // Set the appropriate document based on uploadType
+        if (uploadType === 'gst') {
+            form.setValue('gstDocument', file);
+        } else if (uploadType === 'pan') {
+            form.setValue('panDocument', file);
+        } else if (uploadType === 'aadhaar') {
+            form.setValue('aadhaarDocument', file);
+        }
+        toast.success(`${uploadType?.toUpperCase() || 'Document'} uploaded successfully`);
     };
 
     return (
-        <div className="h-[calc(100dvh-4rem)] bg-white">
+        <div className="h-full min-h-[calc(100dvh-4rem)] bg-white">
             <div className="container mx-auto p-4 h-full">
+                {isNewRegistration && (
+                    <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
+                        <div className="flex items-center gap-2 text-green-700">
+                            <CheckCircle2 className="h-5 w-5" />
+                            <span className="font-medium">Account created successfully! Complete your profile to start using RocketryBox.</span>
+                        </div>
+                        <div className="mt-2 text-sm text-green-600">
+                            <span>Step 1 of 2: Company Details</span>
+                        </div>
+                    </div>
+                )}
+                
                 <div className="grid lg:grid-cols-2 gap-12 place-items-center w-full h-full">
                     {/* Left Side */}
                     <div className="space-y-6 order-2 lg:order-1 flex flex-col justify-start w-full h-full">
@@ -107,7 +215,7 @@ const SellerCompanyDetailsPage = () => {
                     <div className="lg:px-6 w-full order-1 lg:order-2 h-full">
                         <div className="flex-1 mx-auto text-center">
                             <h2 className="text-2xl lg:text-3xl font-semibold mb-8">
-                                Get Started With a Free Account
+                                {isNewRegistration ? "Complete Your Company Profile" : "Get Started With a Free Account"}
                             </h2>
                             <p className="text-gray-600 mb-8">
                                 Upload Documents
@@ -383,12 +491,9 @@ const SellerCompanyDetailsPage = () => {
                                 />
 
                                 <div className="flex justify-center pt-4">
-                                    <Button
-                                        type="submit"
-                                        className="w-1/2 bg-[#2B4EA8] hover:bg-[#2B4EA8]/90 text-white"
-                                        disabled={!form.watch("acceptTerms")}
+                                    <Button                                        type="submit"                                        className="w-1/2 bg-[#2B4EA8] hover:bg-[#2B4EA8]/90 text-white"                                        disabled={!form.watch("acceptTerms") || isLoading}
                                     >
-                                        Save
+                                        {isNewRegistration ? "Continue to Bank Details" : "Save"}
                                     </Button>
                                 </div>
                             </form>

@@ -7,6 +7,8 @@ import { UploadService } from './upload.service';
 import { NotificationService } from './notification.service';
 import { WebSocketService } from './websocket.service';
 import { PoliciesService } from "./policies.service";
+import { ProfileService, DocumentType as ProfileDocumentType, CompanyDetails as ProfileCompanyDetails } from './profile.service';
+import { Seller } from '@/types/api';
 
 interface Invoice {
     id: string;
@@ -208,81 +210,21 @@ interface Product {
     image?: string;
 }
 
-interface Seller {
-    id: string;
-    name: string;
-    email: string;
-    phone: string;
-    companyName: string;
-    companyCategory: string;
-    brandName?: string;
-    website?: string;
-    supportContact?: string;
-    supportEmail?: string;
-    operationsEmail?: string;
-    financeEmail?: string;
-    profileImage?: string;
-    address?: {
-        street: string;
-        landmark?: string;
-        city: string;
-        state: string;
-        country: string;
-        postalCode: string;
-    };
-    documents?: {
-        gstin: string;
-        pan: string;
-        aadhaar: string;
-        documents: Array<{
-            name: string;
-            type: string;
-            status: 'verified' | 'pending' | 'rejected';
-            url: string;
-        }>;
-    };
-    bankDetails?: Array<{
-        bankName: string;
-        accountName: string;
-        accountNumber: string;
-        branch: string;
-        accountType: string;
-        ifscCode: string;
-        cancelledCheque?: {
-            status: 'verified' | 'pending';
-            url: string;
-        };
-    }>;
-    storeLinks?: {
-        website?: string;
-        amazon?: string;
-        shopify?: string;
-        opencart?: string;
-    };
-    editRequested?: boolean;
+
+
+interface DocumentType {
+    type: string;
+    description: string;
 }
 
-interface AgreementVersion {
-    version: string;
-    docLink: string;
-    acceptanceDate: string;
-    publishedOn: string;
-    ipAddress: string;
-    status: "Accepted" | "Pending" | "Rejected";
-    content?: {
-        serviceProvider: {
-            name: string;
-            address: string;
-            email: string;
-        };
-        merchant: {
-            name: string;
-            address: string;
-            email: string;
-        };
-        merchantBusiness: string;
-        serviceProviderBusiness: string[];
-    };
+interface CompanyDetails {
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country: string;
+    phone: string;
 }
 
 /**
@@ -297,6 +239,7 @@ export class ServiceFactory {
   private uploadService: UploadService;
   private notificationService: NotificationService;
   private webSocketService: WebSocketService;
+  private profileService: ProfileService;
 
   private constructor() {
     this.apiService = new ApiService();
@@ -306,6 +249,7 @@ export class ServiceFactory {
     this.uploadService = new UploadService();
     this.notificationService = new NotificationService();
     this.webSocketService = new WebSocketService();
+    this.profileService = new ProfileService();
   }
 
   static getInstance(): ServiceFactory {
@@ -349,37 +293,37 @@ export class ServiceFactory {
   static shipping = {
     async calculateRates(rateData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/api/shipping/calculate-rates', rateData);
+      return apiService.post('/shipping/calculate-rates', rateData);
     },
 
     async getShipmentDetails(id: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/api/shipping/shipments/${id}`);
+      return apiService.get(`/shipping/shipments/${id}`);
     },
 
     async printLabel(id: string): Promise<ApiResponse<Blob>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/api/shipping/shipments/${id}/label`, { responseType: 'blob' });
+      return apiService.get(`/shipping/shipments/${id}/label`, { responseType: 'blob' });
     },
 
     async printInvoice(id: string): Promise<ApiResponse<Blob>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/api/shipping/shipments/${id}/invoice`, { responseType: 'blob' });
+      return apiService.get(`/shipping/shipments/${id}/invoice`, { responseType: 'blob' });
     },
 
     async cancelShipment(id: string): Promise<ApiResponse<void>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post(`/api/shipping/shipments/${id}/cancel`);
+      return apiService.post(`/shipping/shipments/${id}/cancel`);
     },
 
     async addTag(id: string): Promise<ApiResponse<void>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post(`/api/shipping/shipments/${id}/tag`);
+      return apiService.post(`/shipping/shipments/${id}/tag`);
     },
 
     async bookShipment(id: string): Promise<ApiResponse<void>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post(`/api/shipping/shipments/${id}/book`);
+      return apiService.post(`/shipping/shipments/${id}/book`);
     }
   };
   
@@ -389,32 +333,32 @@ export class ServiceFactory {
   static partners = {
     async getPartners(filters?: { status?: string }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/partners', { params: filters });
+      return apiService.get('/admin/partners', { params: filters });
     },
     
     async getPartnerById(id: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/api/admin/partners/${id}`);
+      return apiService.get(`/admin/partners/${id}`);
     },
     
     async createPartner(partnerData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/api/admin/partners', partnerData);
+      return apiService.post('/admin/partners', partnerData);
     },
     
     async updatePartner(id: string, partnerData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.put(`/api/admin/partners/${id}`, partnerData);
+      return apiService.put(`/admin/partners/${id}`, partnerData);
     },
     
     async refreshPartnerAPIs(ids: string[]): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/api/admin/partners/refresh-api', { ids });
+      return apiService.post('/admin/partners/refresh-api', { ids });
     },
     
     async deleteManyPartners(ids: string[]): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/api/admin/partners/batch-delete', { ids });
+      return apiService.post('/admin/partners/batch-delete', { ids });
     }
   };
 
@@ -426,7 +370,7 @@ export class ServiceFactory {
   static admin = {
     async getTeamMember(id: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/api/admin/team/${id}`);
+      return apiService.get(`/admin/team/${id}`);
     },
 
     async getTeamMembers(params?: {
@@ -441,29 +385,29 @@ export class ServiceFactory {
       type?: string;
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/team', { params });
+      return apiService.get('/admin/team', { params });
     },
 
     async updateTeamMember(id: string, memberData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.put(`/api/admin/team/${id}`, memberData);
+      return apiService.put(`/admin/team/${id}`, memberData);
     },
 
     async updateTeamMemberStatus(id: string, status: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.patch(`/api/admin/team/${id}/status`, { status });
+      return apiService.patch(`/admin/team/${id}/status`, { status });
     },
 
     async updateTeamPermissions(id: string, permissions: Record<string, boolean>): Promise<ApiResponse<void>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.put(`/api/admin/team/${id}/permissions`, permissions);
+      return apiService.put(`/admin/team/${id}/permissions`, permissions);
     },
 
     async uploadTeamDocument(id: string, formData: FormData): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       const file = formData.get('file') as File;
       const type = formData.get('type') as string;
-      return apiService.uploadFile(`/api/admin/team/${id}/documents`, file, type);
+      return apiService.uploadFile(`/admin/team/${id}/documents`, file, type);
     },
 
     getRateBands: () => ServiceFactory.getInstance().getApiService().get('/admin/rate-bands'),
@@ -471,7 +415,7 @@ export class ServiceFactory {
     // Analytics methods
     async getReportStats(): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/reports/stats');
+      return apiService.get('/admin/reports/stats');
     },
 
     async getRevenueData(params: {
@@ -480,12 +424,12 @@ export class ServiceFactory {
       to?: string;
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/reports/revenue', { params });
+      return apiService.get('/admin/reports/revenue', { params });
     },
 
     async getDeliveryPartners(): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/reports/delivery-partners');
+      return apiService.get('/admin/reports/delivery-partners');
     },
 
     async getShipments(params: {
@@ -493,29 +437,29 @@ export class ServiceFactory {
       to?: string;
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/dashboard/shipments', { params });
+      return apiService.get('/admin/dashboard/shipments', { params });
     }
   };
 
   static tickets = {
     async getTickets(page: number, pageSize: number): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/api/admin/tickets', { params: { page, pageSize } });
+      return apiService.get('/admin/tickets', { params: { page, pageSize } });
     },
 
     async updateTicketStatus(id: string, status: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.patch(`/api/admin/tickets/${id}/status`, { status });
+      return apiService.patch(`/admin/tickets/${id}/status`, { status });
     }
   };
 
   static customer = {
     orders: {
       getByAwb: async (awb: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/customer/orders/${awb}`, 'GET');
+        return ServiceFactory.callApi(`/customer/orders/${awb}`, 'GET');
       },
       submitRating: async (awb: string, data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/customer/orders/${awb}/rating`, 'POST', data);
+        return ServiceFactory.callApi(`/customer/orders/${awb}/rating`, 'POST', data);
       },
       getAll: async (params: {
         page: number;
@@ -525,44 +469,35 @@ export class ServiceFactory {
         sortDirection?: string;
         status?: string;
       }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
+        return ServiceFactory.callApi(`/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
       },
       getStatusCounts: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/customer/orders/status-counts', 'GET');
+        return ServiceFactory.callApi('/customer/orders/status-counts', 'GET');
       },
       downloadLabel: async (awb: string): Promise<ApiResponse<Blob>> => {
-        const response = await fetch(`/api/customer/orders/${awb}/label`);
-        const blob = await response.blob();
-        return {
-          success: true,
-          data: blob,
-          message: 'Label downloaded successfully',
-          status: 200
-        };
+        return ServiceFactory.callApi(`/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
       }
     },
     profile: {
       get: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/customer/profile', 'GET');
+        return ServiceFactory.callApi('/customer/profile', 'GET');
       },
       update: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/customer/profile', 'PATCH', data);
+        return ServiceFactory.callApi('/customer/profile', 'PATCH', data);
       },
       uploadImage: async (file: File): Promise<ApiResponse<any>> => {
         const formData = new FormData();
         formData.append('profileImage', file);
-        const response = await fetch('/api/customer/profile/image', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await response.json();
-        return data;
+        
+        // Use ApiService instead of direct fetch to maintain consistency
+        const apiService = ServiceFactory.getInstance().getApiService();
+        return apiService.uploadFile('/customer/profile/image', file, 'profileImage');
       },
       addAddress: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/customer/addresses', 'POST', data);
+        return ServiceFactory.callApi('/customer/addresses', 'POST', data);
       },
       deleteAddress: async (id: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/customer/addresses/${id}`, 'DELETE');
+        return ServiceFactory.callApi(`/customer/addresses/${id}`, 'DELETE');
       }
     }
   };
@@ -571,22 +506,22 @@ export class ServiceFactory {
     billing: {
       getInvoices: async (params: { from: string; to: string }) => {
         return await ServiceFactory.callApi<{ invoices: Invoice[] }>(
-          `/api/seller/billing/invoices?from=${params.from}&to=${params.to}`
+          `/seller/billing/invoices?from=${params.from}&to=${params.to}`
         );
       },
       getInvoiceSummary: async (params: { from: string; to: string }) => {
         return await ServiceFactory.callApi<{ summary: InvoiceSummary }>(
-          `/api/seller/billing/invoices/summary?from=${params.from}&to=${params.to}`
+          `/seller/billing/invoices/summary?from=${params.from}&to=${params.to}`
         );
       },
       downloadInvoice: async (invoiceId: string) => {
         return await ServiceFactory.callApi<{ pdfUrl: string }>(
-          `/api/seller/billing/invoices/${invoiceId}/download`
+          `/seller/billing/invoices/${invoiceId}/download`
         );
       },
       downloadShipments: async (invoiceId: string) => {
         return await ServiceFactory.callApi<Blob>(
-          `/api/seller/billing/invoices/${invoiceId}/shipments?format=csv`,
+          `/seller/billing/invoices/${invoiceId}/shipments?format=csv`,
           'GET',
           undefined,
           'blob'
@@ -596,7 +531,7 @@ export class ServiceFactory {
         return await ServiceFactory.callApi<{ 
           lastUpdated: string;
           rates: any[];
-        }>('/api/seller/billing/rate-card');
+        }>('/seller/billing/rate-card');
       },
       calculateRates: async (data: {
         pickupPincode: string;
@@ -614,171 +549,156 @@ export class ServiceFactory {
             gst: number;
             total: number;
           }>;
-        }>('/api/seller/billing/calculate-rates', 'POST', data);
+        }>('/seller/billing/calculate-rates', 'POST', data);
       },
       getWalletTransactions: async (params: WalletTransactionParams): Promise<ApiResponse<{ transactions: WalletTransaction[]; total: number }>> => {
-        return ServiceFactory.callApi('GET', '/api/seller/wallet/transactions', params);
+        return ServiceFactory.callApi('GET', '/seller/wallet/transactions', params);
       },
       getWalletSummary: async (): Promise<ApiResponse<WalletSummary>> => {
-        return ServiceFactory.callApi('GET', '/api/seller/wallet/summary');
+        return ServiceFactory.callApi('GET', '/seller/wallet/summary');
       }
     },
     product: {
       getProducts: async (): Promise<ApiResponse<Product[]>> => {
-        return ServiceFactory.callApi('/api/seller/products');
+        return ServiceFactory.callApi('/seller/products');
       },
       delete: async (id: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/products/${id}`, 'DELETE');
+        return ServiceFactory.callApi(`/seller/products/${id}`, 'DELETE');
       },
       import: async (formData: FormData): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi('/api/seller/products/import', 'POST', formData);
+        return ServiceFactory.callApi('/seller/products/import', 'POST', formData);
       }
     },
     bulkOrders: {
       getUploadHistory: async (): Promise<ApiResponse<any[]>> => {
-        return ServiceFactory.callApi('/api/seller/bulk-orders/history');
+        return ServiceFactory.callApi('/seller/bulk-orders/history');
       },
       downloadErrorFile: async (uploadId: number): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/api/seller/bulk-orders/${uploadId}/error-file`, 'GET', undefined, 'blob');
+        return ServiceFactory.callApi(`/seller/bulk-orders/${uploadId}/error-file`, 'GET', undefined, 'blob');
       },
       toggleUploadDetails: async (uploadId: number): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/bulk-orders/${uploadId}/toggle-details`, 'POST');
+        return ServiceFactory.callApi(`/seller/bulk-orders/${uploadId}/toggle-details`, 'POST');
       }
     },
     cod: {
       getSummary: async (): Promise<ApiResponse<RemittanceSummary>> => {
-        return ServiceFactory.callApi('/api/seller/cod/summary');
+        return ServiceFactory.callApi('/seller/cod/summary');
       },
       getRemittanceHistory: async (): Promise<ApiResponse<{ remittances: RemittanceData[] }>> => {
-        return ServiceFactory.callApi('/api/seller/cod/remittance-history');
+        return ServiceFactory.callApi('/seller/cod/remittance-history');
       },
       downloadRemittance: async (remittanceId: string): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/api/seller/cod/export?remittanceId=${remittanceId}&format=xlsx`, 'GET', undefined, 'blob');
+        return ServiceFactory.callApi(`/seller/cod/export?remittanceId=${remittanceId}&format=xlsx`, 'GET', undefined, 'blob');
       }
     },
     disputes: {
       getDisputes: async (status?: 'active' | 'inactive'): Promise<ApiResponse<DisputeData[]>> => {
-        return ServiceFactory.callApi(`/api/seller/disputes${status ? `?status=${status}` : ''}`);
+        return ServiceFactory.callApi(`/seller/disputes${status ? `?status=${status}` : ''}`);
       },
       getDisputeDetails: async (id: string): Promise<ApiResponse<DisputeDetails>> => {
-        return ServiceFactory.callApi(`/api/seller/disputes/${id}`);
+        return ServiceFactory.callApi(`/seller/disputes/${id}`);
       },
       updateDispute: async (id: string, data: Partial<DisputeData>): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/disputes/${id}`, 'PATCH', data);
+        return ServiceFactory.callApi(`/seller/disputes/${id}`, 'PATCH', data);
       },
       uploadBulkDisputes: async (file: File): Promise<ApiResponse<void>> => {
         const formData = new FormData();
         formData.append('file', file);
-        return ServiceFactory.callApi('/api/seller/disputes/bulk-upload', 'POST', formData);
+        return ServiceFactory.callApi('/seller/disputes/bulk-upload', 'POST', formData);
       }
     },
     manifest: {
       getManifests: async (): Promise<ApiResponse<ManifestData[]>> => {
-        return ServiceFactory.callApi('/api/seller/manifests');
+        return ServiceFactory.callApi('/seller/manifests');
       },
       getManifestDetails: async (manifestId: string): Promise<ApiResponse<ManifestDetails>> => {
-        return ServiceFactory.callApi(`/api/seller/manifests/${manifestId}`);
+        return ServiceFactory.callApi(`/seller/manifests/${manifestId}`);
       },
       createManifest: async (data: CreateManifestData): Promise<ApiResponse<ManifestData>> => {
-        return ServiceFactory.callApi('/api/seller/manifests', 'POST', data);
+        return ServiceFactory.callApi('/seller/manifests', 'POST', data);
       },
       updateManifestStatus: async (manifestId: string, status: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/manifests/${manifestId}/status`, 'PATCH', { status });
+        return ServiceFactory.callApi(`/seller/manifests/${manifestId}/status`, 'PATCH', { status });
       }
     },
     ndr: {
       getNDRs: async (status?: 'all' | 'action-required' | 'action-requested' | 'open' | 'closed'): Promise<ApiResponse<NDRData[]>> => {
-        return ServiceFactory.callApi(`/api/seller/ndr${status ? `?status=${status}` : ''}`);
+        return ServiceFactory.callApi(`/seller/ndr${status ? `?status=${status}` : ''}`);
       },
       getNDRDetails: async (awb: string): Promise<ApiResponse<NDRDetails>> => {
-        return ServiceFactory.callApi(`/api/seller/ndr/${awb}`);
+        return ServiceFactory.callApi(`/seller/ndr/${awb}`);
       },
       updateNDRAction: async (awb: string, data: { action: string; comments: string }): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/ndr/${awb}/action`, 'POST', data);
+        return ServiceFactory.callApi(`/seller/ndr/${awb}/action`, 'POST', data);
       },
       uploadBulkNDR: async (file: File): Promise<ApiResponse<void>> => {
         const formData = new FormData();
         formData.append('file', file);
-        return ServiceFactory.callApi('/api/seller/ndr/bulk-upload', 'POST', formData);
+        return ServiceFactory.callApi('/seller/ndr/bulk-upload', 'POST', formData);
       },
       downloadNDR: async (format: 'csv' | 'xlsx'): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/api/seller/ndr/download?format=${format}`, 'GET', undefined, 'blob');
+        return ServiceFactory.callApi(`/seller/ndr/download?format=${format}`, 'GET', undefined, 'blob');
       }
     },
     order: {
       getDetails: async (id: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/seller/orders/${id}`);
+        return ServiceFactory.callApi(`/seller/orders/${id}`);
       },
       getOrders: async (params: { status?: string; startDate?: string; endDate?: string }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/seller/orders?${new URLSearchParams(params as any)}`);
+        return ServiceFactory.callApi(`/seller/orders?${new URLSearchParams(params as any)}`);
       },
       updateStatus: async (id: string, status: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/orders/${id}/status`, 'PATCH', { status });
+        return ServiceFactory.callApi(`/seller/orders/${id}/status`, 'PATCH', { status });
       },
       cancel: async (id: string, reason: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/orders/${id}/cancel`, 'POST', { reason });
+        return ServiceFactory.callApi(`/seller/orders/${id}/cancel`, 'POST', { reason });
       },
       updateTracking: async (id: string, trackingNumber: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/orders/${id}/tracking`, 'PATCH', { trackingNumber });
+        return ServiceFactory.callApi(`/seller/orders/${id}/tracking`, 'PATCH', { trackingNumber });
       },
       bulkUpdateStatus: async (orderIds: string[], status: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi('/api/seller/orders/bulk-status', 'PATCH', { orderIds, status });
+        return ServiceFactory.callApi('/seller/orders/bulk-status', 'PATCH', { orderIds, status });
       }
     },
     profile: {
-      get: async (): Promise<ApiResponse<Seller>> => {
-        return ServiceFactory.callApi('/api/seller/profile');
-      },
-      update: async (data: Partial<Seller>): Promise<ApiResponse<Seller>> => {
-        return ServiceFactory.callApi('/api/seller/profile', 'PUT', data);
-      },
-      updateImage: async (file: File): Promise<ApiResponse<{ imageUrl: string }>> => {
-        const formData = new FormData();
-        formData.append('image', file);
-        return ServiceFactory.callApi('/api/seller/profile/image', 'POST', formData);
-      },
-      updateStoreLinks: async (links: Seller['storeLinks']): Promise<ApiResponse<Seller>> => {
-        return ServiceFactory.callApi('/api/seller/profile/store-links', 'PUT', { links });
-      },
-      getAgreements: async (): Promise<ApiResponse<AgreementVersion[]>> => {
-        return ServiceFactory.callApi('/api/seller/profile/agreements');
-      },
-      acceptAgreement: async (version: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/profile/agreements/${version}/accept`, 'POST');
-      },
-      rejectAgreement: async (version: string): Promise<ApiResponse<void>> => {
-        return ServiceFactory.callApi(`/api/seller/profile/agreements/${version}/reject`, 'POST');
-      },
-      downloadAgreement: async (version: string): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/api/seller/profile/agreements/${version}/download`, 'GET', undefined, 'blob');
-      }
+      get: () => ServiceFactory.getInstance().profileService.getProfile(),
+      update: (data: Partial<Seller>) => ServiceFactory.getInstance().profileService.updateProfile(data),
+      uploadDocument: (file: File, type: ProfileDocumentType) => ServiceFactory.getInstance().profileService.uploadDocument(file, type),
+      updateCompanyDetails: (data: ProfileCompanyDetails) => ServiceFactory.getInstance().profileService.updateCompanyDetails(data),
+      updateBankDetails: (data: any) => ServiceFactory.getInstance().profileService.updateBankDetails(data),
+      updateProfileImage: (file: File) => ServiceFactory.getInstance().profileService.updateProfileImage(file),
+      updateStoreLinks: (links: Seller['storeLinks']) => ServiceFactory.getInstance().profileService.updateStoreLinks(links)
     }
   };
 
   private static async callApi<T>(endpoint: string, method: string = 'GET', data?: any, responseType?: 'json' | 'blob'): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: data ? JSON.stringify(data) : undefined,
-      });
+      const apiService = ServiceFactory.getInstance().getApiService();
+      let response: ApiResponse<T>;
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const config = responseType ? { responseType } : undefined;
+
+      switch (method.toUpperCase()) {
+        case 'GET':
+          response = await apiService.get<T>(endpoint, data, config);
+          break;
+        case 'POST':
+          response = await apiService.post<T>(endpoint, data, config);
+          break;
+        case 'PUT':
+          response = await apiService.put<T>(endpoint, data, config);
+          break;
+        case 'PATCH':
+          response = await apiService.patch<T>(endpoint, data, config);
+          break;
+        case 'DELETE':
+          response = await apiService.delete<T>(endpoint, config);
+          break;
+        default:
+          throw new Error(`Unsupported HTTP method: ${method}`);
       }
 
-      const result = responseType === 'blob' 
-        ? await response.blob()
-        : await response.json();
-
-      return {
-        success: true,
-        data: result,
-        message: 'Success',
-        status: response.status
-      };
+      return response;
     } catch (error) {
       return {
         success: false,

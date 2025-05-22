@@ -1,13 +1,16 @@
 import express from 'express';
-import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet } from '../controllers/wallet.controller.js';
+import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet, getWalletBalance } from '../controllers/wallet.controller.js';
 import { protect } from '../../../middleware/auth.js';
 
 const router = express.Router();
 
 router.use(protect);
 
+// Get wallet balance
+router.get('/balance', getWalletBalance);
+
 // List wallet transactions
-router.get('/', listWalletTransactions);
+router.get('/history', listWalletTransactions);
 
 // Get wallet transaction details
 router.get('/:id', getWalletTransaction);

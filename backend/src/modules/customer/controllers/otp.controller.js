@@ -48,30 +48,38 @@ const sendEmailOTP = async (req, res) => {
 
         // Validate email
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            logger.warn('Invalid email format:', { email });
             return res.status(400).json({
                 success: false,
                 message: 'Invalid email format',
             });
         }
 
+        logger.info('Sending email OTP to:', { email });
         const success = await otpService.generateAndSendEmailOTP(email);
 
         if (success) {
+            logger.info('Email OTP sent successfully:', { email });
             return res.status(200).json({
                 success: true,
                 message: 'OTP sent successfully',
             });
         } else {
+            logger.error('Failed to send email OTP:', { email });
             return res.status(500).json({
                 success: false,
-                message: 'Failed to send OTP',
+                message: 'Failed to send OTP. Please try again later.',
             });
         }
     } catch (error) {
-        console.error('Send Email OTP Error:', error);
+        logger.error('Send Email OTP Error:', {
+            error: error.message,
+            stack: error.stack,
+            body: req.body
+        });
         return res.status(500).json({
             success: false,
-            message: 'Internal server error',
+            message: 'Internal server error. Please try again later.',
         });
     }
 };

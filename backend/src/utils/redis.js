@@ -84,9 +84,7 @@ try {
   // Handle Redis events
   redisClient.on('error', (err) => {
     logger.error('Redis Client Error:', err.message);
-    if (!usingFallbackMode) {
-      setupFallbackMode();
-    }
+    setupFallbackMode();
   });
   
   redisClient.on('connect', () => logger.info('Redis Client Connected'));
@@ -95,37 +93,30 @@ try {
     usingFallbackMode = false; // Reset fallback mode if connection successful
   });
   redisClient.on('reconnecting', () => logger.info('Redis Client Reconnecting'));
-  redisClient.on('end', () => logger.info('Redis Client Connection Ended'));
-  
-  // Connect to Redis
-  (async () => {
-    try {
-      await redisClient.connect();
-      logger.info('Successfully connected to Redis');
-      usingFallbackMode = false; // Reset fallback mode if connection successful
-    } catch (error) {
-      logger.error('Failed to connect to Redis:', error.message);
-      setupFallbackMode();
-    }
-  })();
+  redisClient.on('end', () => {
+    logger.info('Redis Client Connection Ended');
+    setupFallbackMode();
+  });
+
+  // Try to connect
+  redisClient.connect().catch((err) => {
+    logger.error('Failed to connect to Redis:', err.message);
+    setupFallbackMode();
+  });
 } catch (error) {
-  logger.error('Redis client creation error:', error.message);
+  logger.error('Error creating Redis client:', error.message);
   setupFallbackMode();
   redisClient = dummyRedisClient;
 }
 
-// Wrapper to use either Redis or fallback
+// Helper function to check if we should use Redis
 const useRedis = async () => {
+  if (usingFallbackMode) return false;
   try {
-    if (usingFallbackMode || !redisClient.isOpen) {
-      return false;
-    }
-    return true;
+    return redisClient?.isOpen || false;
   } catch (error) {
-    logger.error('Redis useRedis Error:', error.message);
-    if (!usingFallbackMode) {
-      setupFallbackMode();
-    }
+    logger.error('Error checking Redis connection:', error.message);
+    setupFallbackMode();
     return false;
   }
 };

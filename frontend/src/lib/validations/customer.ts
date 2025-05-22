@@ -27,16 +27,23 @@ export const customerRegisterSchema = z.object({
 });
 
 export const customerLoginSchema = z.object({
-    phoneOrEmail: z.string().min(1, "Phone number or email is required").refine((value) => {
-        const isEmail = value.includes('@');
-        const isPhone = /^\d{10}$/.test(value);
-        return isEmail || isPhone;
-    }, {
-        message: "Please enter a valid phone number or email address",
-    }),
-    password: z.string().min(1, "Password is required"),
-    otp: z.string().length(6, "OTP must be 6 digits").optional(),
-    rememberMe: z.boolean().default(false),
+    phoneOrEmail: z.string()
+        .min(1, "Phone number or email is required")
+        .refine((value) => {
+            const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+            const isPhone = /^[0-9]{10}$/.test(value);
+            return isEmail || isPhone;
+        }, {
+            message: "Please enter a valid phone number (10 digits) or email address",
+        }),
+    password: z.string()
+        .min(1, "Password is required")
+        .min(8, "Password must be at least 8 characters"),
+    otp: z.string()
+        .length(6, "OTP must be 6 digits")
+        .optional(),
+    rememberMe: z.boolean()
+        .default(false),
 });
 
 export type CustomerRegisterInput = z.infer<typeof customerRegisterSchema>;

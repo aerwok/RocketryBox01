@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 
@@ -14,16 +14,14 @@ const AuthModal = ({ children, type }: AuthModalProps) => {
                 {children}
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
+                <DialogTitle className="text-2xl font-semibold text-center">
+                    {type === "login" ? "Login" : "Sign up"}
+                </DialogTitle>
+                <DialogDescription className="text-lg text-center">
+                    Start your shipping journey as
+                </DialogDescription>
+                
                 <div className="flex flex-col items-center gap-8 py-4">
-                    <div className="text-center space-y-2">
-                        <h2 className="text-2xl font-semibold">
-                            {type === "login" ? "Login" : "Sign up"}
-                        </h2>
-                        <p className="text-lg text-muted-foreground">
-                            Start your shipping journey as
-                        </p>
-                    </div>
-
                     <div className="flex w-full gap-4">
                         <Link to={`/customer/${type === "login" ? "login" : "register"}`} className="w-full">
                             <Button

@@ -7,9 +7,9 @@ const addressSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Name is required']
   },
-  phone: {
+  mobile: {
     type: String,
-    required: [true, 'Phone number is required']
+    required: [true, 'Mobile number is required']
   },
   address1: {
     type: String,
@@ -54,9 +54,16 @@ const customerSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  mobile: {
+    type: String,
+    required: [true, 'Mobile number is required'],
+    sparse: true,  // Only create unique index for non-null values
+    unique: true,
+    index: true
+  },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
+    sparse: true,  // Only create unique index for non-null values
     unique: true,
     index: true
   },
@@ -117,7 +124,7 @@ const customerSchema = new mongoose.Schema({
 
 // Add compound indexes for common query patterns
 customerSchema.index({ status: 1, lastActive: -1 });
-customerSchema.index({ name: 'text', email: 'text', phone: 'text' });
+customerSchema.index({ name: 'text', email: 'text', mobile: 'text' });
 
 // Default filter to exclude inactive and suspended customers
 customerSchema.pre(/^find/, function(next) {
@@ -199,7 +206,7 @@ customerSchema.statics.findByIdSafe = async function(id) {
 // Helper method for updating customer data safely
 customerSchema.methods.updateSafe = async function(updates) {
   const allowedFields = [
-    'name', 'phone', 'preferences', 'addresses'
+    'name', 'mobile', 'preferences', 'addresses'
   ];
   
   Object.keys(updates).forEach(key => {

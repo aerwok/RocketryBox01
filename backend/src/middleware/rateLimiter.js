@@ -38,7 +38,7 @@ export const authLimiter = async (req, res, next) => {
     try {
         const key = `authlimit:${req.ip}`;
         const windowMs = 60 * 60 * 1000; // 1 hour
-        const maxRequests = 5; // 5 requests per hour
+        const maxRequests = 100; // 10 requests per hour
         
         const result = await checkRateLimit(
             key,

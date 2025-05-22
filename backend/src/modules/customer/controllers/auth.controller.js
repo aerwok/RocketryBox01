@@ -3,13 +3,14 @@ import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import { generateOTP } from '../../../utils/otp.js';
-import { setOTP, verifyOTP } from '../../../utils/redis.js';
+import { setOTP, verifyOTP, setSession } from '../../../utils/redis.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
+import { logger } from '../../../utils/logger.js';
 
 // Register new customer
 export const register = async (req, res, next) => {
   try {
-    const { name, email, phone, password, confirmPassword, acceptTerms } = req.body;
+    const { name, email, mobile, password, confirmPassword, acceptTerms } = req.body;
 
     // Validate terms acceptance
     if (!acceptTerms) {
@@ -20,13 +21,31 @@ export const register = async (req, res, next) => {
     if (password !== confirmPassword) {
       return next(new AppError('Passwords do not match', 400));
     }
+    
+    // Validate mobile number
+    if (!mobile || mobile.trim() === '') {
+      return next(new AppError('Mobile number is required', 400));
+    }
+
+    // For backwards compatibility, map mobile to phone field
+    const phone = mobile;
 
     // Check if customer already exists
     const existingCustomer = await Customer.findOne({
-      $or: [{ email }, { phone }]
+      $or: [
+        { email: email },
+        { mobile: mobile },
+        { phone: phone }
+      ]
     });
 
     if (existingCustomer) {
+      if (existingCustomer.email === email) {
+        return next(new AppError('Email is already registered', 400));
+      }
+      if (existingCustomer.mobile === mobile || existingCustomer.phone === phone) {
+        return next(new AppError('Mobile number is already registered', 400));
+      }
       return next(new AppError('Email or phone number already registered', 400));
     }
 
@@ -34,8 +53,18 @@ export const register = async (req, res, next) => {
     const customer = await Customer.create({
       name,
       email,
-      phone,
+      mobile,
+      phone,  // Set phone field to same value as mobile for consistency
       password
+    });
+
+    // Log the created customer for debugging
+    console.log("Customer created successfully:", {
+      id: customer._id,
+      name: customer.name,
+      email: customer.email,
+      mobile: customer.mobile,
+      phone: customer.phone
     });
 
     // Generate OTP for email verification
@@ -45,27 +74,37 @@ export const register = async (req, res, next) => {
     await customer.save();
 
     // Send verification email
-    await sendEmail({
-      to: email,
-      subject: 'Verify Your Email - RocketryBox',
-      text: `Your verification code is: ${emailOTP}. This code will expire in 10 minutes.`
-    });
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'Verify Your Email - RocketryBox',
+        text: `Your verification code is: ${emailOTP}. This code will expire in 10 minutes.`
+      });
+    } catch (emailError) {
+      console.error('Failed to send verification email:', emailError);
+      // Continue with registration process even if email fails
+    }
 
-    // Generate OTP for phone verification
-    const phoneOTP = generateOTP();
-    customer.phoneVerificationOTP = phoneOTP;
-    customer.phoneVerificationOTPExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    // Generate OTP for mobile verification
+    const mobileOTP = generateOTP();
+    customer.mobileVerificationOTP = mobileOTP;
+    customer.mobileVerificationOTPExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
     await customer.save();
 
     // Send verification SMS
-    await sendSMS({
-      to: phone,
-      templateId: SMS_TEMPLATES.OTP.templateId,
-      variables: {
-        otp: phoneOTP,
-        expiry: '10 minutes'
-      }
-    });
+    try {
+      await sendSMS({
+        to: mobile,
+        templateId: SMS_TEMPLATES.OTP.templateId,
+        variables: {
+          otp: mobileOTP,
+          expiry: '10 minutes'
+        }
+      });
+    } catch (smsError) {
+      console.error('Failed to send verification SMS:', smsError);
+      // Continue with registration process even if SMS fails
+    }
 
     // Generate tokens
     const accessToken = customer.generateAuthToken();
@@ -88,6 +127,7 @@ export const register = async (req, res, next) => {
       }
     });
   } catch (error) {
+    console.error('Registration error:', error);
     next(new AppError(error.message, 400));
   }
 };
@@ -101,7 +141,7 @@ export const login = async (req, res, next) => {
     const customer = await Customer.findOne({
       $or: [
         { email: phoneOrEmail },
-        { phone: phoneOrEmail }
+        { mobile: phoneOrEmail }
       ]
     }).select('+password');
 
@@ -136,6 +176,17 @@ export const login = async (req, res, next) => {
     const accessToken = customer.generateAuthToken();
     const refreshToken = customer.generateRefreshToken();
 
+    // Set up session in Redis
+    await setSession(customer._id.toString(), {
+      user: {
+        id: customer._id,
+        role: 'customer',
+        name: customer.name,
+        email: customer.email
+      },
+      lastActivity: Date.now()
+    });
+
     // Emit customer login event for real-time dashboard updates
     emitEvent(EVENT_TYPES.CUSTOMER_LOGIN, {
       customerId: customer._id,
@@ -168,34 +219,118 @@ export const sendOTP = async (req, res, next) => {
     try {
         const { phoneOrEmail, purpose } = req.body;
 
-        // Find customer by email or phone
+        // Check if customer exists
         const customer = await Customer.findOne({
             $or: [
                 { email: phoneOrEmail },
-                { phone: phoneOrEmail }
+                { mobile: phoneOrEmail }
             ]
         });
 
-        if (!customer) {
+        // For verification purpose during registration, we shouldn't check if account exists
+        if (purpose === 'verify' && !customer) {
+            // Generate OTP for new registration
+            const otp = generateOTPHelper();
+            
+            // Log OTP for development purposes
+            console.log('\n=========== DEVELOPMENT OTP ===========');
+            console.log(`📱 Phone/Email: ${phoneOrEmail}`);
+            console.log(`🔐 OTP Generated: ${otp}`);
+            console.log(`⏱️ Expires in: 10 minutes`);
+            console.log('========================================\n');
+            
+            // Store OTP in Redis with a temporary key
+            const tempKey = `temp_${phoneOrEmail}`;
+            const stored = await setOTP(tempKey, otp);
+            console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
+
+            try {
+                // Send OTP via email or SMS
+                if (phoneOrEmail.includes('@')) {
+                    await sendEmail({
+                        to: phoneOrEmail,
+                        subject: 'Verify Your Email - RocketryBox',
+                        text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
+                    });
+                } else {
+                    await sendSMS({
+                        to: phoneOrEmail,
+                        templateId: SMS_TEMPLATES.OTP.templateId,
+                        variables: {
+                            otp: otp,
+                            expiry: '10 minutes'
+                        }
+                    });
+                }
+            } catch (sendError) {
+                // In development mode, ignore sending errors
+                if (process.env.NODE_ENV !== 'development') {
+                    throw sendError;
+                }
+                logger.warn('Development mode: Ignoring SMS/Email sending error', {
+                    error: sendError.message,
+                    phoneOrEmail: phoneOrEmail.includes('@') ? 
+                        '***' + phoneOrEmail.slice(-10) : 
+                        '***' + phoneOrEmail.slice(-4)
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    message: 'OTP sent successfully',
+                    expiresIn: 600 // 10 minutes in seconds
+                }
+            });
+        }
+
+        // For login/reset purposes, we need an existing account
+        if ((purpose === 'login' || purpose === 'reset') && !customer) {
             return next(new AppError('No account found with this email or phone number', 404));
         }
 
         const otp = generateOTPHelper();
         
+        // Log OTP for development purposes
+        console.log('\n=========== DEVELOPMENT OTP ===========');
+        console.log(`📱 Phone/Email: ${phoneOrEmail}`);
+        console.log(`🔐 OTP Generated: ${otp}`);
+        console.log(`⏱️ Expires in: 10 minutes`);
+        console.log('========================================\n');
+        
         // Store OTP in Redis
-        await setOTP(customer._id.toString(), otp);
+        const key = customer ? customer._id.toString() : `temp_${phoneOrEmail}`;
+        const stored = await setOTP(key, otp);
+        console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
 
-        // Send OTP via email or SMS
-        if (phoneOrEmail.includes('@')) {
-            await sendEmail({
-                to: phoneOrEmail,
-                subject: 'Your OTP - RocketryBox',
-                text: `Your OTP is: ${otp}. This code will expire in ${process.env.OTP_EXPIRY_MINUTES} minutes.`
-            });
-        } else {
-            await sendSMS({
-                to: phoneOrEmail,
-                message: `Your OTP for RocketryBox is ${otp}. Valid for ${process.env.OTP_EXPIRY_MINUTES} minutes.`
+        try {
+            // Send OTP via email or SMS
+            if (phoneOrEmail.includes('@')) {
+                await sendEmail({
+                    to: phoneOrEmail,
+                    subject: 'Verify Your Email - RocketryBox',
+                    text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
+                });
+            } else {
+                await sendSMS({
+                    to: phoneOrEmail,
+                    templateId: SMS_TEMPLATES.OTP.templateId,
+                    variables: {
+                        otp: otp,
+                        expiry: '10 minutes'
+                    }
+                });
+            }
+        } catch (sendError) {
+            // In development mode, ignore sending errors
+            if (process.env.NODE_ENV !== 'development') {
+                throw sendError;
+            }
+            logger.warn('Development mode: Ignoring SMS/Email sending error', {
+                error: sendError.message,
+                phoneOrEmail: phoneOrEmail.includes('@') ? 
+                    '***' + phoneOrEmail.slice(-10) : 
+                    '***' + phoneOrEmail.slice(-4)
             });
         }
 
@@ -203,8 +338,7 @@ export const sendOTP = async (req, res, next) => {
             success: true,
             data: {
                 message: 'OTP sent successfully',
-                otp: process.env.NODE_ENV === 'development' ? otp : undefined,
-                expiresIn: parseInt(process.env.OTP_EXPIRY_MINUTES) * 60
+                expiresIn: 600 // 10 minutes in seconds
             }
         });
     } catch (error) {
@@ -221,7 +355,7 @@ export const verifyOTPHandler = async (req, res, next) => {
         const customer = await Customer.findOne({
             $or: [
                 { email: phoneOrEmail },
-                { phone: phoneOrEmail }
+                { mobile: phoneOrEmail }
             ]
         });
 

@@ -101,10 +101,10 @@ const FeatureCard = ({ title, description, index, detailDescription }: FeatureCa
                 <DialogContent className="sm:max-w-[600px]">
                     <DialogHeader>
                         <DialogTitle className="text-xl font-semibold text-[#7C3AED]">{title}</DialogTitle>
+                        <DialogDescription className="text-base text-gray-700 mt-4">
+                            {detailDescription}
+                        </DialogDescription>
                     </DialogHeader>
-                    <DialogDescription className="text-base text-gray-700 mt-4">
-                        {detailDescription}
-                    </DialogDescription>
                 </DialogContent>
             </Dialog>
         </motion.div>

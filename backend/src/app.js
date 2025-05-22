@@ -13,18 +13,36 @@ import { setupEventListeners } from './utils/eventEmitter.js';
 import { broadcastDashboardUpdates, broadcastDashboardSectionUpdate, getRealtimeDashboardData } from './modules/admin/services/realtime.service.js';
 import { checkMaintenanceMode } from './middleware/maintenanceMode.js';
 import { isRedisHealthy, getCache } from './utils/redis.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Load environment variables
-dotenv.config();
+// Get the directory name
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from the correct path
+const envPath = path.resolve(__dirname, '../.env');
+logger.info('Loading environment variables from:', { envPath });
+dotenv.config({ path: envPath });
 
 // Debug environment variables
-logger.info('Environment variables:', {
+logger.info('Environment variables loaded:', {
     MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
     MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set',
     PORT: process.env.PORT,
     NODE_ENV: process.env.NODE_ENV,
-    CORS_ORIGIN: process.env.CORS_ORIGIN
+    CORS_ORIGIN: process.env.CORS_ORIGIN,
+    AWS_REGION: process.env.AWS_REGION ? 'Set' : 'Not set',
+    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set',
+    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set',
+    SES_FROM_EMAIL: process.env.SES_FROM_EMAIL ? 'Set' : 'Not set'
 });
+
+// Set development environment if not set
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'development';
+  console.log('Setting NODE_ENV to development');
+}
 
 // Import routes
 import customerRoutes from './modules/customer/index.js';
@@ -100,19 +118,56 @@ setInterval(() => {
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_ATLAS_URI || process.env.MONGODB_URI;
 if (!MONGODB_URI) {
-    logger.error('MongoDB URI not found in environment variables');
+    logger.error('MongoDB URI not found in environment variables. Please check your .env file.');
+    logger.info('Required environment variables:', {
+        MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
+        MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
+    });
     process.exit(1);
 }
 
-logger.info('Connecting to MongoDB Atlas...');
-mongoose.connect(MONGODB_URI)
-  .then(() => {
-    logger.info('Connected to MongoDB Atlas successfully');
-  })
-  .catch((error) => {
-    logger.error('MongoDB connection error:', error);
+logger.info('Connecting to MongoDB...', {
+    uri: MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//****:****@') // Hide credentials in logs
+});
+
+mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+})
+.then(async () => {
+    logger.info('Connected to MongoDB successfully');
+    // Sync mobile and phone fields on startup
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        logger.info('Syncing mobile and phone fields...');
+        const db = mongoose.connection;
+        const customersCollection = db.collection('customers');
+        
+        // Find customers with mobile but no phone
+        const results = await customersCollection.updateMany(
+          { mobile: { $exists: true }, phone: { $exists: false } },
+          [{ $set: { phone: "$mobile" } }]
+        );
+        
+        // Find customers with phone but no mobile
+        const results2 = await customersCollection.updateMany(
+          { phone: { $exists: true }, mobile: { $exists: false } },
+          [{ $set: { mobile: "$phone" } }]
+        );
+        
+        logger.info(`Sync complete: ${results.modifiedCount + results2.modifiedCount} customers updated`);
+      } catch (error) {
+        logger.error('Error syncing mobile and phone fields:', error);
+      }
+    }
+})
+.catch((error) => {
+    logger.error('MongoDB connection error:', {
+        error: error.message,
+        stack: error.stack
+    });
     process.exit(1);
-  });
+});
 
 // Security middleware
 app.use(helmet());
@@ -124,16 +179,20 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later'
+  max: process.env.NODE_ENV === 'development' ? 1000 : 100, // Higher limit in development
+  message: 'Too many requests from this IP, please try again later',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false // Disable the `X-RateLimit-*` headers
 });
 app.use('/api/', limiter);
 
 // Specialized rate limit for dashboard endpoints
 const dashboardLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 60, // More strict limit for dashboard endpoints
-  message: 'Too many dashboard requests from this IP, please try again later'
+  max: process.env.NODE_ENV === 'development' ? 300 : 60, // Higher limit in development
+  message: 'Too many dashboard requests from this IP, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
 });
 app.use('/api/admin/dashboard', dashboardLimiter);
 
@@ -152,11 +211,11 @@ app.use(morgan('combined', {
 app.use(checkMaintenanceMode);
 
 // API routes
-app.use('/api/customer', customerRoutes);
-app.use('/api/marketing', marketingRoutes);
-app.use('/api/seller', sellerRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/pincodes', pincodeRoutes);
+app.use('/api/v2/customer', customerRoutes);
+app.use('/api/v2/marketing', marketingRoutes);
+app.use('/api/v2/seller', sellerRoutes);
+app.use('/api/v2/admin', adminRoutes);
+app.use('/api/v2/pincodes', pincodeRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
@@ -208,6 +267,23 @@ if (process.env.NODE_ENV === 'development') {
     }
   });
 }
+
+// Admin debug endpoint (secure)
+app.get('/api/admin/debug', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  if (adminToken !== process.env.ADMIN_DEBUG_TOKEN) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json({
+    env: {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: process.env.PORT,
+      // Add other non-sensitive env vars as needed
+    },
+    timestamp: new Date().toISOString(),
+    message: 'Admin debug endpoint is working!'
+  });
+});
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {

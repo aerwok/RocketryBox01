@@ -2,36 +2,82 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
+const addressSchema = new mongoose.Schema({
+  address1: { type: String },
+  address2: { type: String },
+  city: { type: String },
+  state: { type: String },
+  pincode: { type: String },
+  country: { type: String, default: 'India' }
+}, { _id: false });
+
+const bankDetailsSchema = new mongoose.Schema({
+  accountType: { type: String },
+  bankName: { type: String },
+  accountNumber: { type: String },
+  accountHolderName: { type: String },
+  ifscCode: { type: String },
+  cancelledCheque: {
+    url: { type: String },
+    status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
+  }
+}, { _id: false });
+
 const sellerSchema = new mongoose.Schema({
+  // Basic Info
   name: { type: String, required: true, index: true },
+  firstName: { type: String },  // For display purposes
+  lastName: { type: String },   // For display purposes
   email: { type: String, required: true, unique: true, lowercase: true, index: true },
   phone: { type: String, required: true, unique: true, index: true },
   password: { type: String, required: true, select: false },
+  
+  // Business Info
   businessName: { type: String, required: true, index: true },
   companyCategory: { type: String },
   brandName: { type: String },
   website: { type: String },
+  monthlyShipments: { type: String, enum: ['0-100', '101-500', '501-1000', '1001-5000', '5000+'] },
+  
+  // Contact Info
   supportContact: { type: String },
   supportEmail: { type: String },
   operationsEmail: { type: String },
   financeEmail: { type: String },
+  
+  // Address
+  address: addressSchema,
+  
+  // Documents
   gstin: { type: String },
   documents: {
-    gstin: { type: String },
-    pan: { type: String },
-    cin: { type: String },
-    tradeLicense: { type: String },
-    msmeRegistration: { type: String },
-    aadhaar: { type: String },
-    documents: [
-      {
-        name: { type: String },
-        type: { type: String },
-        url: { type: String },
-        status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
-      }
-    ]
+    gstin: {
+      number: { type: String },
+      url: { type: String },
+      status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
+    },
+    pan: {
+      number: { type: String },
+      url: { type: String },
+      status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
+    },
+    aadhaar: {
+      number: { type: String },
+      url: { type: String },
+      status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
+    },
+    others: [{
+      name: { type: String },
+      type: { type: String },
+      url: { type: String },
+      status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
+    }]
   },
+  
+  // Bank Details
+  bankDetails: bankDetailsSchema,
+  
+  // System Fields
   status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending', index: true },
   otp: {
     code: { type: String },
@@ -73,9 +119,26 @@ sellerSchema.pre('save', function(next) {
 
 // Hash password before save
 sellerSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
+  try {
+    console.log('Pre-save hook triggered for seller:', {
+      sellerId: this._id,
+      isNew: this.isNew,
+      isModified: this.isModified('password')
+    });
+
+    if (!this.isModified('password')) {
+      console.log('Password not modified, skipping hash');
+      return next();
+    }
+
+    console.log('Hashing password');
+    this.password = await bcrypt.hash(this.password, 10);
+    console.log('Password hashed successfully');
+    next();
+  } catch (error) {
+    console.error('Error in password hashing:', error);
+    next(error);
+  }
 });
 
 // Compare password
@@ -117,8 +180,10 @@ sellerSchema.statics.findByIdSafe = async function(id) {
 // Helper method for updating seller data safely
 sellerSchema.methods.updateSafe = async function(updates) {
   const allowedFields = [
-    'name', 'phone', 'businessName', 'companyCategory', 'brandName',
-    'website', 'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail'
+    'name', 'firstName', 'lastName', 'phone', 'businessName', 
+    'companyCategory', 'brandName', 'website', 'monthlyShipments',
+    'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail',
+    'address', 'documents', 'bankDetails'
   ];
   
   Object.keys(updates).forEach(key => {
