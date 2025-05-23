@@ -12,19 +12,22 @@ export const checkPermission = (permission) => {
     }
 
     // If user is superAdmin, they have all permissions
-    if (req.user.role === 'superAdmin') {
+    if (req.user.isSuperAdmin === true) {
       return next();
     }
 
+    // Ensure permissions is an array
+    const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+
     // For admin users, check if they have the specific permission
-    if (req.user.role === 'admin' && req.user.permissions) {
-      if (req.user.permissions.includes(permission) || req.user.permissions.includes('all')) {
+    if ((req.user.role === 'Admin' || req.user.role === 'Manager') && userPermissions.length > 0) {
+      if (userPermissions.includes(permission) || userPermissions.includes('all')) {
         return next();
       }
     }
 
-    // For other roles (like managers), check their specific permissions
-    if (req.user.permissions && (req.user.permissions.includes(permission) || req.user.permissions.includes('all'))) {
+    // For other roles, check their specific permissions
+    if (userPermissions.length > 0 && (userPermissions.includes(permission) || userPermissions.includes('all'))) {
       return next();
     }
 

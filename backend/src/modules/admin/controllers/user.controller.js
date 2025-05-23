@@ -12,11 +12,11 @@ import { invalidateCachePattern, CACHE_PATTERNS } from '../../../utils/cache.js'
 import mongoose from 'mongoose';
 
 /**
- * Get all sellers with pagination and filters
- * @route GET /api/v1/admin/users/sellers
+ * Get all users (both sellers and customers) with pagination and filters
+ * @route GET /api/v2/admin/users
  * @access Private (Admin only)
  */
-export const getAllSellers = async (req, res, next) => {
+export const getAllUsers = async (req, res, next) => {
     try {
         const { 
             page = 1, 
@@ -25,14 +25,224 @@ export const getAllSellers = async (req, res, next) => {
             sortOrder = 'desc',
             status,
             search,
+            type = 'seller' // Default to seller for backward compatibility
+        } = req.query;
+
+        if (type === 'seller') {
+            return getAllSellers(req, res, next);
+        } else if (type === 'customer') {
+            return getAllCustomers(req, res, next);
+        } else {
+            // Return combined results if no specific type requested
+            const sellerQuery = { type: 'seller', ...req.query };
+            const customerQuery = { type: 'customer', ...req.query };
+            
+            // For simplicity, default to sellers if no type specified
+            return getAllSellers(req, res, next);
+        }
+    } catch (error) {
+        logger.error(`Error in getAllUsers: ${error.message}`);
+        next(new AppError('Failed to fetch users', 500));
+    }
+};
+
+/**
+ * Get user details by ID (auto-detect if seller or customer)
+ * @route GET /api/v2/admin/users/:id
+ * @access Private (Admin only)
+ */
+export const getUserDetails = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        
+        logger.info(`getUserDetails called with ID: "${id}"`);
+        logger.info(`ID type: ${typeof id}, length: ${id ? id.length : 'null'}`);
+        logger.info(`ID characters: ${id ? id.split('').map(c => c.charCodeAt(0)).join(',') : 'null'}`);
+        
+        // Validate ObjectId format - but be more lenient for debugging
+        if (!id || id === 'undefined' || id === 'null' || id.trim() === '') {
+            logger.warn(`Invalid user ID received: "${id}"`);
+            return next(new AppError('User ID is required', 400));
+        }
+        
+        // Clean the ID
+        const cleanId = id.trim();
+        logger.info(`Cleaned ID: "${cleanId}"`);
+        
+        // Check if it's a valid ObjectId format (24 character hex string)
+        if (!mongoose.Types.ObjectId.isValid(cleanId)) {
+            logger.warn(`Invalid ObjectId format: "${cleanId}"`);
+            logger.warn(`Is valid ObjectId: ${mongoose.Types.ObjectId.isValid(cleanId)}`);
+            
+            // Instead of throwing error, let's try to find by other fields for debugging
+            logger.info('Attempting to find user by email or other identifier...');
+            
+            try {
+                // Try to find seller by email or business name
+                const sellerByEmail = await Seller.findOne({
+                    $or: [
+                        { email: cleanId },
+                        { businessName: { $regex: cleanId, $options: 'i' } }
+                    ]
+                });
+                
+                if (sellerByEmail) {
+                    logger.info(`Found seller by email/name: ${sellerByEmail._id}`);
+                    req.params.id = sellerByEmail._id.toString();
+                    return getSellerDetails(req, res, next);
+                }
+                
+                // Try to find customer by email or name
+                const customerByEmail = await Customer.findOne({
+                    $or: [
+                        { email: cleanId },
+                        { name: { $regex: cleanId, $options: 'i' } }
+                    ]
+                }, null, { skipDefaultFilter: true });
+                
+                if (customerByEmail) {
+                    logger.info(`Found customer by email/name: ${customerByEmail._id}`);
+                    req.params.id = customerByEmail._id.toString();
+                    return getCustomerDetails(req, res, next);
+                }
+            } catch (searchError) {
+                logger.warn(`Error searching by email/name: ${searchError.message}`);
+            }
+            
+            return next(new AppError('Invalid user ID format', 400));
+        }
+        
+        // Try to find as seller first
+        let seller;
+        try {
+            seller = await Seller.findById(cleanId);
+            logger.info(`Seller search result: ${seller ? 'found' : 'not found'}`);
+        } catch (sellerError) {
+            logger.warn(`Error finding seller ${cleanId}: ${sellerError.message}`);
+        }
+        
+        if (seller) {
+            req.params.id = cleanId;
+            return getSellerDetails(req, res, next);
+        }
+        
+        // Try to find as customer
+        let customer;
+        try {
+            customer = await Customer.findById(cleanId, null, { skipDefaultFilter: true });
+            logger.info(`Customer search result: ${customer ? 'found' : 'not found'}`);
+        } catch (customerError) {
+            logger.warn(`Error finding customer ${cleanId}: ${customerError.message}`);
+        }
+        
+        if (customer) {
+            req.params.id = cleanId;
+            return getCustomerDetails(req, res, next);
+        }
+        
+        logger.warn(`User not found with ID: ${cleanId}`);
+        return next(new AppError('User not found', 404));
+    } catch (error) {
+        logger.error(`Error in getUserDetails: ${error.message}`);
+        logger.error(`Stack trace: ${error.stack}`);
+        next(new AppError('Failed to fetch user details', 500));
+    }
+};
+
+/**
+ * Update user status (auto-detect if seller or customer)
+ * @route PATCH /api/v2/admin/users/:id/status
+ * @access Private (Admin only)
+ */
+export const updateUserStatus = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        
+        // Try to find as seller first
+        const seller = await Seller.findById(id);
+        if (seller) {
+            return updateSellerStatus(req, res, next);
+        }
+        
+        // Try to find as customer
+        const customer = await Customer.findById(id);
+        if (customer) {
+            return updateCustomerStatus(req, res, next);
+        }
+        
+        return next(new AppError('User not found', 404));
+    } catch (error) {
+        logger.error(`Error in updateUserStatus: ${error.message}`);
+        next(new AppError('Failed to update user status', 500));
+    }
+};
+
+/**
+ * Update user permissions (placeholder for future implementation)
+ * @route PATCH /api/v2/admin/users/:id/permissions
+ * @access Private (Admin only)
+ */
+export const updateUserPermissions = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const { permissions } = req.body;
+        
+        // For now, return success response since permissions are not implemented
+        // This can be expanded later when user permissions are fully implemented
+        
+        res.status(200).json({
+            success: true,
+            message: 'User permissions updated successfully',
+            data: {
+                userId: id,
+                permissions
+            }
+        });
+    } catch (error) {
+        logger.error(`Error in updateUserPermissions: ${error.message}`);
+        next(new AppError('Failed to update user permissions', 500));
+    }
+};
+
+/**
+ * Get all sellers with pagination and filters
+ * @route GET /api/v2/admin/users/sellers
+ * @access Private (Admin only)
+ */
+export const getAllSellers = async (req, res, next) => {
+    try {
+        const { 
+            page = 1, 
+            limit = 10, 
+            sortBy = 'createdAt',
+            sortField = 'createdAt', // Support both sortBy and sortField
+            sortOrder = 'desc',
+            status,
+            search,
             kycStatus
         } = req.query;
+
+        // Use sortField if provided, otherwise fallback to sortBy
+        let actualSortField = sortField || sortBy;
+        
+        // Map frontend field names to database field names
+        const fieldMapping = {
+            'userId': '_id',
+            'name': 'name',
+            'email': 'email',
+            'status': 'status',
+            'createdAt': 'createdAt',
+            'lastActive': 'lastActive'
+        };
+        
+        // Apply field mapping
+        actualSortField = fieldMapping[actualSortField] || actualSortField;
 
         // Build query
         const query = {};
         
         // Add status filter if provided
-        if (status) {
+        if (status && status !== 'all') {
             query.status = status;
         }
 
@@ -70,7 +280,7 @@ export const getAllSellers = async (req, res, next) => {
                     }
                 },
                 {
-                    $sort: { [sortBy]: sortDirection }
+                    $sort: { [actualSortField]: sortDirection }
                 },
                 {
                     $skip: skip
@@ -82,7 +292,7 @@ export const getAllSellers = async (req, res, next) => {
         } else {
             // Use normal find for non-KYC filtering
             sellers = await Seller.find(query)
-                .sort({ [sortBy]: sortDirection })
+                .sort({ [actualSortField]: sortDirection })
                 .skip(skip)
                 .limit(parseInt(limit));
         }
@@ -90,10 +300,24 @@ export const getAllSellers = async (req, res, next) => {
         // Get total count for pagination
         const totalSellers = await Seller.countDocuments(query);
 
+        // Transform sellers to match frontend expectations
+        const transformedSellers = sellers.map(seller => ({
+            id: seller._id ? seller._id.toString() : '',
+            userId: seller._id ? seller._id.toString() : '', // Use _id as userId and ensure it's a string
+            name: seller.name || '',
+            email: seller.email || '',
+            status: seller.status || 'Active',
+            createdAt: seller.createdAt,
+            lastActive: seller.lastActive,
+            paymentType: 'wallet', // Default value
+            totalTransactions: 0 // Default value, can be enhanced later
+        }));
+
         res.status(200).json({
             success: true,
             data: {
-                sellers,
+                sellers: transformedSellers,
+                users: transformedSellers, // Alias for frontend compatibility
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),
@@ -554,20 +778,41 @@ export const manageSellerRateCard = async (req, res, next) => {
  */
 export const getAllCustomers = async (req, res, next) => {
     try {
+        logger.info(`getAllCustomers called with query: ${JSON.stringify(req.query)}`);
+        
         const { 
             page = 1, 
             limit = 10, 
             sortBy = 'createdAt',
+            sortField = 'createdAt', // Support both sortBy and sortField
             sortOrder = 'desc',
             status,
             search
         } = req.query;
 
+        // Use sortField if provided, otherwise fallback to sortBy
+        let actualSortField = sortField || sortBy;
+        
+        // Map frontend field names to database field names
+        const fieldMapping = {
+            'userId': '_id',
+            'name': 'name',
+            'email': 'email',
+            'status': 'status',
+            'createdAt': 'createdAt',
+            'lastActive': 'lastActive'
+        };
+        
+        // Apply field mapping
+        actualSortField = fieldMapping[actualSortField] || actualSortField;
+
+        logger.info(`Using sort field: ${actualSortField}, direction: ${sortOrder}`);
+
         // Build query
         const query = {};
         
         // Add status filter if provided
-        if (status) {
+        if (status && status !== 'all') {
             query.status = status;
         }
 
@@ -580,22 +825,48 @@ export const getAllCustomers = async (req, res, next) => {
             ];
         }
 
+        logger.info(`Database query: ${JSON.stringify(query)}`);
+
         // Execute query with pagination
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const sortDirection = sortOrder === 'desc' ? -1 : 1;
         
-        const customers = await Customer.find(query)
-            .sort({ [sortBy]: sortDirection })
+        logger.info(`Pagination: skip=${skip}, limit=${limit}, sort={${actualSortField}: ${sortDirection}}`);
+        
+        // Use skipDefaultFilter option to get all customers regardless of status
+        const customers = await Customer.find(query, null, { skipDefaultFilter: true })
+            .sort({ [actualSortField]: sortDirection })
             .skip(skip)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .lean(); // Add lean() for better performance
 
-        // Get total count for pagination
+        logger.info(`Found ${customers.length} customers`);
+
+        // Get total count for pagination (also skip default filter)
         const totalCustomers = await Customer.countDocuments(query);
+
+        logger.info(`Total customers count: ${totalCustomers}`);
+
+        // Transform customers to match frontend expectations
+        const transformedCustomers = customers.map(customer => ({
+            id: customer._id ? customer._id.toString() : '',
+            userId: customer._id ? customer._id.toString() : '', // Use _id as userId and ensure it's a string
+            name: customer.name || '',
+            email: customer.email || '',
+            status: customer.status || 'active',
+            createdAt: customer.createdAt,
+            lastActive: customer.lastActive,
+            paymentType: 'wallet', // Default value
+            totalTransactions: 0 // Default value, can be enhanced later
+        }));
+
+        logger.info(`Transformed ${transformedCustomers.length} customers for response`);
 
         res.status(200).json({
             success: true,
             data: {
-                customers,
+                customers: transformedCustomers,
+                users: transformedCustomers, // Alias for frontend compatibility
                 pagination: {
                     page: parseInt(page),
                     limit: parseInt(limit),
@@ -606,6 +877,7 @@ export const getAllCustomers = async (req, res, next) => {
         });
     } catch (error) {
         logger.error(`Error in getAllCustomers: ${error.message}`);
+        logger.error(`Stack trace: ${error.stack}`);
         next(new AppError('Failed to fetch customers', 500));
     }
 };

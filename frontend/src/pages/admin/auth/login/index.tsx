@@ -12,19 +12,6 @@ import { toast } from "sonner";
 import { ApiService } from "@/services/api.service";
 import { secureStorage } from "@/utils/secureStorage";
 
-interface LoginResponse {
-    token: string;
-    user: {
-        id: string;
-        name: string;
-        email: string;
-        role: string;
-        department: string;
-        isSuperAdmin: boolean;
-        permissions: string[];
-    };
-}
-
 const AdminLoginPage = () => {
 
     const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -44,20 +31,36 @@ const AdminLoginPage = () => {
     const onSubmit = async (data: AdminLoginInput) => {
         try {
             setIsLoading(true);
-            const response = await apiService.post<LoginResponse>('/api/v2/admin/auth/login', {
+            interface LoginData {
+                token: string;
+                user: {
+                    id: string;
+                    name: string;
+                    email: string;
+                    role: string;
+                    department: string;
+                    isSuperAdmin: boolean;
+                    permissions: string[];
+                }
+            }
+
+            const response = await apiService.post('admin/auth/login', {
                 email: data.email,
                 password: data.password,
                 rememberMe: data.rememberMe
-            });
+            }) as { success: boolean; data: LoginData };
             
-            if (response.data.token) {
+            if (response.success && response.data) {
                 await secureStorage.setItem('auth_token', response.data.token);
+                await secureStorage.setItem('user', JSON.stringify(response.data.user));
                 toast.success('Login successful');
                 navigate('/admin/dashboard');
+            } else {
+                toast.error('Login failed. Invalid response from server.');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Login failed:', error);
-            toast.error('Login failed. Please check your credentials.');
+            toast.error(error?.message || 'Login failed. Please check your credentials.');
         } finally {
             setIsLoading(false);
         }

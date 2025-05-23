@@ -29,6 +29,12 @@ router.use(restrictTo('Admin', 'Manager', 'Support'));
 // Real-time user data
 router.post('/realtime', userController.getRealtimeUserData);
 
+// Generic user management routes (for frontend compatibility)
+router.get('/', userController.getAllUsers);
+router.get('/:id', userController.getUserDetails);
+router.patch('/:id/status', userController.updateUserStatus);
+router.patch('/:id/permissions', userController.updateUserPermissions);
+
 // Seller routes
 router.get('/sellers', userController.getAllSellers);
 router.get('/sellers/:id', userController.getSellerDetails);

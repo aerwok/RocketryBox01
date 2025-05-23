@@ -118,7 +118,7 @@ const AdminTeamProfilePage = () => {
                 setLoading(true);
                 setError(null);
                 
-                const response = await ServiceFactory.admin.getTeamMember(id);
+                const response = await ServiceFactory.admin.getAdminTeamMember(id);
                 const data = response.data;
                 
                 setUserData(data);
@@ -170,7 +170,7 @@ const AdminTeamProfilePage = () => {
         try {
             setSaving(true);
             
-            await ServiceFactory.admin.updateTeamMember(id!, {
+            await ServiceFactory.admin.updateAdminTeamMember(id!, {
                 fullName: editData.fullName,
                 employeeId: editData.employeeId,
                 email: editData.email,
@@ -182,7 +182,7 @@ const AdminTeamProfilePage = () => {
             });
             
             // Refresh user data
-            const response = await ServiceFactory.admin.getTeamMember(id!);
+            const response = await ServiceFactory.admin.getAdminTeamMember(id!);
             setUserData(response.data);
             
             toast.success("Profile updated successfully");
@@ -208,7 +208,7 @@ const AdminTeamProfilePage = () => {
         try {
             setSaving(true);
             
-            await ServiceFactory.admin.updateTeamPermissions(id!, permissions);
+            await ServiceFactory.admin.updateAdminTeamMemberPermissions(id!, permissions);
             
             toast.success("Permissions updated successfully");
             setPermissionsChanged(false);
@@ -233,7 +233,7 @@ const AdminTeamProfilePage = () => {
                 formData.append('file', file);
                 formData.append('type', docType);
                 
-                const response = await ServiceFactory.admin.uploadTeamDocument(id!, formData);
+                const response = await ServiceFactory.admin.uploadAdminTeamMemberDocument(id!, formData);
                 
                 setDocuments((prev) => ({
                     ...prev,

@@ -71,7 +71,7 @@ const TeamsTable = ({ data, loading, onStatusUpdate }: {
     };
 
     const getSortedData = () => {
-        if (!sortConfig.key || !sortConfig.direction) return data;
+        if (!sortConfig.key || !sortConfig.direction || !Array.isArray(data)) return data;
 
         return [...data].sort((a, b) => {
             const aValue = String(a[sortConfig.key!] || "");
@@ -101,7 +101,7 @@ const TeamsTable = ({ data, loading, onStatusUpdate }: {
         );
     }
 
-    if (data.length === 0) {
+    if (!Array.isArray(data) || data.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center h-[400px] border rounded-lg">
                 <p className="text-muted-foreground mb-4">No team members found</p>
@@ -114,6 +114,8 @@ const TeamsTable = ({ data, loading, onStatusUpdate }: {
             </div>
         );
     }
+
+    const sortedData = getSortedData();
 
     return (
         <div className="border rounded-lg overflow-hidden">
@@ -188,40 +190,40 @@ const TeamsTable = ({ data, loading, onStatusUpdate }: {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {getSortedData().map((member) => (
-                        <TableRow key={member.userId}>
+                    {sortedData.map((member) => (
+                        <TableRow key={member.userId || Math.random()}>
                             <TableCell className="font-medium">
                                 <Link
                                     to={`/admin/dashboard/teams/${member.userId}`}
                                     className="text-purple-600 hover:underline"
                                 >
-                                    {member.userId}
+                                    {member.userId || 'N/A'}
                                 </Link>
                             </TableCell>
-                            <TableCell>{member.name}</TableCell>
-                            <TableCell className="hidden md:table-cell">{member.email}</TableCell>
+                            <TableCell>{member.name || 'N/A'}</TableCell>
+                            <TableCell className="hidden md:table-cell">{member.email || 'N/A'}</TableCell>
                             <TableCell>
                                 <span
                                     className={`px-2 py-1 rounded-md text-xs font-medium ${getRoleStyle(
-                                        member.role
+                                        member.role || 'Agent'
                                     )}`}
                                 >
-                                    {member.role}
+                                    {member.role || 'Agent'}
                                 </span>
                             </TableCell>
-                            <TableCell className="hidden md:table-cell">{member.registrationDate}</TableCell>
+                            <TableCell className="hidden md:table-cell">{member.registrationDate || 'N/A'}</TableCell>
                             <TableCell>
                                 <span
                                     className={`px-2 py-1 rounded-md text-xs font-medium ${getStatusStyle(
-                                        member.status
+                                        member.status || 'Active'
                                     )}`}
                                 >
-                                    {member.status}
+                                    {member.status || 'Active'}
                                 </span>
                             </TableCell>
-                            <TableCell className="hidden md:table-cell">{member.phone}</TableCell>
+                            <TableCell className="hidden md:table-cell">{member.phone || 'N/A'}</TableCell>
                             <TableCell className="hidden lg:table-cell max-w-[200px] truncate">
-                                {member.remarks}
+                                {member.remarks || 'N/A'}
                             </TableCell>
                             <TableCell className="text-right">
                                 <DropdownMenu>
@@ -279,11 +281,57 @@ const AdminTeamsPage = () => {
                 setLoading(true);
                 setError(null);
                 
-                const response = await ServiceFactory.admin.getTeamMembers();
-                setTeamMembers(response.data);
+                console.log('Fetching team members...');
+                
+                // Use the correct team management API endpoint
+                const response = await ServiceFactory.admin.getAdminTeamMembers({
+                    page: 1,
+                    limit: 100,
+                    search: ""
+                });
+                
+                console.log('Team API Response:', response);
+                
+                if (response.success && response.data) {
+                    // Handle different response structures
+                    let members: any[] = [];
+                    
+                    if (Array.isArray(response.data)) {
+                        members = response.data;
+                    } else if (response.data.data && Array.isArray(response.data.data)) {
+                        members = response.data.data;
+                    } else if (response.data.teamMembers && Array.isArray(response.data.teamMembers)) {
+                        members = response.data.teamMembers;
+                    } else {
+                        console.warn('Unexpected response structure:', response.data);
+                        members = [];
+                    }
+                    
+                    console.log('Processing members:', members);
+                    
+                    // Transform members to expected structure
+                    const transformedMembers: TeamMember[] = members.map((member: any) => ({
+                        userId: member._id || member.userId || '',
+                        name: member.fullName || member.name || '',
+                        email: member.email || '',
+                        role: member.role || 'Agent',
+                        registrationDate: member.createdAt ? new Date(member.createdAt).toLocaleDateString() : '',
+                        status: member.status || 'Active',
+                        phone: member.phoneNumber || member.phone || '',
+                        remarks: member.remarks || ''
+                    }));
+                    
+                    console.log('Transformed members:', transformedMembers);
+                    setTeamMembers(transformedMembers);
+                } else {
+                    console.error('API response not successful:', response);
+                    throw new Error(response.message || 'Failed to fetch team members');
+                }
             } catch (err) {
                 console.error("Error fetching team members:", err);
                 setError("Failed to load team members. Please try again.");
+                // Ensure teamMembers is always an array
+                setTeamMembers([]);
             } finally {
                 setLoading(false);
             }
@@ -293,16 +341,26 @@ const AdminTeamsPage = () => {
     }, []);
 
     const handleStatusUpdate = async (userId: string, newStatus: TeamMember["status"]) => {
+        if (!userId) {
+            toast.error("Invalid user ID");
+            return;
+        }
+
         try {
             setStatusUpdateLoading(true);
             
-            await ServiceFactory.admin.updateTeamMemberStatus(userId, newStatus);
+            console.log(`Updating status for user ${userId} to ${newStatus}`);
             
-            // Update local state
+            // Use the correct team status update API
+            await ServiceFactory.admin.updateAdminTeamMemberStatus(userId, newStatus);
+            
+            // Update local state with safety check
             setTeamMembers(prevMembers => 
-                prevMembers.map(member => 
-                    member.userId === userId ? { ...member, status: newStatus } : member
-                )
+                Array.isArray(prevMembers) 
+                    ? prevMembers.map(member => 
+                        member.userId === userId ? { ...member, status: newStatus } : member
+                    )
+                    : []
             );
             
             toast.success(`Status updated to ${newStatus}`);
@@ -314,15 +372,19 @@ const AdminTeamsPage = () => {
         }
     };
 
-    // Filter team members based on search term
-    const filteredMembers = teamMembers.filter(member => {
-        const searchTermLower = searchTerm.toLowerCase();
-        return (
-            member.userId.toLowerCase().includes(searchTermLower) ||
-            member.name.toLowerCase().includes(searchTermLower) ||
-            member.email.toLowerCase().includes(searchTermLower)
-        );
-    });
+    // Filter team members based on search term with safety checks
+    const filteredMembers = Array.isArray(teamMembers) 
+        ? teamMembers.filter(member => {
+            if (!member) return false;
+            
+            const searchTermLower = searchTerm.toLowerCase();
+            return (
+                (member.userId || '').toLowerCase().includes(searchTermLower) ||
+                (member.name || '').toLowerCase().includes(searchTermLower) ||
+                (member.email || '').toLowerCase().includes(searchTermLower)
+            );
+        })
+        : [];
 
     return (
         <div className="space-y-6">

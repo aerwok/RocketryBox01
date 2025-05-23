@@ -35,75 +35,6 @@ export interface SellerUser {
   };
 }
 
-// Mock data for development
-const MOCK_SELLERS: SellerUser[] = [
-  {
-    id: "1",
-    userId: "SELLER001",
-    name: "John Smith",
-    email: "john.smith@example.com",
-    phone: "+91 9876543210",
-    status: "Active",
-    registrationDate: "2023-05-15",
-    lastActive: "2023-10-25",
-    companyName: "Smith Enterprises",
-    companyCategory: "Electronics",
-    paymentType: "wallet",
-    rateBand: "Standard",
-    kycStatus: "Verified",
-    documentApprovals: {
-      pan: "Verified",
-      gst: "Verified",
-      identity: "Verified",
-      bankDetails: "Verified"
-    }
-  },
-  {
-    id: "2",
-    userId: "SELLER002",
-    name: "Sarah Johnson",
-    email: "sarah.j@example.com",
-    phone: "+91 9876543211",
-    status: "Active",
-    registrationDate: "2023-06-22",
-    lastActive: "2023-10-24",
-    companyName: "Johnson Retail",
-    companyCategory: "Fashion",
-    paymentType: "credit",
-    rateBand: "Premium",
-    creditLimit: 50000,
-    creditPeriod: 30,
-    kycStatus: "Verified",
-    documentApprovals: {
-      pan: "Verified",
-      gst: "Verified",
-      identity: "Verified",
-      bankDetails: "Verified"
-    }
-  },
-  {
-    id: "3",
-    userId: "SELLER003",
-    name: "Michael Brown",
-    email: "michael.b@example.com",
-    phone: "+91 9876543212",
-    status: "Inactive",
-    registrationDate: "2023-04-10",
-    lastActive: "2023-07-30",
-    companyName: "Brown Industries",
-    companyCategory: "Home & Kitchen",
-    paymentType: "wallet",
-    rateBand: "Basic",
-    kycStatus: "Rejected",
-    documentApprovals: {
-      pan: "Verified",
-      gst: "Rejected",
-      identity: "Verified",
-      bankDetails: "Verified"
-    }
-  }
-];
-
 /**
  * Fetch all sellers with optional filtering and pagination
  */
@@ -116,68 +47,59 @@ export const fetchSellers = async (
   sortOrder: "asc" | "desc" = "asc"
 ): Promise<{ sellers: SellerUser[]; totalCount: number }> => {
   try {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // In production, this would be an API call:
-    // const params = new URLSearchParams({
-    //   page: page.toString(),
-    //   pageSize: pageSize.toString(),
-    //   query: searchQuery,
-    //   status: status || '',
-    //   sortField,
-    //   sortOrder
-    // });
-    // const response = await fetch(`/api/admin/sellers?${params}`);
-    // if (!response.ok) throw new Error('Failed to fetch sellers');
-    // return await response.json();
-
-    // For development, filter and sort mock data
-    let filteredSellers = [...MOCK_SELLERS];
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filteredSellers = filteredSellers.filter(
-        seller =>
-          seller.name.toLowerCase().includes(query) ||
-          seller.email.toLowerCase().includes(query) ||
-          seller.userId.toLowerCase().includes(query) ||
-          seller.companyName.toLowerCase().includes(query)
-      );
-    }
-
-    // Apply status filter
-    if (status && status !== "all") {
-      filteredSellers = filteredSellers.filter(
-        seller => seller.status.toLowerCase() === status.toLowerCase()
-      );
-    }
-
-    // Apply sorting
-    filteredSellers.sort((a, b) => {
-      const aValue = String((a as any)[sortField] || "");
-      const bValue = String((b as any)[sortField] || "");
-      
-      return sortOrder === "asc"
-        ? aValue.localeCompare(bValue)
-        : bValue.localeCompare(aValue);
+    // Use real API call through ServiceFactory
+    const response = await apiService.get('/admin/users/sellers', {
+      page: page.toString(),
+      limit: pageSize.toString(),
+      search: searchQuery,
+      status: status || '',
+      sortField,
+      sortOrder
     });
 
-    // Apply pagination
-    const startIndex = (page - 1) * pageSize;
-    const paginatedSellers = filteredSellers.slice(
-      startIndex,
-      startIndex + pageSize
-    );
+    if (response.success && response.data) {
+      const data = response.data as any;
+      // Transform backend data to match SellerUser interface
+      const transformedSellers = (data.sellers || data.users || []).map((seller: any) => ({
+        id: seller.id || seller._id,
+        userId: seller.userId || seller.id || seller._id,
+        name: seller.name || '',
+        email: seller.email || '',
+        phone: seller.phone || seller.mobile || '',
+        status: seller.status || 'Active',
+        registrationDate: seller.createdAt ? new Date(seller.createdAt).toISOString().split('T')[0] : '',
+        lastActive: seller.lastActive ? new Date(seller.lastActive).toISOString().split('T')[0] : '',
+        companyName: seller.businessName || seller.companyName || '',
+        companyCategory: seller.companyCategory || '',
+        paymentType: seller.paymentType || 'wallet',
+        rateBand: seller.rateBand || 'Standard',
+        creditLimit: seller.creditLimit,
+        creditPeriod: seller.creditPeriod,
+        kycStatus: seller.kycVerified ? 'Verified' : 'Pending',
+        documentApprovals: {
+          pan: 'Pending',
+          gst: 'Pending', 
+          identity: 'Pending',
+          bankDetails: 'Pending'
+        }
+      }));
 
-    return {
-      sellers: paginatedSellers,
-      totalCount: filteredSellers.length
-    };
+      return {
+        sellers: transformedSellers,
+        totalCount: data.pagination?.totalResults || transformedSellers.length
+      };
+    } else {
+      throw new Error('Failed to fetch sellers');
+    }
   } catch (error) {
-    console.error("Error fetching sellers:", error);
-    throw error;
+    console.error('Error fetching sellers:', error);
+    toast.error('Failed to load sellers');
+    
+    // Return empty data instead of mock data
+    return {
+      sellers: [],
+      totalCount: 0
+    };
   }
 };
 
@@ -186,24 +108,39 @@ export const fetchSellers = async (
  */
 export const fetchSellerById = async (id: string): Promise<SellerUser> => {
   try {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Use real API call
+    const response = await apiService.get(`/admin/users/${id}`);
 
-    // In production, this would be an API call:
-    // const response = await fetch(`/api/admin/sellers/${id}`);
-    // if (!response.ok) throw new Error('Failed to fetch seller details');
-    // return await response.json();
-
-    // For development, use mock data
-    const seller = MOCK_SELLERS.find(
-      s => s.id === id || s.userId.toLowerCase() === id.toLowerCase()
-    );
-
-    if (!seller) {
+    if (response.success && response.data) {
+      const seller = response.data as any;
+      
+      // Transform backend data to match SellerUser interface
+      return {
+        id: seller.id || seller._id,
+        userId: seller.userId || seller.id || seller._id,
+        name: seller.name || '',
+        email: seller.email || '',
+        phone: seller.phone || seller.mobile || '',
+        status: seller.status || 'Active',
+        registrationDate: seller.createdAt ? new Date(seller.createdAt).toISOString().split('T')[0] : '',
+        lastActive: seller.lastActive ? new Date(seller.lastActive).toISOString().split('T')[0] : '',
+        companyName: seller.businessName || seller.companyName || '',
+        companyCategory: seller.companyCategory || '',
+        paymentType: seller.paymentType || 'wallet',
+        rateBand: seller.rateBand || 'Standard',
+        creditLimit: seller.creditLimit,
+        creditPeriod: seller.creditPeriod,
+        kycStatus: seller.kycVerified ? 'Verified' : 'Pending',
+        documentApprovals: {
+          pan: 'Pending',
+          gst: 'Pending',
+          identity: 'Pending',
+          bankDetails: 'Pending'
+        }
+      };
+    } else {
       throw new Error(`Seller with ID ${id} not found`);
     }
-
-    return seller;
   } catch (error) {
     console.error(`Error fetching seller ${id}:`, error);
     throw error;
@@ -218,22 +155,14 @@ export const updateSellerStatus = async (
   status: "Active" | "Inactive" | "Pending" | "Suspended"
 ): Promise<void> => {
   try {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Use real API call
+    const response = await apiService.patch(`/admin/users/${id}/status`, { status });
 
-    // In production, this would be an API call:
-    // const response = await fetch(`/api/admin/sellers/${id}/status`, {
-    //   method: 'PATCH',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ status })
-    // });
-    // if (!response.ok) throw new Error('Failed to update seller status');
-
-    // For development, just log the change
-    console.log(`Updated seller ${id} status to ${status}`);
-    toast.success(`Seller status updated to ${status}`);
-
-    return;
+    if (response.success) {
+      toast.success(`Seller status updated to ${status}`);
+    } else {
+      throw new Error('Failed to update seller status');
+    }
   } catch (error) {
     console.error(`Error updating seller ${id} status:`, error);
     toast.error("Failed to update seller status");

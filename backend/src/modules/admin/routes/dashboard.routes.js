@@ -14,6 +14,9 @@ router.get('/overview', dashboardController.getDashboardOverview);
 // KPI data route
 router.get('/kpi', dashboardController.getKPI);
 
+// Shipments data route
+router.get('/shipments', dashboardController.getShipments);
+
 // Real-time dashboard data
 router.get('/realtime', dashboardController.getRealtimeData);
 

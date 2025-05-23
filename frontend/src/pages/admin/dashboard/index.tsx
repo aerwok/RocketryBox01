@@ -523,54 +523,96 @@ const AdminDashboardPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Fallback dashboard cards to show when API fails
+    const fallbackDashboardCards: DashboardCard[] = [
+        {
+            title: "Total Shipments",
+            value: "0",
+            change: "No data available"
+        },
+        {
+            title: "Revenue generated",
+            value: "₹0",
+            change: "No data available"
+        },
+        {
+            title: "Pending Orders",
+            value: "0",
+            change: "No data available"
+        },
+        {
+            title: "Active users",
+            value: "0",
+            change: "No data available"
+        }
+    ];
+
     useEffect(() => {
         const fetchDashboardData = async () => {
             try {
                 setLoading(true);
                 setError(null);
 
-                // Fetch dashboard stats
-                const statsResponse = await ServiceFactory.admin.getReportStats();
-                if (statsResponse.success) {
-                    const stats = statsResponse.data;
-                    setDashboardCards([
-                        {
-                            title: "Total Shipments",
-                            value: stats.shipments.total.toLocaleString(),
-                            change: `${stats.shipments.todayCount > 0 ? '+' : ''}${stats.shipments.todayCount} today`
-                        },
-                        {
-                            title: "Revenue generated",
-                            value: `₹${stats.revenue.total.toLocaleString()}`,
-                            change: `${stats.revenue.growth > 0 ? '+' : ''}${stats.revenue.growth}% growth`
-                        },
-                        {
-                            title: "Pending Orders",
-                            value: stats.orders.pending.toLocaleString(),
-                            change: `${stats.orders.todayCount} today`
-                        },
-                        {
-                            title: "Active users",
-                            value: stats.users.activeToday.toLocaleString(),
-                            change: `${stats.users.newToday} new today`
-                        }
-                    ]);
+                // Initialize with fallback data
+                setDashboardCards(fallbackDashboardCards);
+                setShipments([]);
+
+                try {
+                    // Fetch dashboard stats
+                    const statsResponse = await ServiceFactory.admin.getReportStats();
+                    if (statsResponse.success) {
+                        const stats = statsResponse.data;
+                        setDashboardCards([
+                            {
+                                title: "Total Shipments",
+                                value: stats.shipments.total.toLocaleString(),
+                                change: `${stats.shipments.todayCount > 0 ? '+' : ''}${stats.shipments.todayCount} today`
+                            },
+                            {
+                                title: "Revenue generated",
+                                value: `₹${stats.revenue.total.toLocaleString()}`,
+                                change: `${stats.revenue.growth > 0 ? '+' : ''}${stats.revenue.growth}% growth`
+                            },
+                            {
+                                title: "Pending Orders",
+                                value: stats.orders.pending.toLocaleString(),
+                                change: `${stats.orders.todayCount} today`
+                            },
+                            {
+                                title: "Active users",
+                                value: stats.users.activeToday.toLocaleString(),
+                                change: `${stats.users.newToday} new today`
+                            }
+                        ]);
+                    }
+                } catch (statsError) {
+                    console.warn("Failed to fetch dashboard stats, using fallback data:", statsError);
+                    // Keep fallback cards already set above
                 }
 
-                // Fetch shipments data
-                const shipmentsResponse = await ServiceFactory.admin.getShipments({
-                    from: date?.from?.toISOString(),
-                    to: date?.to?.toISOString()
-                });
-                if (shipmentsResponse.success) {
-                    setShipments(shipmentsResponse.data);
+                try {
+                    // Fetch shipments data
+                    const shipmentsResponse = await ServiceFactory.admin.getShipments({
+                        from: date?.from?.toISOString(),
+                        to: date?.to?.toISOString()
+                    });
+                    if (shipmentsResponse.success) {
+                        setShipments(shipmentsResponse.data);
+                    }
+                } catch (shipmentsError) {
+                    console.warn("Failed to fetch shipments data:", shipmentsError);
+                    // Keep empty array already set above
                 }
 
                 setError(null);
             } catch (err) {
                 console.error("Error fetching dashboard data:", err);
-                setError("Failed to load dashboard data. Please try again.");
-                toast.error("Failed to load dashboard data");
+                setError("Some dashboard data could not be loaded, showing available data.");
+                toast.error("Some dashboard data could not be loaded");
+                
+                // Ensure we have fallback data even on complete failure
+                setDashboardCards(fallbackDashboardCards);
+                setShipments([]);
             } finally {
                 setLoading(false);
             }
@@ -610,15 +652,25 @@ const AdminDashboardPage = () => {
     };
 
     if (loading) {
-        return <div className="flex items-center justify-center h-screen">Loading...</div>;
-    }
-
-    if (error) {
-        return <div className="text-red-500 p-4">Error: {error}</div>;
+        return (
+            <div className="flex items-center justify-center h-64">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600"></div>
+                    <p className="text-gray-600">Loading dashboard data...</p>
+                </div>
+            </div>
+        );
     }
 
     return (
         <div className="space-y-6">
+            {/* Error Banner */}
+            {error && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-yellow-800">
+                    <p className="text-sm">{error}</p>
+                </div>
+            )}
+
             {/* Tabs */}
             <Tabs defaultValue="seller" className="space-y-6">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -675,7 +727,14 @@ const AdminDashboardPage = () => {
                                 <h2 className="text-lg font-semibold">Recent Orders</h2>
                                 <Button variant="link" className="text-main">View All</Button>
                             </div>
-                            <ShipmentsTable data={filteredShipments} type="order" />
+                            {filteredShipments.length > 0 ? (
+                                <ShipmentsTable data={filteredShipments} type="order" />
+                            ) : (
+                                <div className="border rounded-lg p-8 text-center">
+                                    <p className="text-gray-500">No orders available</p>
+                                    <p className="text-sm text-gray-400 mt-1">Data will appear here when orders are created</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Shipments */}
@@ -684,7 +743,14 @@ const AdminDashboardPage = () => {
                                 <h2 className="text-lg font-semibold">Shipments</h2>
                                 <Button variant="link" className="text-main">View All</Button>
                             </div>
-                            <ShipmentsTable data={filteredShipments} />
+                            {filteredShipments.length > 0 ? (
+                                <ShipmentsTable data={filteredShipments} />
+                            ) : (
+                                <div className="border rounded-lg p-8 text-center">
+                                    <p className="text-gray-500">No shipments available</p>
+                                    <p className="text-sm text-gray-400 mt-1">Data will appear here when shipments are created</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Courier Load */}
@@ -693,7 +759,14 @@ const AdminDashboardPage = () => {
                                 <h2 className="text-lg font-semibold">Courier Load</h2>
                                 <Button variant="link" className="text-main">View All</Button>
                             </div>
-                            <ShipmentsTable data={filteredShipments} type="courierLoad" />
+                            {filteredShipments.length > 0 ? (
+                                <ShipmentsTable data={filteredShipments} type="courierLoad" />
+                            ) : (
+                                <div className="border rounded-lg p-8 text-center">
+                                    <p className="text-gray-500">No courier data available</p>
+                                    <p className="text-sm text-gray-400 mt-1">Data will appear here when shipments are processed</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Courier Status */}
@@ -702,7 +775,14 @@ const AdminDashboardPage = () => {
                                 <h2 className="text-lg font-semibold">Courier Status</h2>
                                 <Button variant="link" className="text-main">View All</Button>
                             </div>
-                            <ShipmentsTable data={filteredShipments} type="courierStatus" />
+                            {filteredShipments.length > 0 ? (
+                                <ShipmentsTable data={filteredShipments} type="courierStatus" />
+                            ) : (
+                                <div className="border rounded-lg p-8 text-center">
+                                    <p className="text-gray-500">No courier status data available</p>
+                                    <p className="text-sm text-gray-400 mt-1">Data will appear here when shipments are in transit</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </TabsContent>

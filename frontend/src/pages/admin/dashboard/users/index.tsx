@@ -396,12 +396,16 @@ const AdminUsersPage = () => {
                                 displayData.map((user) => (
                                     <TableRow key={user.id}>
                                         <TableCell className="font-medium">
-                                            <Link 
-                                                to={`/admin/dashboard/users/${user.userId}`} 
-                                                className="text-blue-600 hover:underline"
-                                            >
-                                                {user.userId}
-                                            </Link>
+                                            {user.userId && user.userId !== 'undefined' && user.userId !== 'null' ? (
+                                                <Link 
+                                                    to={`/admin/dashboard/users/${user.userId}`} 
+                                                    className="text-blue-600 hover:underline"
+                                                >
+                                                    {user.userId}
+                                                </Link>
+                                            ) : (
+                                                <span className="text-gray-500">{user.userId || 'No ID'}</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {user.name}
@@ -450,15 +454,25 @@ const AdminUsersPage = () => {
                                         )}
                                         <TableCell>
                                             <div className="flex gap-2">
-                                                <Button 
-                                                    variant="outline" 
-                                                    size="sm"
-                                                    asChild
-                                                >
-                                                    <Link to={`/admin/dashboard/users/${user.userId}`}>
+                                                {user.userId && user.userId !== 'undefined' && user.userId !== 'null' ? (
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm"
+                                                        asChild
+                                                    >
+                                                        <Link to={`/admin/dashboard/users/${user.userId}`}>
+                                                            View
+                                                        </Link>
+                                                    </Button>
+                                                ) : (
+                                                    <Button 
+                                                        variant="outline" 
+                                                        size="sm"
+                                                        disabled
+                                                    >
                                                         View
-                                                    </Link>
-                                                </Button>
+                                                    </Button>
+                                                )}
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
@@ -467,6 +481,7 @@ const AdminUsersPage = () => {
                                                         user.status === "Active" ? "Inactive" : "Active"
                                                     )}
                                                     className={user.status === "Active" ? "border-red-300 text-red-600 hover:bg-red-50" : "border-green-300 text-green-600 hover:bg-green-50"}
+                                                    disabled={!user.userId || user.userId === 'undefined' || user.userId === 'null'}
                                                 >
                                                     {user.status === "Active" ? "Deactivate" : "Activate"}
                                                 </Button>

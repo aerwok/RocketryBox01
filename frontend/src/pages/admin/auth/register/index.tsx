@@ -394,15 +394,18 @@ const AdminRegisterPage = () => {
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel>
-                                                            Employee ID *
+                                                            Employee ID
                                             </FormLabel>
                                             <FormControl>
                                                 <Input
-                                                                placeholder="Enter employee ID"
+                                                                placeholder="Auto-generated if left empty"
                                                                 className="bg-[#F8F7FF]"
                                                     {...field}
                                                 />
                                             </FormControl>
+                                            <p className="text-xs text-muted-foreground">
+                                                Leave empty to auto-generate based on department and year
+                                            </p>
                                             <FormMessage />
                                         </FormItem>
                                     )}

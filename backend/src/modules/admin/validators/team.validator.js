@@ -43,6 +43,46 @@ export const updateTeamMemberValidator = [
     .withMessage('Designation cannot be empty')
 ];
 
+export const registerTeamMemberValidator = [
+  body('fullName')
+    .notEmpty()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Full name is required and must be between 2 and 50 characters'),
+  body('email')
+    .isEmail()
+    .withMessage('Please provide a valid email address'),
+  body('phoneNumber')
+    .notEmpty()
+    .isLength({ min: 10, max: 15 })
+    .withMessage('Phone number is required and must be between 10 and 15 characters'),
+  body('role')
+    .isIn(['Admin', 'Manager', 'Support', 'Agent'])
+    .withMessage('Invalid role'),
+  body('department')
+    .notEmpty()
+    .withMessage('Department is required'),
+  body('address')
+    .optional()
+    .isString()
+    .withMessage('Address must be a string'),
+  body('designation')
+    .optional()
+    .isString()
+    .withMessage('Designation must be a string'),
+  body('remarks')
+    .optional()
+    .isString()
+    .withMessage('Remarks must be a string'),
+  body('dateOfJoining')
+    .optional()
+    .isISO8601()
+    .withMessage('Date of joining must be a valid date'),
+  body('sendInvitation')
+    .optional()
+    .isBoolean()
+    .withMessage('Send invitation must be a boolean')
+];
+
 export const updateStatusValidator = [
   ...teamIdValidator,
   body('status')

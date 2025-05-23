@@ -1,5 +1,5 @@
 import express from 'express';
-import { validationHandler as validate } from '../../../middleware/validator.js';
+import { validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as teamController from '../controllers/team.controller.js';
 import * as teamValidator from '../validators/team.validator.js';
@@ -42,15 +42,19 @@ router.use(restrictTo('Admin', 'Manager'));
 router.get('/sections', restrictTo('Admin'), teamController.getSystemSections);
 
 // Get all team members
-router.get('/', validate(teamValidator.teamQueryValidator), teamController.getAllTeamMembers);
+router.get('/', ...teamValidator.teamQueryValidator, validate, teamController.getAllTeamMembers);
+
+// Register a new team member  
+router.post('/register', ...teamValidator.registerTeamMemberValidator, validate, teamController.registerTeamMember);
 
 // Get team member details
-router.get('/:userId', validate(teamValidator.teamIdValidator), teamController.getTeamMemberDetails);
+router.get('/:userId', ...teamValidator.teamIdValidator, validate, teamController.getTeamMemberDetails);
 
 // Get detailed team member profile with history
 router.get(
   '/:userId/profile',
-  validate(teamValidator.teamIdValidator),
+  ...teamValidator.teamIdValidator,
+  validate,
   restrictTo('Admin'), // Only full admins can see detailed profiles
   teamController.getTeamMemberProfile
 );
@@ -58,28 +62,32 @@ router.get(
 // Update team member
 router.patch(
   '/:userId',
-  validate(teamValidator.updateTeamMemberValidator),
+  ...teamValidator.updateTeamMemberValidator,
+  validate,
   teamController.updateTeamMember
 );
 
 // Update team member status
 router.patch(
   '/:userId/status',
-  validate(teamValidator.updateStatusValidator),
+  ...teamValidator.updateStatusValidator,
+  validate,
   teamController.updateTeamMemberStatus
 );
 
 // Update team member permissions
 router.patch(
   '/:userId/permissions',
-  validate(teamValidator.updatePermissionsValidator),
+  ...teamValidator.updatePermissionsValidator,
+  validate,
   teamController.updateTeamMemberPermissions
 );
 
 // Upload team member documents
 router.post(
   '/:userId/documents',
-  validate(teamValidator.uploadDocumentValidator),
+  ...teamValidator.uploadDocumentValidator,
+  validate,
   upload.single('document'),
   teamController.uploadTeamMemberDocuments
 );

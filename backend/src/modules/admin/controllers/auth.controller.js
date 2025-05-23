@@ -4,6 +4,8 @@ import { logger } from '../../../utils/logger.js';
 import Admin from '../models/admin.model.js';
 import Session from '../models/session.model.js';
 import { setSession, deleteSession, getAllSessions } from '../../../utils/redis.js';
+import { generateEmployeeId } from '../../../utils/employeeId.js';
+import { sendEmail } from '../../../utils/email.js';
 
 /**
  * Generate JWT token for admin
@@ -30,20 +32,39 @@ export const login = async (req, res, next) => {
   try {
     const { email, password, rememberMe = false } = req.body;
 
+    console.log('Login attempt:', { email, hasPassword: !!password, rememberMe });
+
     // 1) Check if email and password exist
     if (!email || !password) {
+      console.log('Missing email or password');
       return next(new AppError('Please provide email and password', 400));
     }
 
     // 2) Check if admin exists && password is correct
     const admin = await Admin.findOne({ email }).select('+password');
+    console.log('Admin found:', { 
+      exists: !!admin, 
+      email: admin?.email, 
+      status: admin?.status,
+      hasPassword: !!admin?.password 
+    });
     
-    if (!admin || !(await admin.isPasswordCorrect(password))) {
+    if (!admin) {
+      console.log('Admin not found');
+      return next(new AppError('Incorrect email or password', 401));
+    }
+
+    const passwordCorrect = await admin.isPasswordCorrect(password);
+    console.log('Password check:', { passwordCorrect });
+
+    if (!passwordCorrect) {
+      console.log('Password incorrect');
       return next(new AppError('Incorrect email or password', 401));
     }
 
     // 3) Check if admin is active
     if (admin.status !== 'Active') {
+      console.log('Admin not active:', admin.status);
       return next(new AppError('Your account is not active. Please contact a super admin.', 403));
     }
 
@@ -77,8 +98,25 @@ export const login = async (req, res, next) => {
       expiresAt
     });
 
+    // Helper function to convert permissions object to array
+    const getPermissionsArray = (permissionsObj) => {
+      if (!permissionsObj || typeof permissionsObj !== 'object') {
+        return [];
+      }
+      
+      const permissions = [];
+      Object.keys(permissionsObj).forEach(key => {
+        if (permissionsObj[key] === true) {
+          permissions.push(key);
+        }
+      });
+      
+      return permissions;
+    };
+
     // 9) Store session in Redis for fast access
-    await setSession(admin._id.toString(), {
+    const permissionsArray = getPermissionsArray(admin.permissions);
+    await setSession(admin._id.toString(), JSON.stringify({
       sessionId: session._id.toString(),
       user: {
         id: admin._id,
@@ -86,10 +124,10 @@ export const login = async (req, res, next) => {
         email: admin.email,
         role: admin.role,
         isSuperAdmin: admin.isSuperAdmin,
-        permissions: admin.permissions
+        permissions: permissionsArray
       },
       lastActivity: Date.now()
-    }, expiresIn / 1000); // Redis expiry in seconds
+    }), expiresIn / 1000); // Redis expiry in seconds
 
     // 10) Remove password from output
     admin.password = undefined;
@@ -108,7 +146,7 @@ export const login = async (req, res, next) => {
           role: admin.role,
           department: admin.department,
           isSuperAdmin: admin.isSuperAdmin,
-          permissions: admin.permissions
+          permissions: permissionsArray
         }
       }
     });
@@ -152,9 +190,13 @@ export const register = async (req, res, next) => {
       return next(new AppError('Email already in use', 400));
     }
 
-    // 3) Check if employee ID already exists
-    if (employeeId) {
-      const existingEmployeeId = await Admin.findOne({ employeeId });
+    // 3) Generate employee ID if not provided
+    let finalEmployeeId = employeeId;
+    if (!finalEmployeeId) {
+      finalEmployeeId = await generateEmployeeId(department);
+    } else {
+      // Check if provided employee ID already exists
+      const existingEmployeeId = await Admin.findOne({ employeeId: finalEmployeeId });
       if (existingEmployeeId) {
         return next(new AppError('Employee ID already in use', 400));
       }
@@ -169,7 +211,7 @@ export const register = async (req, res, next) => {
       phoneNumber,
       address,
       dateOfJoining: dateOfJoining || Date.now(),
-      employeeId,
+      employeeId: finalEmployeeId,
       isSuperAdmin: isSuperAdmin || false,
       status: 'Active',
       remarks,
@@ -181,9 +223,31 @@ export const register = async (req, res, next) => {
     // 5) Remove password from response
     newAdmin.password = undefined;
 
-    logger.info(`New admin ${newAdmin._id} created by admin ${req.user?.id}`);
+    logger.info(`New admin ${newAdmin._id} created by admin ${req.user?.id} with employee ID ${finalEmployeeId}`);
 
-    // 6) Send response
+    // 6) Send welcome email with login credentials
+    try {
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to Rocketry Box Admin - Your Account Details',
+        template: 'admin-welcome',
+        data: {
+          name: fullName,
+          role,
+          department,
+          employeeId: finalEmployeeId,
+          email: email,
+          tempPassword: password, // The original password entered
+          loginUrl: `${process.env.ADMIN_FRONTEND_URL}/admin/login`,
+          adminPortalUrl: process.env.ADMIN_FRONTEND_URL || 'https://admin.rocketrybox.com'
+        }
+      });
+    } catch (emailError) {
+      logger.error(`Failed to send welcome email to ${email}: ${emailError.message}`);
+      // Continue with registration even if email fails
+    }
+
+    // 7) Send response
     res.status(201).json({
       success: true,
       data: {
@@ -192,6 +256,7 @@ export const register = async (req, res, next) => {
         email: newAdmin.email,
         role: newAdmin.role,
         department: newAdmin.department,
+        employeeId: finalEmployeeId,
         isSuperAdmin: newAdmin.isSuperAdmin,
         createdAt: newAdmin.createdAt
       }

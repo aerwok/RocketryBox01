@@ -87,11 +87,22 @@ export class ApiService {
           if (error.response.status === 401) {
             // Remove token from secure storage
             await secureStorage.removeItem('auth_token');
+            
+            // Redirect to appropriate login page based on current URL
+            const currentPath = window.location.pathname;
+            let redirectPath = '/seller/login';
+            
+            if (currentPath.includes('/admin')) {
+              redirectPath = '/admin/login';
+            } else if (currentPath.includes('/customer')) {
+              redirectPath = '/customer/login';
+            }
+            
             // Use React Router navigation if available, fallback to window.location
             if (this.navigate) {
-              this.navigate('/seller/login');
+              this.navigate(redirectPath);
             } else {
-              window.location.href = '/seller/login';
+              window.location.href = redirectPath;
             }
           }
 

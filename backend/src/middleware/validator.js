@@ -1,3 +1,4 @@
+import { validationResult } from 'express-validator';
 import { AppError } from './errorHandler.js';
 
 // Accepts a Joi schema or an array of Joi schemas
@@ -59,4 +60,21 @@ export const validationHandler = (schemas) => {
       next(new AppError('Validation failed', 400));
     }
   };
+};
+
+export const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const validationErrors = {};
+    errors.array().forEach(error => {
+      validationErrors[error.path] = error.msg;
+    });
+    
+    return res.status(400).json({
+      success: false,
+      message: 'Validation Error',
+      errors: validationErrors
+    });
+  }
+  next();
 }; 

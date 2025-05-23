@@ -210,23 +210,6 @@ interface Product {
     image?: string;
 }
 
-
-
-interface DocumentType {
-    type: string;
-    description: string;
-}
-
-interface CompanyDetails {
-    name: string;
-    address: string;
-    city: string;
-    state: string;
-    pincode: string;
-    country: string;
-    phone: string;
-}
-
 /**
  * Service factory that provides real API services
  */
@@ -370,7 +353,7 @@ export class ServiceFactory {
   static admin = {
     async getTeamMember(id: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get(`/admin/team/${id}`);
+      return apiService.get(`/admin/users/${id}`);
     },
 
     async getTeamMembers(params?: {
@@ -385,29 +368,110 @@ export class ServiceFactory {
       type?: string;
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/admin/team', { params });
+      
+      // Route to appropriate endpoint based on type
+      let endpoint = '/admin/users';
+      if (params?.type === 'seller') {
+        endpoint = '/admin/users/sellers';
+      } else if (params?.type === 'customer') {
+        endpoint = '/admin/users/customers';
+      }
+      
+      // Clean up params to remove 'type' since it's not needed in the query
+      const cleanParams = { ...params };
+      delete cleanParams.type;
+      
+      return apiService.get(endpoint, cleanParams);
+    },
+
+    // Team Management Methods (Admin Team Members)
+    async getAdminTeamMembers(params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      role?: string;
+      status?: string;
+      department?: string;
+      sortField?: string;
+      sortOrder?: 'asc' | 'desc';
+    }): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      
+      // Filter out unsupported parameters for the backend validator
+      const supportedParams: any = {};
+      if (params?.page) supportedParams.page = params.page;
+      if (params?.limit) supportedParams.limit = params.limit;
+      if (params?.search) supportedParams.search = params.search;
+      if (params?.role) supportedParams.role = params.role;
+      if (params?.status) supportedParams.status = params.status;
+      if (params?.department) supportedParams.department = params.department;
+      
+      return apiService.get('/admin/team', { params: supportedParams });
+    },
+
+    async registerAdminTeamMember(memberData: {
+      fullName: string;
+      email: string;
+      role: string;
+      department: string;
+      phoneNumber: string;
+      address?: string;
+      designation?: string;
+      remarks?: string;
+      dateOfJoining?: string;
+      sendInvitation?: boolean;
+    }): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.post('/admin/team/register', memberData);
+    },
+
+    async getAdminTeamMember(userId: string): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.get(`/admin/team/${userId}`);
+    },
+
+    async updateAdminTeamMember(userId: string, memberData: any): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.patch(`/admin/team/${userId}`, memberData);
+    },
+
+    async updateAdminTeamMemberStatus(userId: string, status: string, reason?: string): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.patch(`/admin/team/${userId}/status`, { status, reason });
+    },
+
+    async updateAdminTeamMemberPermissions(userId: string, permissions: Record<string, boolean>): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.patch(`/admin/team/${userId}/permissions`, { permissions });
+    },
+
+    async uploadAdminTeamMemberDocument(userId: string, formData: FormData): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      const file = formData.get('file') as File;
+      const type = formData.get('type') as string;
+      return apiService.uploadFile(`/admin/team/${userId}/documents`, file, type);
     },
 
     async updateTeamMember(id: string, memberData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.put(`/admin/team/${id}`, memberData);
+      return apiService.patch(`/admin/users/${id}`, memberData);
     },
 
     async updateTeamMemberStatus(id: string, status: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.patch(`/admin/team/${id}/status`, { status });
+      return apiService.patch(`/admin/users/${id}/status`, { status });
     },
 
     async updateTeamPermissions(id: string, permissions: Record<string, boolean>): Promise<ApiResponse<void>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.put(`/admin/team/${id}/permissions`, permissions);
+      return apiService.patch(`/admin/users/${id}/permissions`, { permissions });
     },
 
     async uploadTeamDocument(id: string, formData: FormData): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       const file = formData.get('file') as File;
       const type = formData.get('type') as string;
-      return apiService.uploadFile(`/admin/team/${id}/documents`, file, type);
+      return apiService.uploadFile(`/admin/users/${id}/documents`, file, type);
     },
 
     getRateBands: () => ServiceFactory.getInstance().getApiService().get('/admin/rate-bands'),

@@ -6,6 +6,7 @@ import { generateOTP, verifyOTP, storeOTP } from '../../../utils/otp.js';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS } from '../../../utils/sms.js';
 import Session from '../models/session.model.js';
+import { generateEmployeeId } from '../../../utils/employeeId.js';
 
 /**
  * Get all team members with pagination and filters
@@ -484,9 +485,13 @@ export const registerTeamMember = async (req, res, next) => {
       return next(new AppError('Email already in use', 400));
     }
 
-    // Check if employee ID already exists if provided
-    if (employeeId) {
-      const existingEmployeeId = await Admin.findOne({ employeeId });
+    // Generate employee ID if not provided
+    let finalEmployeeId = employeeId;
+    if (!finalEmployeeId) {
+      finalEmployeeId = await generateEmployeeId(department);
+    } else {
+      // Check if provided employee ID already exists
+      const existingEmployeeId = await Admin.findOne({ employeeId: finalEmployeeId });
       if (existingEmployeeId) {
         return next(new AppError('Employee ID already in use', 400));
       }
@@ -504,7 +509,7 @@ export const registerTeamMember = async (req, res, next) => {
       phoneNumber,
       address,
       dateOfJoining: dateOfJoining || Date.now(),
-      employeeId,
+      employeeId: finalEmployeeId,
       designation,
       status: 'Active',
       remarks,
@@ -523,15 +528,18 @@ export const registerTeamMember = async (req, res, next) => {
       try {
         await sendEmail({
           to: email,
-          subject: 'Welcome to Rocketry Box Admin Team',
+          subject: 'Welcome to Rocketry Box Admin Team - Login Credentials',
           template: 'admin-invitation',
           data: {
             name: fullName,
             role,
             department,
+            employeeId: finalEmployeeId,
             tempPassword,
+            loginUrl: `${process.env.ADMIN_FRONTEND_URL}/admin/login`,
             otp,
-            verificationLink: `${process.env.ADMIN_FRONTEND_URL}/verify?email=${encodeURIComponent(email)}&otp=${otp}`
+            verificationLink: `${process.env.ADMIN_FRONTEND_URL}/admin/verify?email=${encodeURIComponent(email)}&otp=${otp}`,
+            adminPortalUrl: process.env.ADMIN_FRONTEND_URL || 'https://admin.rocketrybox.com'
           }
         });
         
@@ -539,7 +547,7 @@ export const registerTeamMember = async (req, res, next) => {
         if (phoneNumber) {
           await sendSMS({
             to: phoneNumber,
-            message: `Your OTP for Rocketry Box Admin verification is: ${otp}. It is valid for 30 minutes.`
+            message: `Welcome to Rocketry Box Admin! Your Employee ID: ${finalEmployeeId}. Please check your email for login details. OTP: ${otp} (valid for 30 min)`
           });
         }
       } catch (emailError) {
@@ -552,7 +560,7 @@ export const registerTeamMember = async (req, res, next) => {
     newTeamMember.password = undefined;
 
     // Log the creation
-    logger.info(`Admin ${req.user.id} registered new team member ${newTeamMember._id}`);
+    logger.info(`Admin ${req.user.id} registered new team member ${newTeamMember._id} with employee ID ${finalEmployeeId}`);
 
     res.status(201).json({
       success: true,

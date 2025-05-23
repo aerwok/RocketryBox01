@@ -29,12 +29,20 @@ export const protect = async (req, res, next) => {
 
       // 4) Extend session if needed
       if (session) {
-        const sessionData = JSON.parse(session);
+        let sessionData;
+        try {
+          // Handle both string and object session data
+          sessionData = typeof session === 'string' ? JSON.parse(session) : session;
+        } catch (parseError) {
+          // If parsing fails, treat as expired session
+          return next(new AppError('Your session has expired. Please log in again.', 401));
+        }
+
         if (sessionData.lastActivity < Date.now() - (30 * 60 * 1000)) { // 30 minutes
-          await setSession(decoded.id, {
+          await setSession(decoded.id, JSON.stringify({
             ...sessionData,
             lastActivity: Date.now()
-          });
+          }));
         }
 
         // 5) Add user info to request
@@ -159,7 +167,7 @@ export const authenticateAdmin = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // 3) Check if user is an admin
-    if (decoded.role !== 'admin' && decoded.role !== 'manager') {
+    if (decoded.role !== 'Admin' && decoded.role !== 'Manager') {
       return next(new AppError('You do not have permission to access this route', 403));
     }
 
@@ -172,12 +180,20 @@ export const authenticateAdmin = async (req, res, next) => {
 
       // 5) Extend session if needed
       if (session) {
-        const sessionData = JSON.parse(session);
+        let sessionData;
+        try {
+          // Handle both string and object session data
+          sessionData = typeof session === 'string' ? JSON.parse(session) : session;
+        } catch (parseError) {
+          // If parsing fails, treat as expired session
+          return next(new AppError('Your session has expired. Please log in again.', 401));
+        }
+
         if (sessionData.lastActivity < Date.now() - (30 * 60 * 1000)) { // 30 minutes
-          await setSession(decoded.id, {
+          await setSession(decoded.id, JSON.stringify({
             ...sessionData,
             lastActivity: Date.now()
-          });
+          }));
         }
 
         // 6) Add user info to request
