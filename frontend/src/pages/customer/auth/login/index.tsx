@@ -161,7 +161,7 @@ const CustomerLoginPage = () => {
                     transition={{ duration: 0.6, ease: "easeOut" }}
                     src="/images/customer/sitting.png"
                     alt="Sitting"
-                    className="absolute right-1/8 bottom-1/8 -translate-y-1/2 h-80 hidden lg:block"
+                    className="absolute right-1/4 lg:right-1/6 bottom-8 lg:bottom-12 h-60 lg:h-80 hidden lg:block z-10"
                 />
                 {/* Standing Image - Left */}
                 <motion.img
