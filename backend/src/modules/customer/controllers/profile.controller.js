@@ -22,7 +22,7 @@ export const getProfile = async (req, res, next) => {
 // Update customer profile
 export const updateProfile = async (req, res, next) => {
   try {
-    const { name, phone, preferences } = req.body;
+    const { name, fullName, email, phone, preferences } = req.body;
 
     const customer = await Customer.findById(req.user.id);
 
@@ -31,7 +31,9 @@ export const updateProfile = async (req, res, next) => {
     }
 
     // Update fields if provided
-    if (name) customer.name = name;
+    // Handle both 'name' and 'fullName' for backwards compatibility
+    if (name || fullName) customer.name = name || fullName;
+    if (email) customer.email = email;
     if (phone) customer.phone = phone;
     if (preferences) {
       if (preferences.language) customer.preferences.language = preferences.language;

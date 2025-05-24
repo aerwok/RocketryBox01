@@ -52,12 +52,12 @@ const CustomerProfilePage = () => {
                 const response = await ServiceFactory.customer.profile.get();
                 if (response.success) {
                     form.reset({
-                        fullName: response.data.fullName,
-                        email: response.data.email,
-                        phone: response.data.phone,
+                        fullName: response.data.name || response.data.fullName || "",
+                        email: response.data.email || "",
+                        phone: response.data.phone || "",
                     });
                     setProfileImage(response.data.profileImage || null);
-                    setAddresses(response.data.addresses);
+                    setAddresses(response.data.addresses || []);
                 } else {
                     throw new Error(response.message || 'Failed to fetch profile data');
                 }

@@ -547,7 +547,7 @@ export class ServiceFactory {
         return ServiceFactory.callApi('/customer/profile', 'GET');
       },
       update: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/customer/profile', 'PATCH', data);
+        return ServiceFactory.callApi('/customer/profile', 'PUT', data);
       },
       uploadImage: async (file: File): Promise<ApiResponse<any>> => {
         const formData = new FormData();

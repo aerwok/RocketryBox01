@@ -106,6 +106,18 @@ export const profileUpdateSchema = Joi.object({
       'string.min': 'Name must be at least 2 characters long',
       'string.max': 'Name cannot exceed 50 characters'
     }),
+  fullName: Joi.string()
+    .min(2)
+    .max(50)
+    .messages({
+      'string.min': 'Full name must be at least 2 characters long',
+      'string.max': 'Full name cannot exceed 50 characters'
+    }),
+  email: Joi.string()
+    .email()
+    .messages({
+      'string.email': 'Please provide a valid email address'
+    }),
   phone: Joi.string()
     .pattern(/^[6-9]\d{9}$/)
     .messages({
