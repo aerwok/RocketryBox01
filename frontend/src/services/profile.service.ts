@@ -48,7 +48,7 @@ export class ProfileService {
 
     async getProfile(): Promise<ApiResponse<Seller>> {
         try {
-            const response = await this.apiService.get<Seller>('/api/profile');
+            const response = await this.apiService.get<Seller>('/seller/profile');
             return response as ApiResponse<Seller>;
         } catch (error) {
             const apiError = error as ApiError;
@@ -59,7 +59,7 @@ export class ProfileService {
 
     async updateProfile(profileData: Partial<Seller>): Promise<ApiResponse<Seller>> {
         try {
-            const response = await this.apiService.put<Seller>('/api/profile', profileData);
+            const response = await this.apiService.put<Seller>('/seller/profile', profileData);
             toast.success('Profile updated successfully');
             return response as ApiResponse<Seller>;
         } catch (error) {
@@ -75,7 +75,7 @@ export class ProfileService {
             formData.append('file', file);
             formData.append('type', type);
             
-            const response = await this.apiService.post<UploadResponse>('/api/seller/profile/documents', formData);
+            const response = await this.apiService.post<UploadResponse>('/seller/profile/documents', formData);
             return response;
         } catch (error) {
             const apiError = error as ApiError;
@@ -86,7 +86,7 @@ export class ProfileService {
 
     async updateBankDetails(bankDetails: any): Promise<ApiResponse<any>> {
         try {
-            const response = await this.apiService.put<any>('/api/profile/bank-details', bankDetails);
+            const response = await this.apiService.put<any>('/seller/profile/bank-details', bankDetails);
             toast.success('Bank details updated successfully');
             return response;
         } catch (error) {
@@ -101,7 +101,7 @@ export class ProfileService {
             const formData = new FormData();
             formData.append('image', file);
             
-            const response = await this.apiService.post<{ imageUrl: string }>('/api/profile/image', formData);
+            const response = await this.apiService.post<{ imageUrl: string }>('/seller/profile/image', formData);
             toast.success('Profile image updated successfully');
             return response;
         } catch (error) {
@@ -113,7 +113,7 @@ export class ProfileService {
 
     async updateStoreLinks(links: Seller['storeLinks']): Promise<ApiResponse<Seller>> {
         try {
-            const response = await this.apiService.put<Seller>('/api/profile/store-links', { storeLinks: links });
+            const response = await this.apiService.put<Seller>('/seller/profile/store-links', { storeLinks: links });
             toast.success('Store links updated successfully');
             return response as ApiResponse<Seller>;
         } catch (error) {

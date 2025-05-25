@@ -137,16 +137,16 @@ const SellerDashboardPage = () => {
                             <StatCard
                                 title="Orders"
                                 subtitle="Cancelled not included"
-                                value={stats?.orders.total.toString() || "0"}
-                                todayValue={stats?.orders.todayCount.toString() || "0"}
+                                value={stats?.orders?.total?.toString() || "0"}
+                                todayValue={stats?.orders?.todayCount?.toString() || "0"}
                                 icon={Package}
                                 href="/seller/dashboard/orders"
                             />
                             <StatCard
                                 title="Shipments"
                                 subtitle="Cancelled not included"
-                                value={stats?.shipments.total.toString() || "0"}
-                                todayValue={stats?.shipments.todayCount.toString() || "0"}
+                                value={stats?.shipments?.total?.toString() || "0"}
+                                todayValue={stats?.shipments?.todayCount?.toString() || "0"}
                                 icon={Truck}
                                 href="/seller/dashboard/shipments"
                             />
@@ -161,18 +161,18 @@ const SellerDashboardPage = () => {
                             <StatCard
                                 title="Delivered"
                                 subtitle="Successfully delivered orders"
-                                value={stats?.delivery.total.toString() || "0"}
-                                todayValue={stats?.delivery.todayCount.toString() || "0"}
+                                value={stats?.delivery?.total?.toString() || "0"}
+                                todayValue={stats?.delivery?.todayCount?.toString() || "0"}
                                 icon={Box}
                                 href="/seller/dashboard/shipments?tab=delivered"
                             />
                             <StatCard
                                 title="Expected COD"
                                 subtitle="Pending cash on delivery"
-                                value={`₹${stats?.cod.expected.toFixed(2) || "0.00"}`}
+                                value={`₹${stats?.cod?.expected?.toFixed(2) || "0.00"}`}
                                 additionalValue={{
                                     label: "Total Due COD",
-                                    value: `₹${stats?.cod.totalDue.toFixed(2) || "0.00"}`
+                                    value: `₹${stats?.cod?.totalDue?.toFixed(2) || "0.00"}`
                                 }}
                                 icon={IndianRupee}
                                 href="/seller/dashboard/cod"
@@ -188,10 +188,10 @@ const SellerDashboardPage = () => {
                             <StatCard
                                 title="Total Revenue"
                                 subtitle="Total of Delivered Shipments"
-                                value={`₹${stats?.revenue.total.toFixed(2) || "0.00"}`}
+                                value={`₹${stats?.revenue?.total?.toFixed(2) || "0.00"}`}
                                 additionalValue={{
                                     label: "vs. Yesterday",
-                                    value: `${stats?.revenue.dailyGrowth.toFixed(1) || "0.0"}%`
+                                    value: `${stats?.revenue?.dailyGrowth?.toFixed(1) || "0.0"}%`
                                 }}
                                 icon={TrendingUp}
                                 href="/seller/dashboard/billing?tab=wallet-history"
@@ -199,10 +199,10 @@ const SellerDashboardPage = () => {
                             <StatCard
                                 title="Pending NDR"
                                 subtitle="Action required + Action requested"
-                                value={stats?.ndr.pending.toString() || "0"}
+                                value={stats?.ndr?.pending?.toString() || "0"}
                                 additionalValue={{
                                     label: "Action required",
-                                    value: stats?.ndr.actionRequired.toString() || "0"
+                                    value: stats?.ndr?.actionRequired?.toString() || "0"
                                 }}
                                 icon={AlertTriangle}
                                 href="/seller/dashboard/ndr"
