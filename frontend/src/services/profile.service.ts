@@ -14,11 +14,7 @@ export interface UploadResponse {
 }
 
 export interface CompanyDetails {
-    category: string;
-    gstNumber: string;
-    panNumber: string;
-    aadhaarNumber: string;
-    monthlyShipments: string;
+    companyCategory: string;
     address: {
         address1: string;
         address2?: string;
@@ -30,18 +26,15 @@ export interface CompanyDetails {
     documents: {
         gstin: {
             number: string;
-            url: string | null;
-            status: 'pending' | 'verified' | 'rejected';
+            url: string;
         };
         pan: {
             number: string;
-            url: string | null;
-            status: 'pending' | 'verified' | 'rejected';
+            url: string;
         };
         aadhaar: {
             number: string;
-            url: string | null;
-            status: 'pending' | 'verified' | 'rejected';
+            url: string;
         };
     };
 }
@@ -132,10 +125,13 @@ export class ProfileService {
 
     async updateCompanyDetails(data: CompanyDetails): Promise<ApiResponse<any>> {
         try {
-            const response = await this.apiService.put<ApiResponse<any>>('/api/seller/profile/company', data);
+            console.log("Sending data to API:", data);
+            const response = await this.apiService.patch<ApiResponse<any>>('/seller/profile/company-details', data);
+            console.log("API response received:", response);
             return response;
         } catch (error) {
             const apiError = error as ApiError;
+            console.error("API error:", apiError);
             toast.error(apiError.message || 'Failed to update company details');
             throw error;
         }
