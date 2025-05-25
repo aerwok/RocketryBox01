@@ -136,10 +136,12 @@ function SellerLoginPage() {
     };
 
     const onSubmit = async (data: SellerLoginInput) => {
+        console.log('=== SELLER LOGIN DEBUG START ===');
         console.log('onSubmit function called with:', {
             emailOrPhone: data.emailOrPhone,
             hasPassword: !!data.password,
-            rememberMe: data.rememberMe
+            rememberMe: data.rememberMe,
+            isForgotPassword: isForgotPassword
         });
 
         if (isForgotPassword) {
@@ -201,8 +203,10 @@ function SellerLoginPage() {
 
         // Normal login flow
         try {
+            console.log('🔄 Starting normal login flow...');
+            
             if (!data.emailOrPhone || !data.password) {
-                console.error('Missing required fields:', {
+                console.error('❌ Missing required fields:', {
                     hasEmailOrPhone: !!data.emailOrPhone,
                     hasPassword: !!data.password
                 });
@@ -211,7 +215,7 @@ function SellerLoginPage() {
             }
 
             setIsLoading(true);
-            console.log('Calling sellerAuthService.login...');
+            console.log('🚀 Calling sellerAuthService.login...');
 
             const loginData = {
                 emailOrPhone: data.emailOrPhone,
@@ -219,43 +223,51 @@ function SellerLoginPage() {
                 rememberMe: data.rememberMe || false
             };
 
-            console.log('Login request data:', {
+            console.log('📝 Login request data:', {
                 emailOrPhone: loginData.emailOrPhone,
                 hasPassword: !!loginData.password,
                 rememberMe: loginData.rememberMe
             });
 
             const response = await sellerAuthService.login(loginData);
-            console.log('Login response received:', {
+            console.log('📥 Login response received:', {
                 success: response.success,
                 hasData: !!response.data,
-                hasToken: !!(response.data?.accessToken)
+                hasToken: !!(response.data?.accessToken),
+                responseData: response.data,
+                fullResponse: response
             });
 
             if (response.success && response.data?.accessToken) {
+                console.log('✅ Login successful! Redirecting to dashboard...');
                 toast.success('Welcome back!');
                 // Brief delay to show the welcome message
                 await new Promise(resolve => setTimeout(resolve, 500));
+                console.log('🏠 Navigating to /seller/dashboard');
                 navigate('/seller/dashboard');
             } else {
-                console.warn('Login response without success or token:', response);
+                console.warn('⚠️ Login response without success or token:', response);
                 toast.error(response.message || 'Login failed. Please check your credentials.');
             }
         } catch (error: any) {
-            console.error('Login error:', {
+            console.error('💥 Login error occurred:', {
                 name: error.name,
                 message: error.message,
                 status: error.status,
-                code: error.code
+                code: error.code,
+                response: error.response,
+                stack: error.stack
             });
 
             if (error.status === 401) {
+                console.log('🔒 Authentication failed - 401');
                 toast.error('Invalid email/phone or password');
                 form.setError('password', {
                     type: 'manual',
                     message: 'Invalid password'
                 });
             } else if (error.status === 404) {
+                console.log('👤 User not found - 404');
                 toast.error('Account not found. Please check your email/phone or register a new account.');
                 form.setError('emailOrPhone', {
                     type: 'manual',
@@ -267,10 +279,13 @@ function SellerLoginPage() {
                     message: 'Don\'t have an account? Register now!'
                 });
             } else {
+                console.log('❌ Other error:', error.message);
                 toast.error(error.message || 'Login failed. Please try again.');
             }
         } finally {
+            console.log('🏁 Login process completed, setting loading to false');
             setIsLoading(false);
+            console.log('=== SELLER LOGIN DEBUG END ===');
         }
     };
 
@@ -342,69 +357,7 @@ function SellerLoginPage() {
                         <Form {...form}>
                             <form 
                                 noValidate
-                                onSubmit={form.handleSubmit(async (formData) => {
-                                    console.log('Form submit event triggered');
-                                    
-                                    try {
-                                        // Clear any existing errors
-                                        form.clearErrors();
-                                        
-                                        // Validate required fields
-                                        if (!formData.emailOrPhone) {
-                                            form.setError("emailOrPhone", {
-                                                type: "required",
-                                                message: "Email or phone number is required"
-                                            });
-                                            return;
-                                        }
-
-                                        if (!formData.password) {
-                                            form.setError("password", {
-                                                type: "required",
-                                                message: "Password is required"
-                                            });
-                                            return;
-                                        }
-
-                                        // Validate email/phone format
-                                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                                        const phoneRegex = /^[0-9]{10}$/;
-                                        if (!emailRegex.test(formData.emailOrPhone) && !phoneRegex.test(formData.emailOrPhone)) {
-                                            form.setError("emailOrPhone", {
-                                                type: "format",
-                                                message: "Please enter a valid email address or phone number (10 digits)"
-                                            });
-                                            return;
-                                        }
-
-                                        // Validate password length
-                                        if (formData.password.length < 6) {
-                                            form.setError("password", {
-                                                type: "minLength",
-                                                message: "Password must be at least 6 characters"
-                                            });
-                                            return;
-                                        }
-
-                                        // Call the onSubmit function
-                                        await onSubmit(formData);
-                                    } catch (error: unknown) {
-                                        console.error('Error in form submission:', error);
-                                        
-                                        // Handle specific validation errors
-                                        if (isValidationError(error)) {
-                                            const validationErrors = error.response.data.errors;
-                                            Object.keys(validationErrors).forEach(field => {
-                                                form.setError(field as keyof SellerLoginInput, {
-                                                    type: "server",
-                                                    message: validationErrors[field]
-                                                });
-                                            });
-                                        } else {
-                                            toast.error('An error occurred while submitting the form');
-                                        }
-                                    }
-                                })}
+                                onSubmit={form.handleSubmit(onSubmit)}
                                 className="space-y-4 h-full"
                             >
                                 <FormField
@@ -557,7 +510,7 @@ function SellerLoginPage() {
                                     <Button
                                         type="submit"
                                         className="w-full bg-[#2B4EA8] hover:bg-[#2B4EA8]/90 text-white"
-                                        disabled={isLoading || (isForgotPassword && !isOtpSent)}
+                                        disabled={isLoading}
                                         onClick={() => {
                                             console.log('Login button clicked');
                                             console.log('Form state:', form.getValues());
