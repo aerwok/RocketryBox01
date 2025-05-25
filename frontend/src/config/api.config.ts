@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
+import { secureStorage } from '../utils/secureStorage';
 
 // API Configuration
 export const API_CONFIG = {
@@ -17,15 +18,15 @@ const api = axios.create(API_CONFIG);
 
 // Request interceptor
 api.interceptors.request.use(
-    (config) => {
+    async (config) => {
         // Get token from secure storage
-        const token = localStorage.getItem('auth_token');
+        const token = await secureStorage.getItem('auth_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
         
         // Add CSRF token if available
-        const csrfToken = localStorage.getItem('csrf_token');
+        const csrfToken = await secureStorage.getItem('csrf_token');
         if (csrfToken) {
             config.headers['X-CSRF-Token'] = csrfToken;
         }
@@ -43,9 +44,10 @@ api.interceptors.response.use(
     async (error) => {
         // Handle 401 Unauthorized
         if (error.response?.status === 401) {
-            // Clear auth data
-            localStorage.removeItem('auth_token');
-            localStorage.removeItem('csrf_token');
+            // Clear auth data from secure storage
+            await secureStorage.removeItem('auth_token');
+            await secureStorage.removeItem('refresh_token');
+            await secureStorage.removeItem('csrf_token');
             // Redirect to login
             window.location.href = '/seller/login';
             return Promise.reject(error);

@@ -467,92 +467,95 @@ export const checkPaymentStatus = async (req, res, next) => {
 
 export const calculateRates = async (req, res, next) => {
   try {
-    const { weight, pickupPincode, deliveryPincode, serviceType } = req.body;
-    const isCOD = false; // COD not allowed for customers
+    console.log('=== CALCULATE RATES API CALLED ===');
+    console.log('Request body:', req.body);
+    console.log('Request headers:', req.headers);
+    console.log('User:', req.user);
 
-    // Prepare common parameters for all courier rate functions
+    const { weight, pickupPincode, deliveryPincode, serviceType } = req.body;
+    
+    // Validate required fields
+    if (!weight || !pickupPincode || !deliveryPincode || !serviceType) {
+      throw new AppError('Missing required fields: weight, pickupPincode, deliveryPincode, and serviceType are required', 400);
+    }
+
+    // Validate weight
+    if (weight < 0.1) {
+      throw new AppError('Weight must be at least 0.1 kg', 400);
+    }
+
+    // Validate pincodes
+    if (!/^\d{6}$/.test(pickupPincode) || !/^\d{6}$/.test(deliveryPincode)) {
+      throw new AppError('Invalid pincode format. Pincodes must be 6 digits', 400);
+    }
+
+    // Validate service type (only standard and express allowed for customers)
+    if (!['standard', 'express'].includes(serviceType)) {
+      throw new AppError('Invalid service type. Must be either standard or express', 400);
+    }
+
+    console.log('Extracted parameters:', { weight, pickupPincode, deliveryPincode, serviceType });
+
+    // Prepare package and delivery details
     const packageDetails = {
       weight,
       dimensions: { length: 10, width: 10, height: 10 }, // Default dimensions if not provided
-      paymentMode: isCOD ? 'COD' : 'PREPAID'
+      serviceType
     };
     
     const deliveryDetails = {
       pickupPincode,
       deliveryPincode
     };
-    
-    const partnerDetails = {
-      name: 'Default',
-      rates: {}
-    };
-    
-    // Delhivery partner details
-    const delhiveryPartner = { ...partnerDetails, name: 'Delhivery' };
-    // Bluedart partner details
-    const bluedartPartner = { ...partnerDetails, name: 'Bluedart' };
-    // DTDC partner details
-    const dtdcPartner = { ...partnerDetails, name: 'DTDC' };
-    // Ekart partner details
-    const ekartPartner = { ...partnerDetails, name: 'Ekart' };
-    // Xpressbees partner details
-    const xpressbeesPartner = { ...partnerDetails, name: 'Xpressbees' };
 
-    // Fetch real-time rates from all partners in parallel
-    const [delhivery, bluedart, dtdc, ekart, xpressbees, staticRates] = await Promise.all([
-      calculateDelhiveryRate(packageDetails, deliveryDetails, delhiveryPartner),
-      calculateBluedartRate(packageDetails, deliveryDetails, bluedartPartner),
-      calculateDTDCRate(packageDetails, deliveryDetails, dtdcPartner),
-      calculateEkartRate(packageDetails, deliveryDetails, ekartPartner),
-      calculateXpressbeesRate(packageDetails, deliveryDetails, xpressbeesPartner),
-      calculateCourierRates({ weight, pickupPincode, deliveryPincode, isCOD })
-    ]);
+    console.log('Calling shipping rate calculation...');
+
+    // Calculate rates using the shipping utility
+    const rates = await calculateShippingRates(packageDetails, deliveryDetails);
+
+    if (!rates || rates.length === 0) {
+      throw new AppError('No shipping rates available for the given parameters', 404);
+    }
+
+    console.log('Rate calculation results:', rates);
 
     // Format the responses to a consistent structure
-    const formatCourierRate = (rate) => {
-      if (!rate) return [];
-      
-      return [{
-        courier: rate.provider?.name || 'Unknown',
-        mode: rate.provider?.expressDelivery ? 'express' : 'standard',
-        service: rate.provider?.expressDelivery ? 'express' : 'standard',
-        rate: rate.totalRate,
-        estimatedDelivery: rate.provider?.estimatedDays || '3-5 days',
-        codCharge: rate.breakdown?.codCharge || 0,
-        available: true
-      }];
-    };
-
-    // Merge and flatten all rates
-    const rates = [
-      ...formatCourierRate(delhivery),
-      ...formatCourierRate(bluedart),
-      ...formatCourierRate(dtdc),
-      ...formatCourierRate(ekart),
-      ...formatCourierRate(xpressbees),
-      ...staticRates
-    ].filter(rate => rate); // Filter out any undefined/null values
+    const formattedRates = rates.map(rate => ({
+      courier: rate.provider?.name || 'Unknown',
+      mode: rate.provider?.expressDelivery ? 'express' : 'standard',
+      service: rate.provider?.expressDelivery ? 'express' : 'standard',
+      rate: rate.totalRate,
+      estimatedDelivery: rate.provider?.estimatedDays || '3-5 days',
+      codCharge: rate.breakdown?.codCharge || 0,
+      available: true
+    }));
 
     // Sort rates by price (lowest first)
-    rates.sort((a, b) => a.rate - b.rate);
+    formattedRates.sort((a, b) => a.rate - b.rate);
 
-    res.status(200).json({
+    const response = {
       success: true,
       data: {
-        rates,
+        rates: formattedRates,
         summary: {
-          totalCouriers: rates.length,
-          cheapestRate: rates[0]?.rate || 0,
-          fastestDelivery: rates.reduce((fastest, current) => {
+          totalCouriers: formattedRates.length,
+          cheapestRate: formattedRates[0]?.rate || 0,
+          fastestDelivery: formattedRates.reduce((fastest, current) => {
             // Parse days from estimatedDelivery string
             const currentDays = parseInt((current.estimatedDelivery || '').split('-')[0]);
             const fastestDays = parseInt((fastest.estimatedDelivery || '').split('-')[0]);
             return currentDays < fastestDays ? current : fastest;
-          }, rates[0])?.estimatedDelivery || 'N/A'
+          }, formattedRates[0])?.estimatedDelivery || 'N/A'
         }
       }
-    });
+    };
+
+    console.log('Sending response:', response);
+
+    res.status(200).json(response);
   } catch (error) {
-    next(new AppError(error.message, 400));
+    console.error('=== CALCULATE RATES ERROR ===');
+    console.error('Error details:', error);
+    next(new AppError(error.message, error.statusCode || 400));
   }
 }; 

@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
+import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/errorHandler.js';
 import { logger } from './utils/logger.js';
 import { initSocketIO } from './utils/socketio.js';
@@ -131,7 +132,7 @@ logger.info('Connecting to MongoDB...', {
 });
 
 mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+    serverSelectionTimeoutMS: 30000, // Increased from 5000ms to 30000ms (30s)
     socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
 })
 .then(async () => {
@@ -175,6 +176,9 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN,
   credentials: true
 }));
+
+// Cookie parser middleware
+app.use(cookieParser());
 
 // Rate limiting
 const limiter = rateLimit({

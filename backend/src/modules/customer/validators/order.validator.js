@@ -309,26 +309,34 @@ export const refundSchema = Joi.object({
     })
 });
 
+// Calculate rates validation schema
 export const calculateRatesSchema = Joi.object({
-  weight: Joi.number().min(0.1).required()
+  weight: Joi.number()
+    .required()
+    .min(0.1)
     .messages({
       'number.base': 'Weight must be a number',
-      'number.min': 'Weight must be at least 0.1 kg',
-      'any.required': 'Weight is required'
+      'number.min': 'Weight must be at least 0.1 kg'
     }),
-  pickupPincode: Joi.string().pattern(/^[0-9]{6}$/).required()
+  pickupPincode: Joi.string()
+    .required()
+    .pattern(/^\d{6}$/)
     .messages({
-      'string.pattern.base': 'Pickup pincode must be 6 digits',
-      'any.required': 'Pickup pincode is required'
+      'string.empty': 'Pickup pincode is required',
+      'string.pattern.base': 'Please provide a valid 6-digit pickup pincode'
     }),
-  deliveryPincode: Joi.string().pattern(/^[0-9]{6}$/).required()
+  deliveryPincode: Joi.string()
+    .required()
+    .pattern(/^\d{6}$/)
     .messages({
-      'string.pattern.base': 'Delivery pincode must be 6 digits',
-      'any.required': 'Delivery pincode is required'
+      'string.empty': 'Delivery pincode is required',
+      'string.pattern.base': 'Please provide a valid 6-digit delivery pincode'
     }),
-  serviceType: Joi.string().valid('standard', 'express', 'cod').required()
+  serviceType: Joi.string()
+    .required()
+    .valid('standard', 'express', 'cod')
     .messages({
-      'any.only': 'Service type must be standard, express, or cod',
-      'any.required': 'Service type is required'
+      'string.empty': 'Service type is required',
+      'any.only': 'Invalid service type'
     })
 }); 

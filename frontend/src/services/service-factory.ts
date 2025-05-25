@@ -1,7 +1,6 @@
 import { ApiService } from './api.service';
 import { ApiResponse } from '@/types/api';
 import { AuthService } from './auth.service';
-import { CustomerService } from './customer.service';
 import { AdminService } from './admin.service';
 import { UploadService } from './upload.service';
 import { NotificationService } from './notification.service';
@@ -217,7 +216,6 @@ export class ServiceFactory {
   private static instance: ServiceFactory;
   private apiService: ApiService;
   private authService: AuthService;
-  private customerService: CustomerService;
   private adminService: AdminService;
   private uploadService: UploadService;
   private notificationService: NotificationService;
@@ -227,7 +225,6 @@ export class ServiceFactory {
   private constructor() {
     this.apiService = new ApiService();
     this.authService = new AuthService();
-    this.customerService = new CustomerService();
     this.adminService = new AdminService();
     this.uploadService = new UploadService();
     this.notificationService = new NotificationService();
@@ -248,10 +245,6 @@ export class ServiceFactory {
 
   getAuthService(): AuthService {
     return this.authService;
-  }
-
-  getCustomerService(): CustomerService {
-    return this.customerService;
   }
 
   getAdminService(): AdminService {
@@ -520,10 +513,10 @@ export class ServiceFactory {
   static customer = {
     orders: {
       getByAwb: async (awb: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/orders/${awb}`, 'GET');
+        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}`, 'GET');
       },
       submitRating: async (awb: string, data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/orders/${awb}/rating`, 'POST', data);
+        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}/rating`, 'POST', data);
       },
       getAll: async (params: {
         page: number;
@@ -533,21 +526,21 @@ export class ServiceFactory {
         sortDirection?: string;
         status?: string;
       }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
+        return ServiceFactory.callApi(`/api/v2/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
       },
       getStatusCounts: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/customer/orders/status-counts', 'GET');
+        return ServiceFactory.callApi('/api/v2/customer/orders/status-counts', 'GET');
       },
       downloadLabel: async (awb: string): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
+        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
       }
     },
     profile: {
       get: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/customer/profile', 'GET');
+        return ServiceFactory.callApi('/api/v2/customer/profile', 'GET');
       },
       update: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/customer/profile', 'PUT', data);
+        return ServiceFactory.callApi('/api/v2/customer/profile', 'PUT', data);
       },
       uploadImage: async (file: File): Promise<ApiResponse<any>> => {
         const formData = new FormData();
@@ -555,13 +548,13 @@ export class ServiceFactory {
         
         // Use ApiService instead of direct fetch to maintain consistency
         const apiService = ServiceFactory.getInstance().getApiService();
-        return apiService.uploadFile('/customer/profile/image', file, 'profileImage');
+        return apiService.uploadFile('/api/v2/customer/profile/image', file, 'profileImage');
       },
       addAddress: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/customer/addresses', 'POST', data);
+        return ServiceFactory.callApi('/api/v2/customer/profile/addresses', 'POST', data);
       },
       deleteAddress: async (id: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/addresses/${id}`, 'DELETE');
+        return ServiceFactory.callApi(`/api/v2/customer/profile/addresses/${id}`, 'DELETE');
       }
     }
   };

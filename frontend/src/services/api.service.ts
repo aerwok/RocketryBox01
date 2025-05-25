@@ -23,6 +23,7 @@ export class ApiService {
     
     this.api = axios.create({
       baseURL,
+      withCredentials: true, // Enable sending cookies with every request
       headers: {
         'Content-Type': 'application/json',
       },
@@ -41,11 +42,14 @@ export class ApiService {
     this.api.interceptors.request.use(
       async (config) => {
         try {
+          // Get token from secure storage
           const token = await secureStorage.getItem('auth_token');
+          
+          // Add token to headers if it exists
           if (token) {
             config.headers.Authorization = `Bearer ${token}`;
           }
-          
+
           // Enhanced logging for debugging
           if (process.env.NODE_ENV === 'development') {
             console.log('Request:', {
@@ -53,16 +57,13 @@ export class ApiService {
               baseURL: config.baseURL,
               url: config.url,
               fullUrl: `${config.baseURL}/${config.url}`,
-              headers: {
-                ...config.headers,
-                Authorization: config.headers.Authorization ? 'Bearer ***' : undefined
-              }
+              hasToken: !!token
             });
           }
           
           return config;
         } catch (error) {
-          console.error('Error getting auth token:', error);
+          console.error('Error in request interceptor:', error);
           return config;
         }
       },
@@ -85,8 +86,9 @@ export class ApiService {
         
         if (error.response) {
           if (error.response.status === 401) {
-            // Remove token from secure storage
+            // Clear secure storage on unauthorized
             await secureStorage.removeItem('auth_token');
+            await secureStorage.removeItem('user');
             
             // Redirect to appropriate login page based on current URL
             const currentPath = window.location.pathname;
@@ -154,14 +156,6 @@ export class ApiService {
       // Update last request time
       this.requestThrottles[requestKey] = Date.now();
       
-      // Get auth token for all requests
-      const token = await secureStorage.getItem('auth_token');
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...config.headers
-      };
-
       // Make the request
       console.log('Making request:', {
         baseURL: this.api.defaults.baseURL,
@@ -171,7 +165,7 @@ export class ApiService {
 
       const response = await this.api.request({
         ...config,
-        headers
+        withCredentials: true // Ensure cookies are sent with each request
       });
 
       return response.data;
@@ -259,9 +253,7 @@ export class ApiService {
   async uploadFile<T>(endpoint: string, file: File, type?: string): Promise<ApiResponse<T>> {
     const formData = new FormData();
     formData.append('file', file);
-    if (type) {
-      formData.append('type', type);
-    }
+    if (type) formData.append('type', type);
 
     return this.request<T>({
       method: 'POST',

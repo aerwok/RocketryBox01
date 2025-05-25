@@ -8,7 +8,11 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "jest",
-    "create-admin": "node src/scripts/create-admin.js"
+    "create-admin": "node src/scripts/create-admin.js",
+    "create-super-admin": "node src/scripts/create-super-admin.js",
+    "import-partner": "node src/scripts/import-partner.js",
+    "check-partners": "node src/scripts/check-partners.js",
+    "test-partners-api": "node src/scripts/test-partners-api.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.810.0",
@@ -16,6 +20,7 @@
     "axios": "^1.9.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
     "dotenv": "^16.3.1",

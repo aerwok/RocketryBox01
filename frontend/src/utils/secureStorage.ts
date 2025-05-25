@@ -1,8 +1,8 @@
 import { ERROR_MESSAGES } from './validation';
 
 // Encryption key (should be stored securely in production)
-const ENCRYPTION_KEY = 'your-secret-key';
-const SALT = 'your-salt';
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'default-key';
+const SALT = import.meta.env.VITE_ENCRYPTION_SALT || 'default-salt';
 
 // Convert string to Uint8Array
 const stringToUint8Array = (str: string): Uint8Array => {

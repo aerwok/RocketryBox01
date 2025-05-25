@@ -47,7 +47,6 @@ const AdminPartnersPage = () => {
     const [isActionLoading, setIsActionLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
     const [apiKeyRevealed, setApiKeyRevealed] = useState(false);
     const [apiKey, setApiKey] = useState<string | null>(null);
@@ -73,6 +72,7 @@ const AdminPartnersPage = () => {
         },
         apiStatus: "inactive" as ApiStatus
     });
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Fetch partners on component mount and when filter changes
     useEffect(() => {
@@ -82,7 +82,7 @@ const AdminPartnersPage = () => {
             try {
                 const filters = filteredStatus !== "all" ? { status: filteredStatus } : undefined;
                 const response = await ServiceFactory.partners.getPartners(filters);
-                setPartners(response.data);
+                setPartners(response.data?.data || response.data);
             } catch (err) {
                 console.error("Error fetching partners:", err);
                 setError("Failed to load partners. Please try again.");
@@ -135,7 +135,7 @@ const AdminPartnersPage = () => {
             // Refresh the partners list
             const filters = filteredStatus !== "all" ? { status: filteredStatus } : undefined;
             const response = await ServiceFactory.partners.getPartners(filters);
-            setPartners(response.data);
+            setPartners(response.data.data || response.data);
             
             setSelectedPartners([]);
         } catch (error) {
@@ -177,7 +177,7 @@ const AdminPartnersPage = () => {
             // Refresh the partners list
             const filters = filteredStatus !== "all" ? { status: filteredStatus } : undefined;
             const refreshedPartnersResponse = await ServiceFactory.partners.getPartners(filters);
-            setPartners(refreshedPartnersResponse.data);
+            setPartners(refreshedPartnersResponse.data.data || refreshedPartnersResponse.data);
             
             setSelectedPartners([]);
         } catch (error) {
@@ -246,6 +246,10 @@ const AdminPartnersPage = () => {
             errors.supportEmail = "Invalid email format";
         }
         
+        if (!newPartner.supportContact?.trim()) {
+            errors.supportContact = "Support contact is required";
+        }
+        
         if (newPartner.apiEndpoint && !newPartner.apiEndpoint.startsWith('http')) {
             errors.apiEndpoint = "API endpoint must start with http:// or https://";
         }
@@ -254,21 +258,63 @@ const AdminPartnersPage = () => {
             errors.trackingUrl = "Tracking URL must start with http:// or https://";
         }
         
+        if (!newPartner.weightLimits?.min || newPartner.weightLimits.min < 0) {
+            errors.minWeight = "Minimum weight is required and must be non-negative";
+        }
+        
+        if (!newPartner.weightLimits?.max || newPartner.weightLimits.max < 0) {
+            errors.maxWeight = "Maximum weight is required and must be non-negative";
+        }
+        
         if (newPartner.weightLimits?.min && newPartner.weightLimits?.max && 
             newPartner.weightLimits.min >= newPartner.weightLimits.max) {
             errors.weightLimits = "Minimum weight must be less than maximum weight";
         }
         
-        if (newPartner.rates?.baseRate && newPartner.rates.baseRate < 0) {
-            errors.baseRate = "Base rate cannot be negative";
+        if (!newPartner.rates?.baseRate || newPartner.rates.baseRate < 0) {
+            errors.baseRate = "Base rate is required and must be non-negative";
         }
         
-        if (newPartner.rates?.weightRate && newPartner.rates.weightRate < 0) {
-            errors.weightRate = "Weight rate cannot be negative";
+        if (!newPartner.rates?.weightRate || newPartner.rates.weightRate < 0) {
+            errors.weightRate = "Weight rate is required and must be non-negative";
+        }
+        
+        if (!newPartner.serviceTypes?.length) {
+            errors.serviceTypes = "At least one service type is required";
+        }
+        
+        if (!newPartner.serviceAreas?.length) {
+            errors.serviceAreas = "At least one service area is required";
         }
         
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
+    };
+    
+    const resetForm = () => {
+        setNewPartner({
+            name: "",
+            supportEmail: "",
+            supportContact: "",
+            apiEndpoint: "",
+            trackingUrl: "",
+            serviceTypes: [],
+            serviceAreas: [],
+            weightLimits: { min: 0, max: 0 },
+            dimensionLimits: {
+                maxLength: 0,
+                maxWidth: 0,
+                maxHeight: 0,
+                maxSum: 0
+            },
+            rates: {
+                baseRate: 0,
+                weightRate: 0,
+                dimensionalFactor: 5000
+            },
+            apiStatus: "inactive" as ApiStatus
+        });
+        setFormErrors({});
     };
     
     const handleSavePartner = async () => {
@@ -277,7 +323,7 @@ const AdminPartnersPage = () => {
             return;
         }
 
-        setIsSaving(true);
+        setIsSubmitting(true);
         try {
             if (isEditing && currentPartner) {
                 await ServiceFactory.partners.updatePartner(currentPartner.id, currentPartner);
@@ -285,21 +331,21 @@ const AdminPartnersPage = () => {
             } else {
                 await ServiceFactory.partners.createPartner(newPartner as Partner);
                 toast.success("New partner added successfully");
+                resetForm();
             }
             
             // Refresh the partners list
             const filters = filteredStatus !== "all" ? { status: filteredStatus } : undefined;
             const response = await ServiceFactory.partners.getPartners(filters);
-            setPartners(response.data);
+            setPartners(response.data.data || response.data);
             
             setShowPartnerDetailsModal(false);
             setShowAddPartnerModal(false);
-            setFormErrors({});
         } catch (error) {
             console.error("Error saving partner:", error);
             toast.error("Failed to save partner");
         } finally {
-            setIsSaving(false);
+            setIsSubmitting(false);
         }
     };
     
@@ -308,11 +354,13 @@ const AdminPartnersPage = () => {
     };
 
     // Filter partners based on search query
-    const filteredData = partners.filter(partner => {
+    const filteredData = (partners || []).filter(partner => {
+        if (!partner || !partner.id) return false;
+        
         const matchesSearch = 
-            partner.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            partner.supportEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            partner.id.toLowerCase().includes(searchQuery.toLowerCase());
+            (partner.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (partner.supportEmail || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (partner.id || '').toLowerCase().includes(searchQuery.toLowerCase());
             
         return matchesSearch;
     });
@@ -593,8 +641,8 @@ const AdminPartnersPage = () => {
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex flex-wrap gap-1">
-                                            {partner.serviceTypes.map(type => (
-                                                <Badge key={type} variant="outline" className="text-xs">
+                                            {(partner.serviceTypes || []).map((type, index) => (
+                                                <Badge key={`${partner.id}-service-${type}-${index}`} variant="outline" className="text-xs">
                                                     {type}
                                                 </Badge>
                                             ))}
@@ -705,8 +753,8 @@ const AdminPartnersPage = () => {
                                             <div>
                                                 <span className="text-sm font-medium">Service Types:</span>
                                                 <div className="flex flex-wrap gap-1 mt-1">
-                                                    {currentPartner.serviceTypes.map(type => (
-                                                        <Badge key={type} variant="outline" className="text-xs">
+                                                    {(currentPartner.serviceTypes || []).map((type, index) => (
+                                                        <Badge key={`${currentPartner.id}-modal-service-${type}-${index}`} variant="outline" className="text-xs">
                                                             {type}
                                                         </Badge>
                                                     ))}
@@ -715,8 +763,8 @@ const AdminPartnersPage = () => {
                                             <div>
                                                 <span className="text-sm font-medium">Service Areas:</span>
                                                 <div className="flex flex-wrap gap-1 mt-1">
-                                                    {currentPartner.serviceAreas.map(area => (
-                                                        <Badge key={area} variant="outline" className="text-xs">
+                                                    {(currentPartner.serviceAreas || []).map((area, index) => (
+                                                        <Badge key={`${currentPartner.id}-modal-area-${area}-${index}`} variant="outline" className="text-xs">
                                                             {area}
                                                         </Badge>
                                                     ))}
@@ -792,11 +840,11 @@ const AdminPartnersPage = () => {
                                     {isEditing ? "Cancel" : "Close"}
                                 </Button>
                                 {isEditing && (
-                                    <Button variant="primary" onClick={handleSavePartner} disabled={isSaving}>
-                                        {isSaving ? (
+                                    <Button variant="primary" onClick={handleSavePartner} disabled={isSubmitting}>
+                                        {isSubmitting ? (
                                             <>
                                                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                                Saving...
+                                                {isEditing ? "Updating..." : "Saving..."}
                                             </>
                                         ) : (
                                             "Save Changes"
@@ -1074,17 +1122,28 @@ const AdminPartnersPage = () => {
                     </div>
                     
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowAddPartnerModal(false)}>
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setShowAddPartnerModal(false);
+                                resetForm();
+                            }}
+                            disabled={isSubmitting}
+                        >
                             Cancel
                         </Button>
-                        <Button variant="primary" onClick={handleSavePartner} disabled={isSaving}>
-                            {isSaving ? (
+                        <Button 
+                            variant="primary" 
+                            onClick={handleSavePartner} 
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? (
                                 <>
                                     <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                    Saving...
+                                    {isEditing ? "Updating..." : "Saving..."}
                                 </>
                             ) : (
-                                "Add Partner"
+                                isEditing ? "Update Partner" : "Add Partner"
                             )}
                         </Button>
                     </DialogFooter>

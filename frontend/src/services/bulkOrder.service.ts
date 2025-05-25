@@ -212,7 +212,7 @@ class BulkOrderService extends ApiService {
                 xhr.open('POST', '/api/bulk-orders/upload');
                 
                 Promise.all([
-                    secureStorage.getItem('token'),
+                    secureStorage.getItem('auth_token'),
                     secureStorage.getItem('csrf_token')
                 ]).then(([token, csrfToken]) => {
                     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -432,7 +432,7 @@ class BulkOrderService extends ApiService {
     }
 
     private static async getAuthHeader(): Promise<Record<string, string>> {
-        const token = await secureStorage.getItem('token');
+        const token = await secureStorage.getItem('auth_token');
         return { 'Authorization': `Bearer ${token}` };
     }
 

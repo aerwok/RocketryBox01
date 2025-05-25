@@ -59,14 +59,24 @@ export const getShippingPartners = async (req, res, next) => {
       ShippingPartner.countDocuments(filter)
     ]);
 
+    // Transform partners data to match frontend expectations
+    const transformedPartners = partners.map(partner => ({
+      ...partner,
+      id: partner._id.toString(),
+      performanceScore: partner.performanceScore ? partner.performanceScore.toString() + '%' : '0%',
+      deliverySuccess: partner.deliverySuccess ? partner.deliverySuccess.toString() + '%' : '0%',
+      lastUpdated: partner.lastUpdated ? new Date(partner.lastUpdated).toLocaleDateString() : new Date().toLocaleDateString(),
+      integrationDate: partner.integrationDate ? new Date(partner.integrationDate).toLocaleDateString() : new Date().toLocaleDateString()
+    }));
+
     // Prepare response data
     const response = {
       success: true,
-      count: partners.length,
+      count: transformedPartners.length,
       total,
       totalPages: Math.ceil(total / limitNum),
       currentPage: pageNum,
-      data: partners
+      data: transformedPartners
     };
 
     // Cache the response
@@ -98,9 +108,19 @@ export const getShippingPartnerById = async (req, res, next) => {
       return next(new AppError('Shipping partner not found', 404));
     }
 
+    // Transform partner data to match frontend expectations
+    const transformedPartner = {
+      ...partner.toObject(),
+      id: partner._id.toString(),
+      performanceScore: partner.performanceScore ? partner.performanceScore.toString() + '%' : '0%',
+      deliverySuccess: partner.deliverySuccess ? partner.deliverySuccess.toString() + '%' : '0%',
+      lastUpdated: partner.lastUpdated ? new Date(partner.lastUpdated).toLocaleDateString() : new Date().toLocaleDateString(),
+      integrationDate: partner.integrationDate ? new Date(partner.integrationDate).toLocaleDateString() : new Date().toLocaleDateString()
+    };
+
     res.status(200).json({
       success: true,
-      data: partner
+      data: transformedPartner
     });
   } catch (error) {
     next(new AppError(error.message, 400));
@@ -112,54 +132,118 @@ export const getShippingPartnerById = async (req, res, next) => {
  * @route POST /api/v2/admin/partners
  * @access Private (Admin only)
  */
-export const createShippingPartner = async (req, res, next) => {
-  try {
-    const partnerData = req.body;
-    
-    // Set default integration date if not provided
-    if (!partnerData.integrationDate) {
-      partnerData.integrationDate = new Date();
-    }
-
-    // Set admin as updater for status history
-    if (partnerData.apiStatus) {
-      partnerData.statusHistory = [{
-        status: partnerData.apiStatus,
-        reason: 'Initial setup',
-        updatedBy: req.user.id,
-        timestamp: new Date()
-      }];
-    }
-
-    const partner = await ShippingPartner.create(partnerData);
-
-    // Invalidate cache with specific keys
+export const createShippingPartner = async (req, res) => {
     try {
-      await deleteCache('shipping_partners:all');
+        const { name, logoUrl, apiStatus, supportContact, supportEmail, serviceTypes, serviceAreas, weightLimits, dimensionLimits, rates } = req.body;
+
+        // Check for duplicate partner name
+        const existingPartner = await ShippingPartner.findOne({ 
+            name: { $regex: new RegExp(`^${name}$`, 'i') } 
+        });
+        
+        if (existingPartner) {
+            return res.status(400).json({
+                success: false,
+                message: "A partner with this name already exists",
+                error: "DUPLICATE_PARTNER"
+            });
+        }
+
+        // Validate weight limits
+        if (weightLimits.min >= weightLimits.max) {
+            return res.status(400).json({
+                success: false,
+                message: "Minimum weight must be less than maximum weight",
+                error: "INVALID_WEIGHT_LIMITS"
+            });
+        }
+
+        // Validate rates
+        if (rates.baseRate < 0 || rates.weightRate < 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Rates cannot be negative",
+                error: "INVALID_RATES"
+            });
+        }
+
+        // Validate service types and areas
+        if (!serviceTypes?.length || !serviceAreas?.length) {
+            return res.status(400).json({
+                success: false,
+                message: "At least one service type and area is required",
+                error: "INVALID_SERVICES"
+            });
+        }
+
+        const partner = new ShippingPartner({
+            name,
+            logoUrl,
+            apiStatus,
+            supportContact,
+            supportEmail,
+            serviceTypes,
+            serviceAreas,
+            weightLimits,
+            dimensionLimits,
+            rates,
+            integrationDate: new Date(),
+            status: "active",
+            statusHistory: [{
+                status: "active",
+                changedAt: new Date(),
+                changedBy: req.user.id,
+                reason: "Initial creation"
+            }]
+        });
+
+        await partner.save();
+
+        // Invalidate cache
+        await deleteCache('shipping_partners:all');
+
+        // Emit real-time update
+        io.emit('partner:created', {
+            partner: {
+                id: partner._id,
+                name: partner.name,
+                status: partner.status
+            }
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Shipping partner created successfully",
+            data: partner
+        });
     } catch (error) {
-      logger.error(`Cache invalidation error: ${error.message}`);
+        console.error("Error creating shipping partner:", error);
+        
+        // Handle validation errors
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                success: false,
+                message: "Validation error",
+                error: "VALIDATION_ERROR",
+                details: Object.values(error.errors).map(err => err.message)
+            });
+        }
+
+        // Handle duplicate key errors
+        if (error.code === 11000) {
+            return res.status(400).json({
+                success: false,
+                message: "A partner with this name or email already exists",
+                error: "DUPLICATE_ENTRY"
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to create shipping partner",
+            error: error.message
+        });
     }
-
-    // Emit event for real-time updates
-    io.emit('partner:created', {
-      id: partner._id,
-      name: partner.name,
-      apiStatus: partner.apiStatus
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Shipping partner created successfully',
-      data: {
-        id: partner._id,
-        name: partner.name,
-        apiStatus: partner.apiStatus,
-        createdAt: partner.createdAt
-      }
-    });
-  } catch (error) {
-    next(new AppError(error.message, 400));
-  }
 };
 
 /**

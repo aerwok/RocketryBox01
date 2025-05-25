@@ -1,162 +1,115 @@
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-    FormDescription,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarIcon } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { Calendar } from "@/components/ui/calendar";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
-import { Loader2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { Loader2, CalendarIcon } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { customerApiService } from "@/services/customer-api.service";
+
+// Validation schema
 const createOrderSchema = z.object({
-    // Pickup Address
-    senderName: z.string().min(1, "Sender's name is required"),
-    senderMobile: z.string().min(10, "Valid mobile number required"),
-    senderAddress1: z.string().min(1, "Address line 1 is required"),
-    senderAddress2: z.string().optional(),
-    senderCity: z.string().min(1, "City is required"),
-    senderState: z.string().min(1, "State is required"),
-    senderPincode: z.string().min(6, "Valid pincode required"),
-    savePickupAddress: z.boolean().default(false),
-
-    // Delivery Address
-    receiverName: z.string().min(1, "Receiver's name is required"),
-    receiverMobile: z.string().min(10, "Valid mobile number required"),
-    receiverAddress1: z.string().min(1, "Address line 1 is required"),
-    receiverAddress2: z.string().optional(),
-    receiverCity: z.string().min(1, "City is required"),
-    receiverState: z.string().min(1, "State is required"),
-    receiverPincode: z.string().min(6, "Valid pincode required"),
-    saveDeliveryAddress: z.boolean().default(false),
-
-    // Package Details
-    weight: z.number().min(0.1, "Weight must be greater than 0"),
-    length: z.number().min(1, "Length must be greater than 0"),
-    width: z.number().min(1, "Width must be greater than 0"),
-    height: z.number().min(1, "Height must be greater than 0"),
-    packageContent: z.string().min(1, "Package content is required"),
-    packageValue: z.number().min(1, "Package value is required"),
-    securePackage: z.boolean().default(false),
-    packagingType: z.enum(["Pouch", "Box / Carton", "Suitcase / Luggage", "Backpack / Hand Bag", "Other"]),
-    pickupDate: z.date({
-        required_error: "Please select a pickup date",
-    }),
+    senderName: z.string()
+        .min(2, "Name must be at least 2 characters long")
+        .max(50, "Name cannot exceed 50 characters"),
+    senderMobile: z.string()
+        .regex(/^[6-9]\d{9}$/, "Please provide a valid Indian phone number"),
+    senderAddress1: z.string()
+        .min(5, "Address line 1 must be at least 5 characters long")
+        .max(100, "Address line 1 cannot exceed 100 characters"),
+    senderAddress2: z.string()
+        .max(100, "Address line 2 cannot exceed 100 characters")
+        .optional(),
+    senderCity: z.string()
+        .min(2, "City must be at least 2 characters long")
+        .max(50, "City cannot exceed 50 characters"),
+    senderState: z.string()
+        .min(2, "State must be at least 2 characters long")
+        .max(50, "State cannot exceed 50 characters"),
+    senderPincode: z.string()
+        .regex(/^\d{6}$/, "Please provide a valid 6-digit pincode"),
+    savePickupAddress: z.boolean().optional(),
+    
+    receiverName: z.string()
+        .min(2, "Name must be at least 2 characters long")
+        .max(50, "Name cannot exceed 50 characters"),
+    receiverMobile: z.string()
+        .regex(/^[6-9]\d{9}$/, "Please provide a valid Indian phone number"),
+    receiverAddress1: z.string()
+        .min(5, "Address line 1 must be at least 5 characters long")
+        .max(100, "Address line 1 cannot exceed 100 characters"),
+    receiverAddress2: z.string()
+        .max(100, "Address line 2 cannot exceed 100 characters")
+        .optional(),
+    receiverCity: z.string()
+        .min(2, "City must be at least 2 characters long")
+        .max(50, "City cannot exceed 50 characters"),
+    receiverState: z.string()
+        .min(2, "State must be at least 2 characters long")
+        .max(50, "State cannot exceed 50 characters"),
+    receiverPincode: z.string()
+        .regex(/^\d{6}$/, "Please provide a valid 6-digit pincode"),
+    saveDeliveryAddress: z.boolean().optional(),
+    
+    weight: z.number()
+        .min(0.1, "Weight must be at least 0.1 kg"),
+    length: z.number()
+        .min(1, "Length must be at least 1 cm"),
+    width: z.number()
+        .min(1, "Width must be at least 1 cm"),
+    height: z.number()
+        .min(1, "Height must be at least 1 cm"),
+    packageContent: z.string()
+        .min(2, "Item name must be at least 2 characters long")
+        .max(50, "Item name cannot exceed 50 characters"),
+    packageValue: z.number()
+        .min(0, "Value cannot be negative"),
+    itemQuantity: z.number()
+        .min(1, "Quantity must be at least 1")
+        .default(1),
+    securePackage: z.boolean().optional(),
+    packagingType: z.enum(["pouch", "box", "tube", "other"]),
+    pickupDate: z.date()
+        .min(new Date(), "Pickup date must be in the future"),
     shippingRate: z.number().optional(),
 });
 
 type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
-// Rate card interface
-interface DeliveryPartner {
-    id: string;
-    name: string;
-    baseRate: number;
-    weightRate: number; // per kg
-    dimensionalFactor: number; // for volumetric weight
-    expressDelivery: boolean;
-    estimatedDays: string;
+// Rate response interface from API
+interface CourierRate {
+    courier: string;
+    mode: string;
+    service: string;
+    rate: number;
+    estimatedDelivery: string;
+    codCharge: number;
+    available: boolean;
 }
 
-// Sample delivery partners with rate cards
-const deliveryPartners: DeliveryPartner[] = [
-    {
-        id: "bluedart",
-        name: "BlueDart",
-        baseRate: 100,
-        weightRate: 20,
-        dimensionalFactor: 5000, // (L*W*H)/5000
-        expressDelivery: true,
-        estimatedDays: "1-2 days"
-    },
-    {
-        id: "delhivery",
-        name: "Delhivery",
-        baseRate: 80,
-        weightRate: 18,
-        dimensionalFactor: 4000,
-        expressDelivery: true,
-        estimatedDays: "2-3 days"
-    },
-    {
-        id: "dtdc",
-        name: "DTDC",
-        baseRate: 90,
-        weightRate: 19,
-        dimensionalFactor: 4500,
-        expressDelivery: false,
-        estimatedDays: "3-4 days"
-    },
-    {
-        id: "fedex",
-        name: "FedEx",
-        baseRate: 150,
-        weightRate: 25,
-        dimensionalFactor: 5000,
-        expressDelivery: true,
-        estimatedDays: "1-2 days"
-    },
-    {
-        id: "dhl",
-        name: "DHL",
-        baseRate: 180,
-        weightRate: 30,
-        dimensionalFactor: 5000,
-        expressDelivery: true,
-        estimatedDays: "1-2 days"
-    },
-    {
-        id: "xpressbees",
-        name: "Xpressbees",
-        baseRate: 70,
-        weightRate: 15,
-        dimensionalFactor: 4000,
-        expressDelivery: true,
-        estimatedDays: "2-3 days"
-    }
-];
+interface RatesSummary {
+    totalCouriers: number;
+    cheapestRate: number;
+    fastestDelivery: string;
+}
 
 export default function CustomerCreateOrderPage() {
     const [showRatesDialog, setShowRatesDialog] = useState(false);
     const [calculatingRates, setCalculatingRates] = useState(false);
-    const [selectedPartner, setSelectedPartner] = useState<DeliveryPartner | null>(null);
-    const [calculatedRates, setCalculatedRates] = useState<Array<{
-        partner: DeliveryPartner;
-        totalRate: number;
-        volumetricWeight: number;
-    }>>([]);
+    const [selectedRate, setSelectedRate] = useState<CourierRate | null>(null);
+    const [calculatedRates, setCalculatedRates] = useState<CourierRate[]>([]);
+    const [ratesSummary, setRatesSummary] = useState<RatesSummary | null>(null);
     const navigate = useNavigate();
 
     const form = useForm<CreateOrderInput>({
@@ -184,8 +137,9 @@ export default function CustomerCreateOrderPage() {
             height: undefined,
             packageContent: "",
             packageValue: undefined,
+            itemQuantity: 1,
             securePackage: false,
-            packagingType: "Pouch",
+            packagingType: undefined,
             pickupDate: new Date(),
         },
     });
@@ -194,88 +148,83 @@ export default function CustomerCreateOrderPage() {
         console.log(data);
     };
 
-    const calculateVolumetricWeight = (length: number, width: number, height: number, factor: number) => {
-        return (length * width * height) / factor;
-    };
-
-    const calculateShippingRate = (
-        partner: DeliveryPartner,
-        actualWeight: number,
-        length: number,
-        width: number,
-        height: number
-    ) => {
-        const volumetricWeight = calculateVolumetricWeight(length, width, height, partner.dimensionalFactor);
-        const chargeableWeight = Math.max(actualWeight, volumetricWeight);
-        const totalRate = partner.baseRate + (chargeableWeight * partner.weightRate);
-        
-        return {
-            partner,
-            totalRate: Math.round(totalRate),
-            volumetricWeight: Math.round(volumetricWeight * 100) / 100
-        };
-    };
-
-    const handleGetRates = async () => {
+    const handleCalculateRates = async () => {
         const formData = form.getValues();
         
-        // Validate required fields for dimensions, weight, and package value
-        let missingFields = [];
-
-        if (!formData.weight || formData.weight <= 0) missingFields.push("weight");
-        if (!formData.length || formData.length <= 0) missingFields.push("length");
-        if (!formData.width || formData.width <= 0) missingFields.push("width");
-        if (!formData.height || formData.height <= 0) missingFields.push("height");
-        if (!formData.packageValue || formData.packageValue <= 0) missingFields.push("package value");
-        
-        if (missingFields.length > 0) {
-            form.trigger(["weight", "length", "width", "height", "packageValue"]);
-            toast.error(`Please enter valid ${missingFields.join(", ")}`);
-            return;
-        }
-
-        // Validate address fields
-        const addressFields = ["senderName", "senderMobile", "senderAddress1", "senderPincode", "senderCity", "senderState", 
-                              "receiverName", "receiverMobile", "receiverAddress1", "receiverPincode", "receiverCity", "receiverState"] as const;
-        
-        const result = await form.trigger(addressFields);
-        if (!result) {
-            toast.error("Please fill all required address fields");
+        // Validate required fields for rate calculation
+        if (!formData.weight || !formData.senderPincode || !formData.receiverPincode) {
+            toast.error("Please fill in weight and both pincodes to calculate rates");
             return;
         }
 
         setCalculatingRates(true);
-        setShowRatesDialog(true);
+        setCalculatedRates([]);
 
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+            console.log('Calculating rates with data:', {
+                weight: formData.weight,
+                pickupPincode: formData.senderPincode,
+                deliveryPincode: formData.receiverPincode,
+                serviceType: 'standard' // Default service type
+            });
 
-        const rates = deliveryPartners.map(partner =>
-            calculateShippingRate(
-                partner,
-                formData.weight,
-                formData.length,
-                formData.width,
-                formData.height
-            )
-        );
+            const response = await customerApiService.calculateRates({
+                weight: formData.weight,
+                pickupPincode: formData.senderPincode,
+                deliveryPincode: formData.receiverPincode,
+                serviceType: 'standard'
+            });
 
-        setCalculatedRates(rates);
+            console.log('Rate calculation response:', response);
+
+            if (response.success && response.data.rates) {
+                // Transform the API response to match our frontend format
+                const transformedRates = response.data.rates.map((rate: {
+                    courier: string;
+                    mode?: string;
+                    service?: string;
+                    rate?: number;
+                    total?: number;
+                    estimatedDelivery?: string;
+                    codCharge?: number;
+                    available?: boolean;
+                }) => ({
+                    courier: rate.courier,
+                    mode: rate.mode || 'standard',
+                    service: rate.service || rate.mode || 'standard',
+                    rate: rate.rate || rate.total || 0,
+                    estimatedDelivery: rate.estimatedDelivery || '3-5 days',
+                    codCharge: rate.codCharge || 0,
+                    available: rate.available !== false
+                }));
+
+                setCalculatedRates(transformedRates);
+                setRatesSummary(response.data.summary);
+                setShowRatesDialog(true); // Show the rates dialog
+                toast.success(`Found ${transformedRates.length} shipping options`);
+            } else {
+                toast.error("No rates found for this route");
+            }
+        } catch (error: unknown) {
+            console.error('Rate calculation error:', error);
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : "Failed to calculate rates. Please try again.";
+            toast.error(errorMessage);
+        } finally {
         setCalculatingRates(false);
+        }
     };
 
-    const handlePartnerSelect = (partner: DeliveryPartner) => {
-        setSelectedPartner(partner);
-        const rate = calculatedRates.find(r => r.partner.id === partner.id);
-        if (rate) {
-            form.setValue('shippingRate', rate.totalRate);
-        }
-        // Close dialog after selection
+    const handleRateSelect = (rate: CourierRate) => {
+        setSelectedRate(rate);
+        form.setValue('shippingRate', rate.rate);
         setShowRatesDialog(false);
+        toast.success(`Selected ${rate.courier} - ₹${rate.rate}`);
     };
 
     const handleConfirmOrder = async () => {
-        if (!selectedPartner) {
+        if (!selectedRate) {
             toast.error("Please select a courier partner first");
             return;
         }
@@ -290,24 +239,56 @@ export default function CustomerCreateOrderPage() {
         try {
             const formData = form.getValues();
             
-            // Create order in backend - AWB will be generated by backend
-            const response = await axios.post('/api/orders', {
-                ...formData,
-                shippingPartner: selectedPartner,
-                shippingRate: calculatedRates.find(r => r.partner.id === selectedPartner?.id)?.totalRate
+            // Create order using the real API
+            const response = await customerApiService.createOrder({
+                pickupAddress: {
+                    name: formData.senderName,
+                    phone: formData.senderMobile,
+                    address1: formData.senderAddress1,
+                    address2: formData.senderAddress2 || undefined,
+                    city: formData.senderCity,
+                    state: formData.senderState,
+                    pincode: formData.senderPincode,
+                    country: 'India'
+                },
+                deliveryAddress: {
+                    name: formData.receiverName,
+                    phone: formData.receiverMobile,
+                    address1: formData.receiverAddress1,
+                    address2: formData.receiverAddress2 || undefined,
+                    city: formData.receiverCity,
+                    state: formData.receiverState,
+                    pincode: formData.receiverPincode,
+                    country: 'India'
+                },
+                package: {
+                    weight: formData.weight,
+                    dimensions: {
+                        length: formData.length,
+                        width: formData.width,
+                        height: formData.height,
+                    },
+                    items: [{
+                        name: formData.packageContent,
+                        quantity: formData.itemQuantity,
+                        value: formData.packageValue,
+                    }],
+                },
+                serviceType: selectedRate.service,
+                paymentMethod: 'online',
+                instructions: '',
+                pickupDate: formData.pickupDate.toISOString(),
             });
 
-            // Expect backend to return { awbNumber, ...orderDetails }
-            const { awbNumber } = response.data;
-
-            if (!awbNumber) {
-                throw new Error('Order created but no AWB number received');
-            }
-
+            if (response.success) {
+                toast.success("Order created successfully!");
             // Navigate to payment page with AWB
             navigate("/customer/payment", { 
-                state: { awbNumber }
+                    state: { awbNumber: response.data.awb }
             });
+            } else {
+                throw new Error('Order creation failed');
+            }
         } catch (error) {
             const errorMessage = error instanceof Error 
                 ? error.message 
@@ -439,7 +420,7 @@ export default function CustomerCreateOrderPage() {
                                                 />
                                             </FormControl>
                                             <div className="space-y-1 leading-none">
-                                            <FormLabel>Save Address</FormLabel>
+                                            <FormLabel>Save this address for future use</FormLabel>
                                             </div>
                                         </FormItem>
                                     )}
@@ -563,7 +544,7 @@ export default function CustomerCreateOrderPage() {
                                                 />
                                             </FormControl>
                                             <div className="space-y-1 leading-none">
-                                                <FormLabel>Save Address</FormLabel>
+                                            <FormLabel>Save this address for future use</FormLabel>
                                             </div>
                                         </FormItem>
                                     )}
@@ -572,174 +553,102 @@ export default function CustomerCreateOrderPage() {
                         </div>
                     </div>
 
-                    {/* Select Packaging */}
+                {/* Package Details */}
                     <div className="bg-white p-6 rounded-lg border shadow-sm">
-                        <h2 className="text-lg font-semibold mb-4">Select Packaging</h2>
+                    <h2 className="text-lg font-semibold mb-4">Package Details</h2>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <FormField
                             control={form.control}
-                            name="packagingType"
+                                name="weight"
                             render={({ field }) => (
                                 <FormItem>
+                                        <FormLabel>Weight (kg)</FormLabel>
                                     <FormControl>
-                                        <RadioGroup
-                                            onValueChange={field.onChange}
-                                            defaultValue={field.value}
-                                            className="grid grid-cols-2 md:grid-cols-5 gap-4"
-                                        >
-                                            <FormItem>
-                                                <FormControl>
-                                                    <RadioGroupItem
-                                                        value="Pouch"
-                                                        id="pouch"
-                                                        className="peer sr-only"
-                                                    />
-                                                </FormControl>
-                                                <FormLabel
-                                                    htmlFor="pouch"
-                                                    className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-blue-600 text-white p-4 hover:bg-blue-500 peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
-                                                >
-                                                    Pouch
-                                                </FormLabel>
-                                            </FormItem>
-                                            <FormItem>
-                                                <FormControl>
-                                                    <RadioGroupItem
-                                                        value="Box / Carton"
-                                                        id="box"
-                                                        className="peer sr-only"
-                                                    />
-                                                </FormControl>
-                                                <FormLabel
-                                                    htmlFor="box"
-                                                    className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-blue-600 text-white p-4 hover:bg-blue-500 peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
-                                                >
-                                                    Box / Carton
-                                                </FormLabel>
-                                            </FormItem>
-                                            <FormItem>
-                                                <FormControl>
-                                                    <RadioGroupItem
-                                                        value="Suitcase / Luggage"
-                                                        id="suitcase"
-                                                        className="peer sr-only"
-                                                    />
-                                                </FormControl>
-                                                <FormLabel
-                                                    htmlFor="suitcase"
-                                                    className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-blue-600 text-white p-4 hover:bg-blue-500 peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
-                                                >
-                                                    Suitcase / Luggage
-                                                </FormLabel>
-                                            </FormItem>
-                                            <FormItem>
-                                                <FormControl>
-                                                    <RadioGroupItem
-                                                        value="Backpack / Hand Bag"
-                                                        id="backpack"
-                                                        className="peer sr-only"
-                                                    />
-                                                </FormControl>
-                                                <FormLabel
-                                                    htmlFor="backpack"
-                                                    className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-blue-600 text-white p-4 hover:bg-blue-500 peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
-                                                >
-                                                    Backpack / Hand Bag
-                                                </FormLabel>
-                                            </FormItem>
-                                            <FormItem>
-                                                <FormControl>
-                                                    <RadioGroupItem
-                                                        value="Other"
-                                                        id="other"
-                                                        className="peer sr-only"
-                                                    />
-                                                </FormControl>
-                                                <FormLabel
-                                                    htmlFor="other"
-                                                    className="flex flex-col items-center justify-center rounded-lg border-2 border-muted bg-blue-600 text-white p-4 hover:bg-blue-500 peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
-                                                >
-                                                    Other
-                                                </FormLabel>
-                                            </FormItem>
-                                        </RadioGroup>
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    </div>
-
-                    {/* Schedule Pickup */}
-                    <div className="bg-white p-6 rounded-lg border shadow-sm">
-                        <h2 className="text-lg font-semibold mb-4">Schedule your Pickup</h2>
-                        <FormField
-                            control={form.control}
-                            name="pickupDate"
-                            render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <div 
-                                                className="flex items-center gap-2 text-sm text-blue-600 cursor-pointer hover:text-blue-500"
-                                                role="button"
-                                                tabIndex={0}
-                                            >
-                                                <CalendarIcon className="w-4 h-4" />
-                                                <span>{field.value ? format(field.value, "EEE, dd MMM yyyy").toUpperCase() : "MON, 31 MAR 2025"}</span>
-                                            </div>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0" align="start">
-                                            <Calendar
-                                                mode="single"
-                                                selected={field.value}
-                                                onSelect={field.onChange}
-                                                disabled={(date) => {
-                                                    const today = new Date();
-                                                    today.setHours(0, 0, 0, 0);
-                                                    return date < today;
+                                            <Input 
+                                                type="number" 
+                                                step="0.1" 
+                                                placeholder="0.5" 
+                                                value={field.value || ''} 
+                                                onChange={(e) => {
+                                                    const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                    field.onChange(value);
                                                 }}
-                                                initialFocus
-                                            />
-                                        </PopoverContent>
-                                    </Popover>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    </div>
+                                                    />
+                                                </FormControl>
+                                        <FormMessage />
+                                            </FormItem>
+                                )}
+                            />
 
-                            {/* Parcel Weight & Dimensions */}
-                    <div className="bg-white p-6 rounded-lg border shadow-sm">
-                        <h2 className="text-lg font-semibold mb-4">Parcel Weight & Dimensions</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-4">
+                            <FormField
+                                control={form.control}
+                                name="length"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Length (cm)</FormLabel>
+                                        <FormControl>
+                                            <Input 
+                                                type="number" 
+                                                placeholder="10" 
+                                                value={field.value || ''} 
+                                                onChange={(e) => {
+                                                    const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                    field.onChange(value);
+                                                }}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="width"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Width (cm)</FormLabel>
+                                        <FormControl>
+                                            <Input 
+                                                type="number" 
+                                                placeholder="10" 
+                                                value={field.value || ''} 
+                                                onChange={(e) => {
+                                                    const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                                                    field.onChange(value);
+                                                }}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
                                         <FormField
                                             control={form.control}
-                                            name="weight"
+                                name="height"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Weight (kg)</FormLabel>
+                                        <FormLabel>Height (cm)</FormLabel>
                                                     <FormControl>
                                                         <Input
                                                             type="number"
-                                                            step="0.01"
-                                                            placeholder="Enter weight"
-                                                            {...field}
-                                                            value={field.value || ''}
+                                                placeholder="5" 
+                                                            value={field.value || ''} 
                                                             onChange={(e) => {
-                                                                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                                                const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
                                                                 field.onChange(value);
                                                             }}
                                                         />
                                                     </FormControl>
-                                                    <FormDescription className="text-xs text-gray-500">
-                                                        Enter the actual weight of your package
-                                                    </FormDescription>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}
                                         />
+                        </div>
 
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <FormField
                                             control={form.control}
                                     name="packageContent"
@@ -747,7 +656,7 @@ export default function CustomerCreateOrderPage() {
                                                 <FormItem>
                                             <FormLabel>Package Content</FormLabel>
                                                     <FormControl>
-                                                <Input placeholder="Enter package content" {...field} />
+                                            <Input placeholder="e.g., Electronics, Clothing, Books" {...field} />
                                                     </FormControl>
                                                     <FormMessage />
                                                 </FormItem>
@@ -756,47 +665,17 @@ export default function CustomerCreateOrderPage() {
 
                                         <FormField
                                             control={form.control}
-                                    name="packageValue"
+                                name="itemQuantity"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Package Value (₹)</FormLabel>
+                                        <FormLabel>Quantity</FormLabel>
                                                     <FormControl>
                                                         <Input
                                                             type="number"
-                                                            placeholder="Enter package value"
-                                                            {...field}
-                                                            value={field.value || ''}
+                                                placeholder="1" 
+                                                            value={field.value || ''} 
                                                             onChange={(e) => {
-                                                                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                                                                field.onChange(value);
-                                                            }}
-                                                        />
-                                                    </FormControl>
-                                                    <FormDescription className="text-xs text-gray-500">
-                                                        Declare the actual value of package contents
-                                                    </FormDescription>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </div>
-
-                            <div className="space-y-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="length"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Length (cm)</FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            type="number"
-                                                            step="0.1"
-                                                            placeholder="Enter length"
-                                                            {...field}
-                                                            value={field.value || ''}
-                                                            onChange={(e) => {
-                                                                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                                                const value = e.target.value === '' ? undefined : parseInt(e.target.value);
                                                                 field.onChange(value);
                                                             }}
                                                         />
@@ -808,23 +687,50 @@ export default function CustomerCreateOrderPage() {
 
                                         <FormField
                                             control={form.control}
-                                            name="width"
+                                name="packageValue"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Width (cm)</FormLabel>
+                                        <FormLabel>Declared Value (₹)</FormLabel>
                                                     <FormControl>
                                                         <Input
                                                             type="number"
-                                                            step="0.1"
-                                                            placeholder="Enter width"
-                                                            {...field}
-                                                            value={field.value || ''}
+                                                placeholder="1000" 
+                                                            value={field.value || ''} 
                                                             onChange={(e) => {
-                                                                const value = e.target.value === '' ? undefined : Number(e.target.value);
+                                                                const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
                                                                 field.onChange(value);
                                                             }}
                                                         />
                                                     </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <FormField
+                                            control={form.control}
+                                name="packagingType"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                        <FormLabel>Packaging Type</FormLabel>
+                                        <Select 
+                                            onValueChange={field.onChange} 
+                                            value={field.value}
+                                        >
+                                                    <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select packaging type" />
+                                                </SelectTrigger>
+                                                    </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="pouch">Pouch</SelectItem>
+                                                <SelectItem value="box">Box</SelectItem>
+                                                <SelectItem value="tube">Tube</SelectItem>
+                                                <SelectItem value="other">Other</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}
@@ -832,31 +738,44 @@ export default function CustomerCreateOrderPage() {
 
                                         <FormField
                                             control={form.control}
-                                            name="height"
+                                name="pickupDate"
                                             render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Height (cm)</FormLabel>
+                                    <FormItem className="flex flex-col">
+                                        <FormLabel>Pickup Date</FormLabel>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
                                                     <FormControl>
-                                                        <Input
-                                                            type="number"
-                                                            step="0.1"
-                                                            placeholder="Enter height"
-                                                            {...field}
-                                                            value={field.value || ''}
-                                                            onChange={(e) => {
-                                                                const value = e.target.value === '' ? undefined : Number(e.target.value);
-                                                                field.onChange(value);
-                                                            }}
-                                                        />
+                                                    <Button
+                                                        variant={"outline"}
+                                                        className={`w-full pl-3 text-left font-normal ${!field.value && "text-muted-foreground"}`}
+                                                    >
+                                                        {field.value ? (
+                                                            format(field.value, "PPP")
+                                                        ) : (
+                                                            <span>Pick a date</span>
+                                                        )}
+                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                    </Button>
                                                     </FormControl>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0" align="start">
+                                                <CalendarComponent
+                                                    mode="single"
+                                                    selected={field.value}
+                                                    onSelect={field.onChange}
+                                                    disabled={(date) =>
+                                                        date < new Date() || date < new Date("1900-01-01")
+                                                    }
+                                                    initialFocus
+                                                />
+                                            </PopoverContent>
+                                        </Popover>
                                                     <FormMessage />
                                                 </FormItem>
                                             )}
                                         />
-                                    </div>
                                 </div>
 
-                        <div className="mt-4">
                                 <FormField
                                     control={form.control}
                                     name="securePackage"
@@ -869,23 +788,7 @@ export default function CustomerCreateOrderPage() {
                                                 />
                                             </FormControl>
                                         <div className="space-y-1 leading-none">
-                                            <FormLabel>Secure your package for just ₹1499.97</FormLabel>
-                                <p className="text-sm text-muted-foreground">
-                                                Claim up to ₹26999.5 in case of loss or damage.{" "}
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger className="underline">
-                                        See what is covered
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>
-                                                            <p className="max-w-xs">
-                                                                Coverage includes loss, damage, or theft during transit.
-                                                                Terms and conditions apply.
-                                                            </p>
-                                                        </TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-                                            </p>
+                                        <FormLabel>This is a secure package (additional charges may apply)</FormLabel>
                                             </div>
                                         </FormItem>
                                     )}
@@ -893,52 +796,63 @@ export default function CustomerCreateOrderPage() {
                         </div>
                             </div>
 
-                            {/* Courier Charges */}
+                {/* Get Rates and Courier Selection */}
                     <div className="bg-white p-6 rounded-lg border shadow-sm">
-                        <h2 className="text-lg font-semibold mb-4">Courier Charges</h2>
-                        <div className="space-y-4">
-                            {selectedPartner && (
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold">Courier Selection</h2>
+                        <Button type="button" onClick={handleCalculateRates} disabled={calculatingRates}>
+                            {calculatingRates ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Calculating...
+                                </>
+                            ) : (
+                                "Get Rates"
+                            )}
+                        </Button>
+                    </div>
+
+                    {selectedRate && (
                                 <div className="bg-blue-50 p-4 rounded-lg">
                                     <div className="flex justify-between items-center">
                                         <div>
-                                            <h3 className="font-semibold text-blue-900">{selectedPartner.name}</h3>
-                                            <p className="text-sm text-blue-700">Estimated Delivery: {selectedPartner.estimatedDays}</p>
+                                    <h3 className="font-semibold text-blue-900">{selectedRate.courier}</h3>
+                                    <p className="text-sm text-blue-700">Estimated Delivery: {selectedRate.estimatedDelivery}</p>
+                                    <p className="text-xs text-blue-600">{selectedRate.mode} • {selectedRate.service}</p>
                                         </div>
                                         <div className="text-right">
                                             <p className="text-sm text-blue-700">Shipping Rate</p>
-                                            <p className="text-xl font-bold text-blue-900">
-                                                ₹{calculatedRates.find(r => r.partner.id === selectedPartner.id)?.totalRate}
-                                            </p>
+                                    <p className="text-xl font-bold text-blue-900">₹{selectedRate.rate}</p>
+                                    {selectedRate.codCharge > 0 && (
+                                        <p className="text-xs text-blue-600">COD: ₹{selectedRate.codCharge}</p>
+                                    )}
                                         </div>
                                     </div>
                                 </div>
                             )}
-                            <div className="flex justify-between gap-4">
-                                            <Button
-                                                type="button"
-                                    variant="outline" 
-                                    className="w-full"
-                                    onClick={handleGetRates}
-                                            >
-                                    {selectedPartner ? 'Change Courier Partner' : 'Get Rates'}
+
+                    {!selectedRate && (
+                        <div className="text-center py-8 text-gray-500">
+                            <p>Click "Get Rates" to see available courier options</p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-end space-x-4">
+                    <Button type="button" variant="outline" onClick={() => navigate("/customer/home")}>
+                        Cancel
                                             </Button>
-                                        <Button
-                                            type="button"
-                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white"
-                                    disabled={!selectedPartner}
-                                    onClick={handleConfirmOrder}
-                                >
+                    <Button type="button" onClick={handleConfirmOrder} disabled={!selectedRate}>
                                     Confirm Order
                                         </Button>
-                                </div>
-                        </div>
                     </div>
                 </form>
             </Form>
 
             {/* Rates Dialog */}
             <Dialog open={showRatesDialog} onOpenChange={setShowRatesDialog}>
-                <DialogContent className="max-w-md">
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
                     <DialogHeader>
                         <DialogTitle>Select Courier Partner</DialogTitle>
                     </DialogHeader>
@@ -948,46 +862,72 @@ export default function CustomerCreateOrderPage() {
                             <span className="ml-2 text-muted-foreground">Calculating rates...</span>
                         </div>
                     ) : (
-                        <div className="space-y-2">
-                            {deliveryPartners.map((partner) => {
-                                const rate = calculatedRates.find(r => r.partner.id === partner.id);
-                                const isSelected = selectedPartner?.id === partner.id;
+                    <div className="space-y-3 overflow-y-auto pr-2">
+                        {ratesSummary && (
+                            <div className="bg-gray-50 p-4 rounded-lg mb-4 sticky top-0 z-10">
+                                <div className="grid grid-cols-3 gap-4 text-center">
+                                    <div>
+                                        <p className="text-sm text-gray-600">Available Couriers</p>
+                                        <p className="font-semibold">{ratesSummary.totalCouriers}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-600">Cheapest Rate</p>
+                                        <p className="font-semibold">₹{ratesSummary.cheapestRate}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-600">Fastest Delivery</p>
+                                        <p className="font-semibold">{ratesSummary.fastestDelivery}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {calculatedRates.map((rate, index) => {
+                            const isSelected = selectedRate?.courier === rate.courier;
+                            const isCheapest = rate.rate === ratesSummary?.cheapestRate;
+                            
                                 return (
                                     <div 
-                                        key={partner.id}
-                                        className={cn(
-                                            "border rounded-lg p-4 cursor-pointer transition-all",
+                                    key={index}
+                                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
                                             isSelected 
-                                                ? "border-blue-500 bg-blue-50" 
-                                                : "hover:border-blue-200"
-                                        )}
-                                        onClick={() => handlePartnerSelect(partner)}
-                                    >
-                                        <div className="flex items-center justify-between">
-                                            <div className="space-y-1">
+                                            ? 'border-blue-500 bg-blue-50' 
+                                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                    }`}
+                                    onClick={() => handleRateSelect(rate)}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex-1">
                                                 <div className="flex items-center gap-2">
-                                                    <h3 className="font-semibold">{partner.name}</h3>
-                                                    {partner.expressDelivery && (
-                                                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                                                            Express
-                                                        </span>
+                                                <h3 className="font-semibold text-sm">{rate.courier}</h3>
+                                                {isCheapest && (
+                                                    <Badge variant="secondary" className="text-xs">Cheapest</Badge>
+                                                )}
+                                                {rate.mode === 'express' && (
+                                                    <Badge variant="default" className="text-xs">Express</Badge>
                                                     )}
                                                 </div>
-                                                <p className="text-sm text-gray-600">
-                                                    {partner.estimatedDays}
+                                            <p className="text-xs text-gray-600">
+                                                {rate.estimatedDelivery} • {rate.service}
                                                 </p>
-                                            </div>
-                                            {rate && (
-                                                <div className="text-right">
-                                                    <p className="text-xl font-bold text-blue-600">
-                                                        ₹{rate.totalRate}
-                                                    </p>
-                                                </div>
+                                            {rate.codCharge > 0 && (
+                                                <p className="text-xs text-gray-500">COD Charges: ₹{rate.codCharge}</p>
                                             )}
+                                            </div>
+                                                <div className="text-right">
+                                            <p className="text-lg font-bold text-blue-600">₹{rate.rate}</p>
+                                            <p className="text-xs text-gray-500">{rate.mode}</p>
+                                                </div>
                                         </div>
                                     </div>
                                 );
                             })}
+
+                        {calculatedRates.length === 0 && !calculatingRates && (
+                            <div className="text-center py-8 text-gray-500">
+                                <p>No rates available for the selected route</p>
+                            </div>
+                        )}
                         </div>
                     )}
                 </DialogContent>

@@ -1,5 +1,4 @@
 import { ApiService } from './api.service';
-import { secureStorage } from '@/utils/secureStorage';
 import { toast } from 'sonner';
 import { 
   ApiResponse, 
@@ -10,6 +9,7 @@ import {
   ERROR_CODES 
 } from '@/types/api';
 import { CustomerRegisterInput } from '@/lib/validations/customer';
+import axios from 'axios';
 
 interface LoginResponse {
   accessToken: string;
@@ -41,8 +41,8 @@ export class AuthService {
     await this.api.post('/customer/auth/logout');
   }
 
-  async refreshToken(refreshToken: string): Promise<ApiResponse<{ accessToken: string }>> {
-    return this.api.post<{ accessToken: string }>('/customer/auth/refresh-token', { refreshToken });
+  async refreshToken(): Promise<ApiResponse<{ accessToken: string }>> {
+    return this.api.post<{ accessToken: string }>('/customer/auth/refresh-token');
   }
 
   async sendMobileOTP(mobile: string): Promise<ApiResponse<{ message: string }>> {
@@ -122,17 +122,32 @@ export class AuthService {
 
   async getCurrentUser(): Promise<Customer | Seller | Admin | null> {
     try {
-      const token = await secureStorage.getItem('auth_token');
-      if (!token) return null;
-
       const response = await this.api.get<Customer | Seller | Admin>('/customer/profile');
       return response.data;
     } catch (error) {
       const apiError = error as ApiError;
       if (apiError.code === ERROR_CODES.UNAUTHORIZED) {
-        await secureStorage.removeItem('auth_token');
+        console.error('User not authenticated');
       }
       return null;
+    }
+  }
+  
+  async checkAuthStatus(): Promise<{ isAuthenticated: boolean; user: any | null }> {
+    try {
+      const response = await axios.get('/api/v2/customer/auth/check', { 
+        withCredentials: true 
+      });
+      
+      return {
+        isAuthenticated: response.data.success,
+        user: response.data.data?.user || null
+      };
+    } catch (error) {
+      return {
+        isAuthenticated: false,
+        user: null
+      };
     }
   }
 }

@@ -1,27 +1,47 @@
 import { useState, useEffect } from 'react';
 import { AuthService } from '@/services/auth.service';
-import { secureStorage } from '@/utils/secureStorage';
+import axios from 'axios';
 
 interface AuthState {
-    token: string | null;
     isAuthenticated: boolean;
+    user: any | null;
+    loading: boolean;
 }
 
 export const useAuth = () => {
     const [authState, setAuthState] = useState<AuthState>({
-        token: null,
-        isAuthenticated: false
+        isAuthenticated: false,
+        user: null,
+        loading: true
     });
 
-    useEffect(() => {
-        const checkAuth = async () => {
-            const token = await secureStorage.getItem('auth_token');
-            setAuthState({
-                token,
-                isAuthenticated: !!token
+    const checkAuthStatus = async () => {
+        try {
+            // Make a request to check if user is authenticated
+            const response = await axios.get('/api/v2/customer/auth/check', { 
+                withCredentials: true 
             });
-        };
-        checkAuth();
+            
+            setAuthState({
+                isAuthenticated: response.data.success,
+                user: response.data.data?.user || null,
+                loading: false
+            });
+            
+            return response.data.success;
+        } catch (error) {
+            console.error('Auth check error:', error);
+            setAuthState({
+                isAuthenticated: false,
+                user: null,
+                loading: false
+            });
+            return false;
+        }
+    };
+
+    useEffect(() => {
+        checkAuthStatus();
     }, []);
 
     const login = async (phoneOrEmail: string, password: string, rememberMe: boolean = false) => {
@@ -43,11 +63,11 @@ export const useAuth = () => {
                 hasUser: !!response.data?.user
             });
             
-            if (response.data?.accessToken) {
-                await secureStorage.setItem('auth_token', response.data.accessToken);
+            if (response.success) {
                 setAuthState({
-                    token: response.data.accessToken,
-                    isAuthenticated: true
+                    isAuthenticated: true,
+                    user: response.data?.user || null,
+                    loading: false
                 });
             }
             
@@ -63,10 +83,10 @@ export const useAuth = () => {
         try {
             const authService = new AuthService();
             await authService.logout();
-            await secureStorage.removeItem('auth_token');
             setAuthState({
-                token: null,
-                isAuthenticated: false
+                isAuthenticated: false,
+                user: null,
+                loading: false
             });
         } catch (error) {
             console.error('Logout error:', error);
@@ -75,9 +95,11 @@ export const useAuth = () => {
     };
 
     return {
-        token: authState.token,
         isAuthenticated: authState.isAuthenticated,
+        user: authState.user,
+        loading: authState.loading,
         login,
-        logout
+        logout,
+        checkAuthStatus
     };
 }; 

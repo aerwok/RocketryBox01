@@ -1,0 +1,43 @@
+{
+  "name": "BlueDart",
+  "logoUrl": "https://www.bluedart.com/images/bluedart-logo.png",
+  "apiStatus": "active",
+  "supportContact": "1800-233-1501",
+  "supportEmail": "support@bluedart.com",
+  "serviceTypes": ["Express", "Surface", "Priority"],
+  "serviceAreas": ["Domestic", "International"],
+  "weightLimits": {
+    "min": 0.5,
+    "max": 50
+  },
+  "dimensionLimits": {
+    "maxLength": 150,
+    "maxWidth": 150,
+    "maxHeight": 150,
+    "maxSum": 300
+  },
+  "rates": {
+    "baseRate": 100,
+    "weightRate": 20,
+    "dimensionalFactor": 5000
+  },
+  "zones": [
+    {
+      "name": "Local",
+      "baseRate": 100,
+      "additionalRate": 10
+    },
+    {
+      "name": "Metro",
+      "baseRate": 150,
+      "additionalRate": 15
+    },
+    {
+      "name": "Rest of India",
+      "baseRate": 200,
+      "additionalRate": 20
+    }
+  ],
+  "trackingUrl": "https://www.bluedart.com/tracking",
+  "notes": "BlueDart Express Limited - Premium Express Logistics Provider"
+} 

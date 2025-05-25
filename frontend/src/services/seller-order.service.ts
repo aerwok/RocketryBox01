@@ -61,7 +61,7 @@ class SellerOrderService extends ApiService {
     }
 
     private static async getAuthHeader(): Promise<Record<string, string>> {
-        const token = await secureStorage.getItem('token');
+        const token = await secureStorage.getItem('auth_token');
         return { 'Authorization': `Bearer ${token}` };
     }
 

@@ -3,7 +3,7 @@ import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import { generateOTP } from '../../../utils/otp.js';
-import { setOTP, verifyOTP, setSession } from '../../../utils/redis.js';
+import { setOTP, verifyOTP, setSession, deleteSession } from '../../../utils/redis.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -192,6 +192,18 @@ export const login = async (req, res, next) => {
       customerId: customer._id,
       name: customer.name,
       email: customer.email
+    });
+
+    // Set cookie with the auth token
+    // Calculate expiry time (default: 1 day, remember me: 30 days)
+    const cookieExpiry = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    
+    res.cookie('auth_token', accessToken, {
+      httpOnly: true, // Make the cookie accessible only by the web server
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      sameSite: 'strict', // Prevent CSRF attacks
+      maxAge: cookieExpiry, // Cookie expiry time in milliseconds
+      path: '/' // Cookie is available for all paths
     });
 
     res.status(200).json({
@@ -390,4 +402,61 @@ export const verifyOTPHandler = async (req, res, next) => {
     } catch (error) {
         next(new AppError(error.message, 400));
     }
+};
+
+// Check if user is authenticated
+export const checkAuthStatus = async (req, res) => {
+  try {
+    // If this route is protected by the auth middleware,
+    // req.user will be available if authentication was successful
+    if (!req.user) {
+      return res.status(200).json({
+        success: false,
+        message: 'Not authenticated'
+      });
+    }
+
+    // User is authenticated, return basic user info
+    res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          role: req.user.role
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error checking authentication status'
+    });
+  }
+};
+
+// Logout customer
+export const logout = async (req, res, next) => {
+  try {
+    // Clear the auth token cookie
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/'
+    });
+
+    // Delete the user's session from Redis if they are authenticated
+    if (req.user && req.user.id) {
+      await deleteSession(req.user.id);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    next(new AppError(error.message, 400));
+  }
 }; 
