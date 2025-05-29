@@ -33,18 +33,9 @@ const SellerDashboardNavbar = () => {
         // Check if user is authenticated
         const isAuthenticated = localStorage.getItem('seller_token');
         
-        // TEMPORARY BYPASS: Comment this out before deployment
-        // This bypass allows access to seller sections without authentication
-        /*
+        // Redirect to login if not authenticated
         if (!isAuthenticated) {
             navigate('/seller/login');
-        }
-        */
-        
-        // TEMPORARY: Set a dummy token for development
-        if (!isAuthenticated) {
-            localStorage.setItem('seller_token', 'DEVELOPMENT_BYPASS_TOKEN');
-            console.warn('⚠️ DEVELOPMENT MODE: Using authentication bypass for seller. REMOVE BEFORE DEPLOYMENT!');
         }
     }, [navigate]);
 

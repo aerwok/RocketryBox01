@@ -33,7 +33,7 @@ import CustomerOrdersPage from "./pages/customer/orders";
 import CustomerCreateOrderPage from "./pages/customer/create-order";
 import CustomerPaymentPage from "./pages/customer/payment";
 import CustomerLayout from "./layouts/customer-layout";
-import OrderDetailsPage from "./pages/customer/orders/[id]";
+import OrderDetails from "./pages/customer/OrderDetails";
 import SellerLayout from "./layouts/seller-layout";
 import SellerLoginPage from "./pages/seller/auth/login";
 import SellerRegisterPage from "./pages/seller/auth/register";
@@ -154,7 +154,7 @@ const AppRoutes = () => {
         <Route path="register" element={<Navigate to="/customer/auth/register" replace />} />
         <Route path="profile" element={<CustomerProfile />} />
         <Route path="orders" element={<CustomerOrdersPage />} />
-        <Route path="orders/:id" element={<OrderDetailsPage />} />
+        <Route path="orders/:orderId" element={<OrderDetails />} />
         <Route path="create-order" element={<CustomerCreateOrderPage />} />
         <Route path="payment" element={<CustomerPaymentPage />} />
       </Route>

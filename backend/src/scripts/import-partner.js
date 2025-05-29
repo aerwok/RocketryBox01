@@ -15,6 +15,12 @@ const MONGODB_URI = process.env.MONGODB_ATLAS_URI || 'mongodb://localhost:27017/
 
 async function importPartner() {
   try {
+    // Get file path from command line arguments
+    const filePath = process.argv[2];
+    if (!filePath) {
+      throw new Error('Please provide a partner configuration file path');
+    }
+
     // Connect to MongoDB
     logger.info('Attempting to connect to MongoDB...');
     await mongoose.connect(MONGODB_URI);
@@ -22,10 +28,7 @@ async function importPartner() {
 
     // Read partner configuration
     const partnerConfig = JSON.parse(
-      await fs.readFile(
-        join(__dirname, '../data/partners/bluedart.json'),
-        'utf8'
-      )
+      await fs.readFile(filePath, 'utf8')
     );
 
     // Check if partner already exists

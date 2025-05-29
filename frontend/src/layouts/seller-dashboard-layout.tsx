@@ -2,28 +2,12 @@ import SellerDashboardNavbar from "@/components/seller/seller-dashboard-navbar";
 import SellerDashboardSidebar from "@/components/seller/seller-dashboard-sidebar";
 import { cn } from "@/lib/utils";
 import { Outlet } from "react-router-dom";
-import { useEffect, useState } from "react";
 
 const SellerDashboardLayout = () => {
-    const [isDevBypass, setIsDevBypass] = useState(false);
-
-    useEffect(() => {
-        // Check if we're using the development bypass token
-        const token = localStorage.getItem('seller_token');
-        if (token === 'DEVELOPMENT_BYPASS_TOKEN') {
-            setIsDevBypass(true);
-        }
-    }, []);
-
     return (
         <div className="min-h-screen bg-white">
             <SellerDashboardNavbar />
-            {isDevBypass && (
-                <div className="bg-yellow-500 text-black py-1 text-center text-sm font-medium fixed top-16 left-0 right-0 z-50">
-                    DEVELOPMENT MODE: Seller Authentication Bypassed - REMOVE BEFORE DEPLOYMENT!
-                </div>
-            )}
-            <div className={`flex ${isDevBypass ? 'pt-[calc(4rem+24px)]' : 'pt-16'}`}>
+            <div className="flex pt-16">
                 {/* Sidebar */}
                 <SellerDashboardSidebar />
 

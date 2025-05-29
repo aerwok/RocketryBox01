@@ -28,18 +28,9 @@ const CustomerNavbar = () => {
             const isAuthenticated = await secureStorage.getItem('auth_token');
             const isAuthPage = location.pathname === "/customer/auth/login" || location.pathname === "/customer/auth/register";
             
-            // TEMPORARY BYPASS: Comment this out before deployment
-            // This bypass allows access to customer sections without authentication
-            /*
+            // Redirect to login if not authenticated and not on auth pages
             if (!isAuthenticated && !isAuthPage) {
                 navigate('/customer/auth/login');
-            }
-            */
-            
-            // TEMPORARY: Set a dummy token for development
-            if (!isAuthenticated && !isAuthPage) {
-                await secureStorage.setItem('auth_token', 'DEVELOPMENT_BYPASS_TOKEN');
-                console.warn('⚠️ DEVELOPMENT MODE: Using authentication bypass for customer. REMOVE BEFORE DEPLOYMENT!');
             }
         };
         checkAuth();

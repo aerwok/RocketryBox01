@@ -1,6 +1,7 @@
 import { AppError } from '../middleware/errorHandler.js';
 import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
 import * as bluedart from './bluedart.js';
+import * as ecomexpress from './ecomexpress.js';
 import * as delhivery from './delhivery.js';
 import * as dtdc from './dtdc.js';
 import * as ekart from './ekart.js';
@@ -12,10 +13,18 @@ import { logger } from './logger.js';
 // Map of courier code to their respective utility modules
 const courierModules = {
   BLUEDART: bluedart,
+  BlueDart: bluedart,
+  ECOMEXPRESS: ecomexpress,
+  EcomExpress: ecomexpress,
+  'Ecom Express': ecomexpress,
   DELHIVERY: delhivery,
+  Delhivery: delhivery,
   DTDC: dtdc,
+  Dtdc: dtdc,
   EKART: ekart,
-  XPRESSBEES: xpressbees
+  Ekart: ekart,
+  XPRESSBEES: xpressbees,
+  XpressBees: xpressbees
 };
 
 // Shipping rate configuration
@@ -103,17 +112,24 @@ export const getPartnerDetails = async (courierCode) => {
  */
 export const calculateShippingRates = async (packageDetails, deliveryDetails, partners = null) => {
   try {
+    // Handle case where all data is passed in a single object (from createOrder)
+    if (!deliveryDetails && packageDetails.pickupPincode && packageDetails.deliveryPincode) {
+      const { weight, dimensions, pickupPincode, deliveryPincode, serviceType, ...rest } = packageDetails;
+      packageDetails = { weight, dimensions, serviceType, ...rest };
+      deliveryDetails = { pickupPincode, deliveryPincode };
+    }
+    
     let availablePartners = partners;
 
     // If no specific partners provided, get all active partners
     if (!availablePartners) {
-      availablePartners = await ShippingPartner.find({ 
+      const partnerDocs = await ShippingPartner.find({ 
         apiStatus: 'active',
         'weightLimits.min': { $lte: packageDetails.weight },
         'weightLimits.max': { $gte: packageDetails.weight }
       }).select('name').lean();
       
-      availablePartners = availablePartners.map(p => p.name);
+      availablePartners = partnerDocs.map(p => p.name);
     }
     
     // Calculate rates for each partner
@@ -124,14 +140,14 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
         return null;
       }
       
-      // Check if partner module exists
-      const partnerModule = courierModules[partnerName.toUpperCase()];
+      // Check if partner module exists (try both original name and uppercase)
+      let partnerModule = courierModules[partnerName] || courierModules[partnerName.toUpperCase()];
       
       if (partnerModule && partnerModule.calculateRate) {
-        // Use partner-specific rate calculation if available
-        return partnerModule.calculateRate(packageDetails, deliveryDetails, partnerDetails);
+        // Use partner-specific rate calculation - API must work properly
+        return await partnerModule.calculateRate(packageDetails, deliveryDetails, partnerDetails);
       } else {
-        // Use generic rate calculation
+        // Use generic rate calculation for partners without API integration
         return calculateRate(packageDetails, deliveryDetails, partnerDetails);
       }
     });

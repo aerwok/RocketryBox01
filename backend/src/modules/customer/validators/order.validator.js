@@ -129,14 +129,48 @@ const addressSchema = Joi.object({
     .default('India')
 });
 
+// Selected provider validation schema
+const selectedProviderSchema = Joi.object({
+  id: Joi.string()
+    .required()
+    .messages({
+      'string.empty': 'Provider ID is required'
+    }),
+  name: Joi.string()
+    .required()
+    .messages({
+      'string.empty': 'Provider name is required'
+    }),
+  serviceType: Joi.string()
+    .required()
+    .valid('standard', 'express')
+    .messages({
+      'string.empty': 'Service type is required',
+      'any.only': 'Invalid service type'
+    }),
+  totalRate: Joi.number()
+    .required()
+    .min(0)
+    .messages({
+      'number.base': 'Total rate must be a number',
+      'number.min': 'Total rate cannot be negative'
+    }),
+  estimatedDays: Joi.string()
+    .required()
+    .messages({
+      'string.empty': 'Estimated days is required'
+    })
+});
+
 // Create order validation schema
 export const createOrderSchema = Joi.object({
   pickupAddress: addressSchema.required(),
   deliveryAddress: addressSchema.required(),
   package: packageSchema.required(),
+  selectedProvider: selectedProviderSchema.optional(),
   serviceType: Joi.string()
     .required()
-    .valid('standard', 'express', 'cod')
+    .valid('standard', 'express')
     .messages({
       'string.empty': 'Service type is required',
       'any.only': 'Invalid service type'
@@ -149,6 +183,7 @@ export const createOrderSchema = Joi.object({
       'any.only': 'Only online payment is allowed for customers'
     }),
   instructions: Joi.string()
+    .allow('')
     .max(200)
     .messages({
       'string.max': 'Instructions cannot exceed 200 characters'

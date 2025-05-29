@@ -239,6 +239,20 @@ export default function CustomerCreateOrderPage() {
         try {
             const formData = form.getValues();
             
+            // Debug log to see what serviceType we're sending
+            console.log('Selected rate:', selectedRate);
+            console.log('Service type being sent:', selectedRate.service);
+            
+            // Map service type to allowed values
+            let mappedServiceType = 'standard';
+            if (selectedRate.service === 'air' || selectedRate.service === 'express' || selectedRate.mode === 'express') {
+                mappedServiceType = 'express';
+            } else if (selectedRate.service === 'surface' || selectedRate.service === 'standard' || selectedRate.mode === 'standard') {
+                mappedServiceType = 'standard';
+            }
+            
+            console.log('Mapped service type:', mappedServiceType);
+            
             // Create order using the real API
             const response = await customerApiService.createOrder({
                 pickupAddress: {
@@ -274,18 +288,22 @@ export default function CustomerCreateOrderPage() {
                         value: formData.packageValue,
                     }],
                 },
-                serviceType: selectedRate.service,
+                selectedProvider: {
+                    id: selectedRate.courier.toLowerCase().replace(/\s+/g, '-'),
+                    name: selectedRate.courier,
+                    serviceType: mappedServiceType,
+                    totalRate: selectedRate.rate,
+                    estimatedDays: selectedRate.estimatedDelivery
+                },
+                serviceType: mappedServiceType,
                 paymentMethod: 'online',
-                instructions: '',
                 pickupDate: formData.pickupDate.toISOString(),
             });
 
             if (response.success) {
                 toast.success("Order created successfully!");
-            // Navigate to payment page with AWB
-            navigate("/customer/payment", { 
-                    state: { awbNumber: response.data.awb }
-            });
+                // Navigate to order details page for payment
+                navigate(`/customer/orders/${response.data.order.id}`);
             } else {
                 throw new Error('Order creation failed');
             }

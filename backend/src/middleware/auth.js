@@ -235,4 +235,7 @@ export const authenticateAdmin = async (req, res, next) => {
     }
     next(error);
   }
-}; 
+};
+
+// Alias for protect function to match expected import
+export const authenticateToken = protect; 

@@ -1,6 +1,25 @@
 {
+  "name": "customer-order-test",
+  "version": "1.0.0",
+  "description": "Test script for customer order creation",
+  "type": "module",
+  "main": "test-customer-order.js",
+  "scripts": {
+    "test": "node test-customer-order.js",
+    "test:extended": "node test-customer-order.js extended",
+    "install-deps": "npm install node-fetch dotenv"
+  },
   "dependencies": {
-    "@aws-sdk/client-ses": "^3.812.0",
-    "axios": "^1.9.0"
-  }
+    "axios": "^1.9.0",
+    "dotenv": "^16.5.0",
+    "node-fetch": "^3.3.2"
+  },
+  "keywords": [
+    "test",
+    "customer",
+    "order",
+    "api"
+  ],
+  "author": "RocketryBox",
+  "license": "MIT"
 }

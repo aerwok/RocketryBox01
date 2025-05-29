@@ -1,0 +1,46 @@
+{
+  "name": "Ecom Express",
+  "logoUrl": "https://www.ecomexpress.in/images/logo.png",
+  "apiStatus": "active",
+  "performanceScore": 85,
+  "supportContact": "1800-123-3456",
+  "supportEmail": "support@ecomexpress.in",
+  "apiKey": "ecomexpress-api-key",
+  "apiEndpoint": "https://api.ecomexpress.in",
+  "serviceTypes": ["standard", "express", "economy"],
+  "serviceAreas": ["PAN India", "Metro Cities", "Tier 1 Cities", "Tier 2 Cities", "Tier 3 Cities"],
+  "weightLimits": {
+    "min": 0.1,
+    "max": 50
+  },
+  "dimensionLimits": {
+    "maxLength": 120,
+    "maxWidth": 80,
+    "maxHeight": 80,
+    "maxSum": 280
+  },
+  "rates": {
+    "baseRate": 40,
+    "weightRate": 15,
+    "dimensionalFactor": 5000
+  },
+  "zones": [
+    {
+      "name": "Metro Cities",
+      "baseRate": 40,
+      "additionalRate": 15
+    },
+    {
+      "name": "Tier 1 Cities",
+      "baseRate": 45,
+      "additionalRate": 18
+    },
+    {
+      "name": "Tier 2/3 Cities",
+      "baseRate": 50,
+      "additionalRate": 20
+    }
+  ],
+  "trackingUrl": "https://www.ecomexpress.in/tracking/",
+  "notes": "Leading e-commerce logistics company with multiple service options: BA (Basic), EXSPLUS (Express Plus), EGS (Economy). Shipper codes: 149441, 949442, 549443"
+} 

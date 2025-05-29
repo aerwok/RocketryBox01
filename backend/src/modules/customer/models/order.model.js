@@ -192,12 +192,37 @@ orderSchema.index({ createdAt: -1 });
 
 // Generate AWB number before saving
 orderSchema.pre('save', async function(next) {
-  if (this.isNew) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-    this.awb = `RB${year}${month}${random}`;
+  if (this.isNew && !this.awb) {
+    try {
+      let awb;
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      do {
+        const date = new Date();
+        const year = date.getFullYear().toString().slice(-2);
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
+        awb = `RB${year}${month}${day}${random}`;
+        
+        // Check if AWB already exists
+        const existingOrder = await this.constructor.findOne({ awb });
+        if (!existingOrder) {
+          this.awb = awb;
+          break;
+        }
+        
+        attempts++;
+      } while (attempts < maxAttempts);
+      
+      if (!this.awb) {
+        throw new Error('Failed to generate unique AWB number after multiple attempts');
+      }
+    } catch (error) {
+      console.error('Error generating AWB:', error);
+      return next(error);
+    }
   }
   next();
 });

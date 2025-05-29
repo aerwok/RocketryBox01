@@ -48,8 +48,18 @@ api.interceptors.response.use(
             await secureStorage.removeItem('auth_token');
             await secureStorage.removeItem('refresh_token');
             await secureStorage.removeItem('csrf_token');
-            // Redirect to login
-            window.location.href = '/seller/login';
+            
+            // Determine correct login page based on current route
+            const currentPath = window.location.pathname;
+            let redirectPath = '/seller/login'; // Default to seller login
+            
+            if (currentPath.includes('/customer')) {
+                redirectPath = '/customer/auth/login';
+            } else if (currentPath.includes('/admin')) {
+                redirectPath = '/admin/login';
+            }
+            
+            window.location.href = redirectPath;
             return Promise.reject(error);
         }
 

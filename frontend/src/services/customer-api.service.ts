@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { secureStorage } from '../utils/secureStorage';
 
-const API_BASE_URL = '/api/v2/customer';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:8000') + '/api/v2/customer';
 
 export interface RateCalculationRequest {
   weight: number;
@@ -63,6 +64,13 @@ export interface CreateOrderRequest {
       value: number;
     }>;
   };
+  selectedProvider?: {
+    id: string;
+    name: string;
+    serviceType: string;
+    totalRate: number;
+    estimatedDays: string;
+  };
   serviceType: string;
   paymentMethod: string;
   instructions?: string;
@@ -72,31 +80,48 @@ export interface CreateOrderRequest {
 export interface CreateOrderResponse {
   success: boolean;
   data: {
-    orderId: string;
-    awb: string;
-    amount: number;
-    estimatedDelivery: string;
+    message: string;
+    order: {
+      id: string;
+      orderNumber: string;
+      status: string;
+      paymentStatus: string;
+      totalAmount: number;
+      shippingRate: number;
+      awb?: string;
+      createdAt: string;
+    };
   };
 }
 
 export class CustomerApiService {
   private static instance: CustomerApiService;
   
-  // Create axios instance with credentials enabled
+  // Create axios instance with JWT token authentication
   private api = axios.create({
     baseURL: API_BASE_URL,
-    withCredentials: true, // This enables sending cookies with requests
+    timeout: 10000,
     headers: {
       'Content-Type': 'application/json'
     }
   });
 
   private constructor() {
-    // Setup request interceptor to add authorization if needed
+    // Setup request interceptor to add JWT token
     this.api.interceptors.request.use(
       async (config) => {
-        // The withCredentials option will ensure cookies are sent
-        // No need to manually set the token as it will be in the cookie
+        // Get token from secure storage
+        const token = await secureStorage.getItem('auth_token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        
+        // Add CSRF token if available
+        const csrfToken = await secureStorage.getItem('csrf_token');
+        if (csrfToken) {
+          config.headers['X-CSRF-Token'] = csrfToken;
+        }
+        
         return config;
       },
       (error) => Promise.reject(error)
@@ -130,6 +155,7 @@ export class CustomerApiService {
 
   async createOrder(request: CreateOrderRequest): Promise<CreateOrderResponse> {
     try {
+      console.log('Creating order with data:', request);
       const response = await this.api.post<CreateOrderResponse>(
         `/orders`,
         request
@@ -137,6 +163,12 @@ export class CustomerApiService {
       return response.data;
     } catch (error) {
       console.error('Order creation error:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('Error response data:', error.response?.data);
+        console.error('Error status:', error.response?.status);
+        const errorMessage = error.response?.data?.message || error.message;
+        throw new Error(`Failed to create order: ${errorMessage}`);
+      }
       throw new Error('Failed to create order');
     }
   }

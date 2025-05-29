@@ -11,6 +11,7 @@
     "create-admin": "node src/scripts/create-admin.js",
     "create-super-admin": "node src/scripts/create-super-admin.js",
     "import-partner": "node src/scripts/import-partner.js",
+    "import:ecomexpress": "node src/scripts/import-partner.js src/data/partners/ecomexpress.json",
     "check-partners": "node src/scripts/check-partners.js",
     "test-partners-api": "node src/scripts/test-partners-api.js"
   },
@@ -38,13 +39,15 @@
     "multer": "^1.4.5-lts.2",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.17.1",
-    "razorpay": "^2.9.1",
+    "razorpay": "^2.9.6",
     "redis": "^5.0.1",
+    "soap": "^1.1.11",
     "socket.io": "^4.8.1",
     "twilio": "^4.19.0",
     "uuid": "^11.1.0",
     "winston": "^3.11.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "jest": "^29.7.0",

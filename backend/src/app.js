@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { createServer } from 'http';
 import cookieParser from 'cookie-parser';
 import { errorHandler } from './middleware/errorHandler.js';
+import { shippingErrorMiddleware } from './middleware/shippingErrorHandler.js';
 import { logger } from './utils/logger.js';
 import { initSocketIO } from './utils/socketio.js';
 import { setupEventListeners } from './utils/eventEmitter.js';
@@ -288,6 +289,10 @@ app.get('/api/admin/debug', (req, res) => {
     message: 'Admin debug endpoint is working!'
   });
 });
+
+// Error handling middleware (should be last)
+app.use(shippingErrorMiddleware);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {

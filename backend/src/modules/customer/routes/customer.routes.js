@@ -17,8 +17,16 @@ import {
   subscribeTracking,
   refundPayment,
   checkPaymentStatus,
-  calculateRates
+  calculateRates,
+  getOrderById,
+  getOrderHistory
 } from '../controllers/order.controller.js';
+import {
+  createPaymentOrder,
+  verifyPayment,
+  getPaymentHistory,
+  getPaymentById
+} from '../controllers/payment.controller.js';
 import {
   listServices,
   checkAvailability
@@ -84,15 +92,21 @@ router.delete('/address/:id', deleteAddress);
 
 // Order routes
 router.post('/orders', validateRequest([createOrderSchema]), createOrder);
-router.get('/orders', validateRequest([listOrdersSchema]), listOrders);
-router.get('/orders/:id', getOrderDetails);
+router.get('/orders', getOrderHistory);
+router.get('/orders/:orderId', getOrderById);
 router.get('/orders/awb/:awb', getOrderDetails);
 router.get('/orders/:id/label', downloadLabel);
 
-// Payment routes
+// Payment routes (Razorpay integration)
+router.post('/payments/create-order', paymentLimiter, createPaymentOrder);
+router.post('/payments/verify', paymentLimiter, verifyPayment);
+router.get('/payments/history', paymentLimiter, getPaymentHistory);
+router.get('/payments/:paymentId', paymentLimiter, getPaymentById);
+
+// Legacy payment routes (keep for backward compatibility)
 router.post('/payments', paymentLimiter, validateRequest([createPaymentSchema]), createPayment);
-router.post('/payments/verify', paymentLimiter, validateRequest([verifyPaymentSchema]), verifyOrderPayment);
-router.get('/payments/:paymentId', paymentLimiter, checkPaymentStatus);
+router.post('/payments/verify-order', paymentLimiter, validateRequest([verifyPaymentSchema]), verifyOrderPayment);
+router.get('/payments/status/:paymentId', paymentLimiter, checkPaymentStatus);
 
 // Tracking routes
 router.post('/tracking/subscribe', trackingLimiter, validateRequest([subscribeTrackingSchema]), subscribeTracking);

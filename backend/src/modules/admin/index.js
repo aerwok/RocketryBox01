@@ -5,6 +5,7 @@ import teamRoutes from './routes/team.routes.js';
 import configRoutes from './routes/config.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 import shippingPartnerRoutes from './routes/shippingPartner.routes.js';
+import shippingRoutes from './routes/shipping.routes.js';
 import orderRoutes from './routes/order.routes.js';
 import shipmentRoutes from './routes/shipment.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
@@ -36,6 +37,9 @@ router.use('/dashboard', dashboardRoutes);
 
 // Shipping partner management routes
 router.use('/partners', shippingPartnerRoutes);
+
+// Shipping integration management routes
+router.use('/shipping', shippingRoutes);
 
 // Order management routes
 router.use('/orders', orderRoutes);
