@@ -442,7 +442,7 @@ export class ServiceFactory {
       const apiService = ServiceFactory.getInstance().getApiService();
       const file = formData.get('file') as File;
       const type = formData.get('type') as string;
-      return apiService.uploadFile(`/admin/team/${userId}/documents`, file, type);
+      return apiService.uploadFile(`/admin/team/${userId}/documents`, file, 'file', type);
     },
 
     async updateTeamMember(id: string, memberData: any): Promise<ApiResponse<any>> {
@@ -464,7 +464,7 @@ export class ServiceFactory {
       const apiService = ServiceFactory.getInstance().getApiService();
       const file = formData.get('file') as File;
       const type = formData.get('type') as string;
-      return apiService.uploadFile(`/admin/users/${id}/documents`, file, type);
+      return apiService.uploadFile(`/admin/users/${id}/documents`, file, 'file', type);
     },
 
     getRateBands: () => ServiceFactory.getInstance().getApiService().get('/admin/rate-bands'),
@@ -513,10 +513,10 @@ export class ServiceFactory {
   static customer = {
     orders: {
       getByAwb: async (awb: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}`, 'GET');
+        return ServiceFactory.callApi(`/customer/orders/${awb}`, 'GET');
       },
       submitRating: async (awb: string, data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}/rating`, 'POST', data);
+        return ServiceFactory.callApi(`/customer/orders/${awb}/rating`, 'POST', data);
       },
       getAll: async (params: {
         page: number;
@@ -526,35 +526,32 @@ export class ServiceFactory {
         sortDirection?: string;
         status?: string;
       }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/v2/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
+        return ServiceFactory.callApi(`/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
       },
       getStatusCounts: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/v2/customer/orders/status-counts', 'GET');
+        return ServiceFactory.callApi('/customer/orders/status-counts', 'GET');
       },
       downloadLabel: async (awb: string): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/api/v2/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
+        return ServiceFactory.callApi(`/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
       }
     },
     profile: {
       get: async (): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/v2/customer/profile', 'GET');
+        return ServiceFactory.callApi('/customer/profile', 'GET');
       },
       update: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/v2/customer/profile', 'PUT', data);
+        return ServiceFactory.callApi('/customer/profile', 'PUT', data);
       },
       uploadImage: async (file: File): Promise<ApiResponse<any>> => {
-        const formData = new FormData();
-        formData.append('profileImage', file);
-        
-        // Use ApiService instead of direct fetch to maintain consistency
+        // Use ApiService with correct field name
         const apiService = ServiceFactory.getInstance().getApiService();
-        return apiService.uploadFile('/api/v2/customer/profile/image', file, 'profileImage');
+        return apiService.uploadFile('/customer/profile/image', file, 'profileImage');
       },
       addAddress: async (data: any): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi('/api/v2/customer/profile/addresses', 'POST', data);
+        return ServiceFactory.callApi('/customer/address', 'POST', data);
       },
       deleteAddress: async (id: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/api/v2/customer/profile/addresses/${id}`, 'DELETE');
+        return ServiceFactory.callApi(`/customer/address/${id}`, 'DELETE');
       }
     }
   };
@@ -756,12 +753,15 @@ export class ServiceFactory {
       }
 
       return response;
-    } catch (error) {
+    } catch (error: any) {
+      // Preserve the original error details instead of returning generic message
+      console.error('ServiceFactory.callApi error:', error);
+      
       return {
         success: false,
         data: null as unknown as T,
-        message: error instanceof Error ? error.message : 'An error occurred',
-        status: 500
+        message: error.message || 'An error occurred',
+        status: error.status || 500
       };
     }
   }

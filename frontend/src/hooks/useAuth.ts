@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { AuthService } from '@/services/auth.service';
-import axios from 'axios';
 
 interface AuthState {
     isAuthenticated: boolean;
@@ -18,17 +17,16 @@ export const useAuth = () => {
     const checkAuthStatus = async () => {
         try {
             // Make a request to check if user is authenticated
-            const response = await axios.get('/api/v2/customer/auth/check', { 
-                withCredentials: true 
-            });
+            const authService = new AuthService();
+            const response = await authService.checkAuthStatus();
             
             setAuthState({
-                isAuthenticated: response.data.success,
-                user: response.data.data?.user || null,
+                isAuthenticated: response.isAuthenticated,
+                user: response.user,
                 loading: false
             });
             
-            return response.data.success;
+            return response.isAuthenticated;
         } catch (error) {
             console.error('Auth check error:', error);
             setAuthState({

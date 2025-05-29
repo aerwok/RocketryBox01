@@ -250,9 +250,9 @@ export class ApiService {
     });
   }
 
-  async uploadFile<T>(endpoint: string, file: File, type?: string): Promise<ApiResponse<T>> {
+  async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file', type?: string): Promise<ApiResponse<T>> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append(fieldName, file);
     if (type) formData.append('type', type);
 
     return this.request<T>({
