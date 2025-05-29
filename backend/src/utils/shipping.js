@@ -130,34 +130,157 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
       }).select('name').lean();
       
       availablePartners = partnerDocs.map(p => p.name);
+      
+      // FALLBACK: If no partners found in database, use hardcoded list with API integrations
+      if (!availablePartners || availablePartners.length === 0) {
+        logger.warn('No active shipping partners found in database, using fallback partners');
+        availablePartners = ['BlueDart', 'Ecom Express', 'Delhivery', 'DTDC', 'Ekart', 'Xpressbees'];
+      }
     }
+    
+    logger.info('Calculating rates for partners:', {
+      partners: availablePartners,
+      packageWeight: packageDetails.weight,
+      serviceType: packageDetails.serviceType,
+      pickupPincode: deliveryDetails.pickupPincode,
+      deliveryPincode: deliveryDetails.deliveryPincode
+    });
     
     // Calculate rates for each partner
     const ratePromises = availablePartners.map(async (partnerName) => {
-      const partnerDetails = await getPartnerDetails(partnerName);
+      try {
+        let partnerDetails = await getPartnerDetails(partnerName);
       
+        // If no partner details in database, create fallback details
       if (!partnerDetails) {
-        return null;
+          logger.info(`Creating fallback partner details for: ${partnerName}`);
+          partnerDetails = createFallbackPartnerDetails(partnerName);
       }
       
       // Check if partner module exists (try both original name and uppercase)
       let partnerModule = courierModules[partnerName] || courierModules[partnerName.toUpperCase()];
       
       if (partnerModule && partnerModule.calculateRate) {
+          logger.info(`Using API integration for ${partnerName}`);
         // Use partner-specific rate calculation - API must work properly
         return await partnerModule.calculateRate(packageDetails, deliveryDetails, partnerDetails);
       } else {
+          logger.info(`Using generic rate calculation for ${partnerName}`);
         // Use generic rate calculation for partners without API integration
         return calculateRate(packageDetails, deliveryDetails, partnerDetails);
+        }
+      } catch (error) {
+        logger.error(`Error calculating rate for ${partnerName}: ${error.message}`);
+        // Return null for failed calculations
+        return null;
       }
     });
     
     const rates = await Promise.all(ratePromises);
-    return rates.filter(rate => rate !== null);
+    const validRates = rates.filter(rate => rate !== null);
+    
+    logger.info(`Rate calculation completed: ${validRates.length} valid rates out of ${availablePartners.length} partners`);
+    
+    return validRates;
   } catch (error) {
     logger.error(`Error calculating shipping rates: ${error.message}`);
     return [];
   }
+};
+
+/**
+ * Create fallback partner details when no database entry exists
+ * @param {string} partnerName - Name of the shipping partner
+ * @returns {Object} - Fallback partner details
+ */
+const createFallbackPartnerDetails = (partnerName) => {
+  const fallbackDetails = {
+    BlueDart: {
+      id: 'bluedart-fallback',
+      name: 'BlueDart',
+      apiKey: null,
+      apiEndpoint: 'https://apigateway.bluedart.com',
+      serviceTypes: ['standard', 'express'],
+      weightLimits: { min: 0.1, max: 100 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 50, weightRate: 20, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://www.bluedart.com/tracking'
+    },
+    'Ecom Express': {
+      id: 'ecomexpress-fallback',
+      name: 'Ecom Express',
+      apiKey: null,
+      apiEndpoint: 'https://api.ecomexpress.in',
+      serviceTypes: ['standard', 'express', 'economy'],
+      weightLimits: { min: 0.1, max: 50 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 40, weightRate: 15, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://www.ecomexpress.in/tracking'
+    },
+    Delhivery: {
+      id: 'delhivery-fallback',
+      name: 'Delhivery',
+      apiKey: null,
+      apiEndpoint: 'https://api.delhivery.com',
+      serviceTypes: ['standard', 'express'],
+      weightLimits: { min: 0.1, max: 50 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 50, weightRate: 20, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://www.delhivery.com/tracking'
+    },
+    DTDC: {
+      id: 'dtdc-fallback',
+      name: 'DTDC',
+      apiKey: null,
+      apiEndpoint: 'https://api.dtdc.com',
+      serviceTypes: ['standard', 'express'],
+      weightLimits: { min: 0.1, max: 50 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 45, weightRate: 18, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://www.dtdc.com/tracking'
+    },
+    Ekart: {
+      id: 'ekart-fallback',
+      name: 'Ekart',
+      apiKey: null,
+      apiEndpoint: 'https://api.ekart.com',
+      serviceTypes: ['standard', 'express'],
+      weightLimits: { min: 0.1, max: 50 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 55, weightRate: 22, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://ekart.com/tracking'
+    },
+    Xpressbees: {
+      id: 'xpressbees-fallback',
+      name: 'Xpressbees',
+      apiKey: null,
+      apiEndpoint: 'https://api.xpressbees.com',
+      serviceTypes: ['standard', 'express'],
+      weightLimits: { min: 0.1, max: 50 },
+      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+      rates: { baseRate: 60, weightRate: 19, dimensionalFactor: 5000 },
+      zones: [],
+      trackingUrl: 'https://www.xpressbees.com/tracking'
+    }
+  };
+
+  return fallbackDetails[partnerName] || {
+    id: `${partnerName.toLowerCase()}-fallback`,
+    name: partnerName,
+    apiKey: null,
+    apiEndpoint: null,
+    serviceTypes: ['standard'],
+    weightLimits: { min: 0.1, max: 50 },
+    dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
+    rates: { baseRate: 50, weightRate: 20, dimensionalFactor: 5000 },
+    zones: [],
+    trackingUrl: null
+  };
 };
 
 /**

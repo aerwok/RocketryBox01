@@ -52,6 +52,7 @@ import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
 import adminRoutes from './modules/admin/index.js';
 import pincodeRoutes from './modules/common/routes/pincode.routes.js';
+import webhookRoutes from './modules/customer/routes/webhook.routes.js';
 
 // Dashboard update configuration with dynamic adjustment
 const DASHBOARD_UPDATE_CONFIG = {
@@ -221,6 +222,9 @@ app.use('/api/v2/marketing', marketingRoutes);
 app.use('/api/v2/seller', sellerRoutes);
 app.use('/api/v2/admin', adminRoutes);
 app.use('/api/v2/pincodes', pincodeRoutes);
+
+// Mount webhook routes at root level (no version prefix)
+app.use('/api/webhooks', webhookRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {

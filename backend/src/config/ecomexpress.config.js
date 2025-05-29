@@ -1,11 +1,8 @@
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
+import 'dotenv/config';
 
 /**
  * Ecom Express API Configuration
- * Based on official API credentials and endpoints
+ * Live API Only - No Fallback Values
  */
 export const ECOMEXPRESS_CONFIG = {
   // Production API Endpoints
@@ -34,22 +31,22 @@ export const ECOMEXPRESS_CONFIG = {
     PASSWORD: '@^2%d@xhH^=9xK4U'
   },
   
-  // Production Credentials (Multiple Shipper Codes)
+  // Production Credentials (No Fallback Values)
   SHIPPERS: {
     BA: {
-      CODE: process.env.ECOMEXPRESS_BA_CODE || '149441',
-      USERNAME: process.env.ECOMEXPRESS_BA_USERNAME || 'ROCKETRYBOXPRIVATELIMITED-BA149441',
-      PASSWORD: process.env.ECOMEXPRESS_BA_PASSWORD || 'DTpMlWcgDL'
+      CODE: process.env.ECOMEXPRESS_BA_CODE,
+      USERNAME: process.env.ECOMEXPRESS_BA_USERNAME,
+      PASSWORD: process.env.ECOMEXPRESS_BA_PASSWORD
     },
     EXSPLUS: {
-      CODE: process.env.ECOMEXPRESS_EXSPLUS_CODE || '949442',
-      USERNAME: process.env.ECOMEXPRESS_EXSPLUS_USERNAME || 'ROCKETRYBOXPRIVATELIMITED-EXSPLUS949442',
-      PASSWORD: process.env.ECOMEXPRESS_EXSPLUS_PASSWORD || 'q1ZeRwUj9C'
+      CODE: process.env.ECOMEXPRESS_EXSPLUS_CODE,
+      USERNAME: process.env.ECOMEXPRESS_EXSPLUS_USERNAME,
+      PASSWORD: process.env.ECOMEXPRESS_EXSPLUS_PASSWORD
     },
     EGS: {
-      CODE: process.env.ECOMEXPRESS_EGS_CODE || '549443',
-      USERNAME: process.env.ECOMEXPRESS_EGS_USERNAME || 'ROCKETRYBOXPRIVATELIMITED-BA-EGS549443',
-      PASSWORD: process.env.ECOMEXPRESS_EGS_PASSWORD || 'OlZRxS0Fxa'
+      CODE: process.env.ECOMEXPRESS_EGS_CODE,
+      USERNAME: process.env.ECOMEXPRESS_EGS_USERNAME,
+      PASSWORD: process.env.ECOMEXPRESS_EGS_PASSWORD
     }
   },
   
@@ -60,11 +57,8 @@ export const ECOMEXPRESS_CONFIG = {
     ECONOMY: 'EGS'       // Economy service
   },
   
-  // Rate Configuration
+  // Dimensional factor for volumetric weight calculation only
   DIMENSIONAL_FACTOR: 5000, // (L*W*H)/5000 for volumetric weight calculation
-  BASE_RATE: 40,
-  WEIGHT_RATE: 15,
-  COD_CHARGE: 25,
   
   // Timeouts
   REQUEST_TIMEOUT: 30000, // 30 seconds
@@ -81,15 +75,51 @@ export const ECOMEXPRESS_CONFIG = {
       'economy': this.SHIPPERS.EGS
     };
     
-    return serviceMap[serviceType] || this.SHIPPERS.BA;
+    const shipper = serviceMap[serviceType] || this.SHIPPERS.BA;
+    
+    if (!shipper || !shipper.USERNAME || !shipper.PASSWORD) {
+      throw new Error(`Ecom Express credentials not configured for service type: ${serviceType}`);
+    }
+    
+    return shipper;
   },
   
-  // Get API Headers
+  // Get API Headers (Updated to WORKING Format!)
   getHeaders() {
+    return {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json'
+    };
+  },
+  
+  // Get JSON Headers (for specific APIs that need JSON - deprecated for most APIs)
+  getJSONHeaders() {
     return {
       'Content-Type': 'application/json',
       'Accept': 'application/json'
     };
+  },
+  
+  // Create form data payload (WORKING FORMAT - Use this for all API calls!)
+  createFormData(params) {
+    const formData = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== null && value !== undefined) {
+        formData.append(key, value.toString());
+      }
+    });
+    return formData;
+  },
+  
+  // Helper method to create authenticated form data
+  createAuthenticatedFormData(serviceType, additionalParams = {}) {
+    const shipper = this.getShipperDetails(serviceType);
+    const params = {
+      username: shipper.USERNAME,
+      password: shipper.PASSWORD,
+      ...additionalParams
+    };
+    return this.createFormData(params);
   },
   
   // Get tracking URL
@@ -101,7 +131,7 @@ export const ECOMEXPRESS_CONFIG = {
   validate() {
     const requiredShippers = ['BA', 'EXSPLUS', 'EGS'];
     const missingShippers = requiredShippers.filter(shipper => 
-      !this.SHIPPERS[shipper].USERNAME || !this.SHIPPERS[shipper].PASSWORD
+      !this.SHIPPERS[shipper] || !this.SHIPPERS[shipper].USERNAME || !this.SHIPPERS[shipper].PASSWORD
     );
     
     if (missingShippers.length > 0) {
@@ -114,8 +144,13 @@ export const ECOMEXPRESS_CONFIG = {
 
 // Validate configuration on import
 try {
-  ECOMEXPRESS_CONFIG.validate();
-  console.log('✅ Ecom Express configuration loaded successfully');
+  if (ECOMEXPRESS_CONFIG.SHIPPERS.BA.USERNAME || ECOMEXPRESS_CONFIG.SHIPPERS.EXSPLUS.USERNAME || ECOMEXPRESS_CONFIG.SHIPPERS.EGS.USERNAME) {
+    ECOMEXPRESS_CONFIG.validate();
+    console.log('✅ Ecom Express configuration loaded successfully');
+    console.log('📋 Live API Only - No Fallback Values');
+  } else {
+    console.log('⚠️ Ecom Express configuration: No credentials provided');
+  }
 } catch (error) {
   console.warn('⚠️ Ecom Express configuration warning:', error.message);
 }

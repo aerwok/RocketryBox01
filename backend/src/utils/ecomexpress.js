@@ -36,51 +36,86 @@ const createEcomExpressApiClient = (serviceType = 'standard', baseUrl = null) =>
  */
 export const checkPincodeServiceability = async (pincode, serviceType = 'standard') => {
   try {
+    logger.info(`Ecom Express pincode check: ${pincode} for service: ${serviceType}`);
+    
     const shipperDetails = ECOMEXPRESS_CONFIG.getShipperDetails(serviceType);
-    const apiClient = createEcomExpressApiClient(serviceType);
     
-    // Use POST request with credentials for pincode check
-    const pincodePayload = {
+    // Use a more reliable approach with proper URL construction
+    const pincodeCheckUrl = `${ECOMEXPRESS_CONFIG.API_BASE_URL}${ECOMEXPRESS_CONFIG.ENDPOINTS.PINCODE_CHECK}`;
+    
+    // Create form data for the request (some APIs prefer form data over JSON)
+    const formData = new URLSearchParams();
+    formData.append('username', shipperDetails.USERNAME);
+    formData.append('password', shipperDetails.PASSWORD);
+    formData.append('pincode', pincode);
+    
+    logger.info('Ecom Express pincode check request:', {
+      url: pincodeCheckUrl,
       username: shipperDetails.USERNAME,
-      password: shipperDetails.PASSWORD,
       pincode: pincode
-    };
+    });
     
-    const response = await apiClient.post(ECOMEXPRESS_CONFIG.ENDPOINTS.PINCODE_CHECK, pincodePayload);
+    const response = await axios.post(pincodeCheckUrl, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'User-Agent': 'RocketryBox-EcomExpress-Integration/1.0'
+      },
+      timeout: 10000, // 10 second timeout
+      maxRedirects: 5
+    });
     
-    if (response.data && response.data.status === true) {
-      return {
-        success: true,
-        serviceable: response.data.data?.serviceable || true, // Default to serviceable if API works
-        cod_available: response.data.data?.cod_available || true,
-        pickup_available: response.data.data?.pickup_available || true,
-        prepaid_available: response.data.data?.prepaid_available || true
-      };
-    } else if (response.data && response.data.response?.code === '401') {
-      // Handle unauthorized but assume serviceable for business continuity
-      logger.warn('Ecom Express API credentials need activation, assuming serviceable');
+    logger.info('Ecom Express pincode check response:', {
+      status: response.status,
+      hasData: !!response.data,
+      dataType: typeof response.data
+    });
+    
+    // Handle different response formats
+    let responseData = response.data;
+    
+    if (typeof responseData === 'string') {
+      try {
+        responseData = JSON.parse(responseData);
+      } catch (parseError) {
+        logger.error('Failed to parse Ecom Express response:', parseError.message);
+        throw new Error('Invalid response format from Ecom Express API');
+      }
+    }
+    
+    // Check for successful response
+    if (responseData && (responseData.status === true || responseData.success === true)) {
       return {
         success: true,
         serviceable: true,
-        cod_available: true,
-        pickup_available: true,
-        prepaid_available: true,
-        note: 'API credentials need activation - contact Ecom Express support'
+        cod_available: responseData.cod_available !== false,
+        pickup_available: responseData.pickup_available !== false,
+        prepaid_available: responseData.prepaid_available !== false
       };
     }
     
+    // Check for specific error codes
+    if (responseData && responseData.response?.code === '401') {
+      logger.error('Ecom Express API authentication failed - check credentials');
+      throw new Error('Ecom Express API authentication failed. Please verify credentials.');
+    }
+    
+    // If we get here, the pincode is likely not serviceable
     return {
-      success: false,
+      success: true,
       serviceable: false,
-      message: 'Pincode not serviceable'
+      message: responseData?.message || responseData?.reason || 'Pincode not serviceable by Ecom Express'
     };
+    
   } catch (error) {
-    logger.error(`Ecom Express pincode check failed: ${error.message}`);
-    return {
-      success: false,
-      serviceable: false,
-      error: error.message
-    };
+    logger.error(`Ecom Express pincode check failed: ${error.message}`, {
+      pincode,
+      serviceType,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
+    throw new Error(`Ecom Express pincode check failed: ${error.message}`);
   }
 };
 
@@ -113,27 +148,31 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     const pickupServiceability = await checkPincodeServiceability(deliveryDetails.pickupPincode, packageDetails.serviceType);
     const deliveryServiceability = await checkPincodeServiceability(deliveryDetails.deliveryPincode, packageDetails.serviceType);
     
-    if (!pickupServiceability.serviceable || !deliveryServiceability.serviceable) {
-      throw new Error('One or both pincodes are not serviceable by Ecom Express');
+    if (!pickupServiceability.serviceable) {
+      throw new Error(`Pickup pincode ${deliveryDetails.pickupPincode} is not serviceable by Ecom Express`);
+    }
+    
+    if (!deliveryServiceability.serviceable) {
+      throw new Error(`Delivery pincode ${deliveryDetails.deliveryPincode} is not serviceable by Ecom Express`);
     }
 
     // Calculate volumetric weight
     const volumetricWeight = Math.ceil(
-      (packageDetails.dimensions.length * 
-       packageDetails.dimensions.width * 
-       packageDetails.dimensions.height) / 
-      ECOMEXPRESS_CONFIG.DIMENSIONAL_FACTOR
+      (packageDetails.dimensions?.length || 10) * 
+      (packageDetails.dimensions?.width || 10) * 
+      (packageDetails.dimensions?.height || 10) / 
+      (ECOMEXPRESS_CONFIG.DIMENSIONAL_FACTOR || 5000)
     );
 
     // Use the higher of actual and volumetric weight
-    const chargeableWeight = Math.max(packageDetails.weight, volumetricWeight);
+    const chargeableWeight = Math.max(packageDetails.weight || 1, volumetricWeight);
 
     // Get shipper details for the service type
     const shipperDetails = ECOMEXPRESS_CONFIG.getShipperDetails(packageDetails.serviceType);
 
     // Calculate rates using Ecom Express pricing logic
-    const baseRate = partnerDetails?.rates?.baseRate || ECOMEXPRESS_CONFIG.BASE_RATE;
-    const weightRate = partnerDetails?.rates?.weightRate || ECOMEXPRESS_CONFIG.WEIGHT_RATE;
+    const baseRate = partnerDetails?.rates?.baseRate || ECOMEXPRESS_CONFIG.BASE_RATE || 40;
+    const weightRate = partnerDetails?.rates?.weightRate || ECOMEXPRESS_CONFIG.WEIGHT_RATE || 15;
     
     // Service type multiplier
     const serviceMultipliers = {
@@ -147,7 +186,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     // Calculate total rate
     const weightCharge = chargeableWeight * weightRate;
     const serviceCharge = baseRate * serviceMultiplier;
-    const codCharge = packageDetails.cod ? ECOMEXPRESS_CONFIG.COD_CHARGE : 0;
+    const codCharge = packageDetails.cod ? (ECOMEXPRESS_CONFIG.COD_CHARGE || 25) : 0;
     const totalRate = Math.round((baseRate + weightCharge + serviceCharge + codCharge) * 100) / 100;
 
     // Estimated delivery days based on service type
@@ -181,7 +220,8 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
       },
       serviceability: {
         pickup: pickupServiceability,
-        delivery: deliveryServiceability
+        delivery: deliveryServiceability,
+        overall: true
       },
       // API status indicators
       rateType: 'LIVE_API',
@@ -190,53 +230,14 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     };
 
   } catch (error) {
-    logger.error(`Ecom Express rate calculation failed: ${error.message}`);
+    logger.error(`Ecom Express rate calculation failed: ${error.message}`, {
+      pickupPincode: deliveryDetails?.pickupPincode,
+      deliveryPincode: deliveryDetails?.deliveryPincode,
+      serviceType: packageDetails?.serviceType,
+      weight: packageDetails?.weight
+    });
     
-    // Fallback to configured rates
-    logger.warn('Falling back to configured rates due to API error');
-    
-    const volumetricWeight = Math.ceil(
-      (packageDetails.dimensions.length * 
-       packageDetails.dimensions.width * 
-       packageDetails.dimensions.height) / 
-      ECOMEXPRESS_CONFIG.DIMENSIONAL_FACTOR
-    );
-    
-    const chargeableWeight = Math.max(packageDetails.weight, volumetricWeight);
-    const baseRate = partnerDetails?.rates?.baseRate || ECOMEXPRESS_CONFIG.BASE_RATE;
-    const weightRate = partnerDetails?.rates?.weightRate || ECOMEXPRESS_CONFIG.WEIGHT_RATE;
-    const serviceMultiplier = packageDetails.serviceType === 'express' ? 1.8 : 1.0;
-    const weightCharge = chargeableWeight * weightRate;
-    const serviceCharge = baseRate * serviceMultiplier;
-    const totalRate = Math.round((baseRate + weightCharge + serviceCharge) * 100) / 100;
-
-    return {
-      success: true,
-      provider: {
-        id: partnerDetails?.id || 'ecomexpress',
-        name: 'Ecom Express (Estimated)',
-        logoUrl: partnerDetails?.logoUrl,
-        expressDelivery: packageDetails.serviceType === 'express',
-        estimatedDays: packageDetails.serviceType === 'express' ? '1-2' : '2-4'
-      },
-      totalRate: totalRate,
-      volumetricWeight: volumetricWeight.toFixed(2),
-      chargeableWeight: chargeableWeight.toFixed(2),
-      breakdown: {
-        baseRate: baseRate,
-        weightCharge: weightCharge,
-        serviceCharge: serviceCharge,
-        codCharge: 0,
-        fuelSurcharge: 0,
-        otherCharges: 0
-      },
-      // Fallback status indicators
-      rateType: 'CONFIGURED_FALLBACK',
-      apiStatus: 'UNAVAILABLE',
-      apiError: error.message,
-      businessNote: 'Rate calculated using configured parameters due to API unavailability.',
-      lastUpdated: new Date().toISOString()
-    };
+    throw new Error(`Ecom Express rate calculation failed: ${error.message}`);
   }
 };
 

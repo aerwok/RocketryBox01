@@ -136,7 +136,7 @@ const usePayment = (orderData: OrderData | null) => {
         setIsProcessing(true);
         try {
             // Create payment order
-            const { data: { orderId, keyId } } = await axios.post<{ orderId: string; keyId: string }>('/api/payments/create-order', {
+            const { data: { orderId, keyId } } = await axios.post<{ orderId: string; keyId: string }>('/api/v2/customer/payments/create-order', {
                 amount: total,
                 currency: 'INR',
                 awbNumber: orderData.awbNumber
@@ -153,7 +153,7 @@ const usePayment = (orderData: OrderData | null) => {
                 handler: async (response: RazorpayResponse) => {
                     try {
                         // Verify payment
-                        await axios.post('/api/payments/verify', {
+                        await axios.post('/api/v2/customer/payments/verify', {
                             awbNumber: orderData.awbNumber,
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_order_id: response.razorpay_order_id,

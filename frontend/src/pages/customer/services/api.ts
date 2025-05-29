@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { OrderResponse } from '../types/order';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '/api/v2/customer';
 
 export const customerApi = {
     orders: {

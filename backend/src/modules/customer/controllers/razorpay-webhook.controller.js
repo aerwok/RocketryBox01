@@ -1,109 +1,18 @@
 import crypto from 'crypto';
-import { AppError } from '../../../middleware/errorHandler.js';
-import Order from '../models/order.model.js';
-import { sendEmail } from '../../../utils/email.js';
-import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
 import Payment from '../models/payment.model.js';
-
-// Verify webhook signature
-const verifyWebhookSignature = (payload, signature) => {
-  const hmac = crypto.createHmac('sha256', process.env.WEBHOOK_SECRET);
-  const calculatedSignature = hmac.update(JSON.stringify(payload)).digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(calculatedSignature)
-  );
-};
-
-// Handle tracking webhook
-export const handleTrackingWebhook = async (req, res, next) => {
-  try {
-    const signature = req.headers['x-webhook-signature'];
-    if (!signature) {
-      return next(new AppError('Missing webhook signature', 401));
-    }
-
-    if (!verifyWebhookSignature(req.body, signature)) {
-      return next(new AppError('Invalid webhook signature', 401));
-    }
-
-    const { awb, status, location, description, code } = req.body;
-
-    const order = await Order.findOne({ awb });
-    if (!order) {
-      return next(new AppError('Order not found', 404));
-    }
-
-    // Update tracking information
-    order.tracking.status = status;
-    order.tracking.currentLocation = location;
-    order.tracking.timeline.push({
-      status,
-      location,
-      timestamp: new Date(),
-      description,
-      code
-    });
-
-    // Update order status if needed
-    if (status === 'In Transit') {
-      order.status = 'In Transit';
-    } else if (status === 'Out for Delivery') {
-      order.status = 'Out for Delivery';
-    } else if (status === 'Delivered') {
-      order.status = 'Delivered';
-    }
-
-    await order.save();
-
-    // Send notifications based on subscription preferences
-    const customer = await order.populate('customer');
-    if (customer.tracking.subscription) {
-      const { channels, frequency } = customer.tracking.subscription;
-
-      if (channels.includes('email') && customer.preferences.notifications.email) {
-        await sendEmail({
-          to: customer.email,
-          subject: `Tracking Update - Order ${awb}`,
-          text: `Your order ${awb} is now ${status} at ${location}. ${description}`
-        });
-      }
-
-      if (channels.includes('sms') && customer.preferences.notifications.sms) {
-        await sendSMS({
-          to: customer.phone,
-          templateId: SMS_TEMPLATES.TRACKING_UPDATE.templateId,
-          variables: {
-            trackingId: awb,
-            status,
-            location
-          }
-        });
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        message: 'Tracking update processed successfully'
-      }
-    });
-  } catch (error) {
-    next(new AppError(error.message, 400));
-  }
-};
+import Order from '../models/order.model.js';
 
 /**
  * Razorpay Webhook Controller
  * Handles automatic payment status updates via webhooks
  */
 
-class WebhookController {
+class RazorpayWebhookController {
 
   /**
    * Handle Razorpay webhook events
    */
-  static async handleRazorpayWebhook(req, res) {
+  static async handleWebhook(req, res) {
     try {
       console.log('🔔 Razorpay webhook received:', {
         event: req.body.event,
@@ -111,16 +20,16 @@ class WebhookController {
         timestamp: new Date().toISOString()
       });
 
-      // Verify webhook signature
-      const isValidSignature = WebhookController.verifyWebhookSignature(
-        req.body,
+      // Verify webhook signature using raw body
+      const isValidSignature = RazorpayWebhookController.verifyWebhookSignature(
+        req.rawBody || JSON.stringify(req.body), // Use raw body if available, fallback to stringified JSON
         req.headers['x-razorpay-signature'],
         process.env.RAZORPAY_WEBHOOK_SECRET
       );
 
-      if (!isValidSignature) {
-        console.error('❌ Invalid webhook signature');
-        return res.status(400).json({
+      if (!isValidSignature.isValid) {
+        console.error('❌ Invalid webhook signature:', isValidSignature.error);
+        return res.status(401).json({
           success: false,
           error: 'Invalid webhook signature'
         });
@@ -131,27 +40,27 @@ class WebhookController {
       // Handle different webhook events
       switch (event) {
         case 'payment.captured':
-          await WebhookController.handlePaymentCaptured(payload.payment.entity);
+          await RazorpayWebhookController.handlePaymentCaptured(payload.payment.entity);
           break;
           
         case 'payment.failed':
-          await WebhookController.handlePaymentFailed(payload.payment.entity);
+          await RazorpayWebhookController.handlePaymentFailed(payload.payment.entity);
           break;
           
         case 'payment.authorized':
-          await WebhookController.handlePaymentAuthorized(payload.payment.entity);
+          await RazorpayWebhookController.handlePaymentAuthorized(payload.payment.entity);
           break;
           
         case 'order.paid':
-          await WebhookController.handleOrderPaid(payload.order.entity, payload.payment.entity);
+          await RazorpayWebhookController.handleOrderPaid(payload.order.entity, payload.payment.entity);
           break;
           
         case 'refund.created':
-          await WebhookController.handleRefundCreated(payload.refund.entity);
+          await RazorpayWebhookController.handleRefundCreated(payload.refund.entity);
           break;
           
         case 'refund.processed':
-          await WebhookController.handleRefundProcessed(payload.refund.entity);
+          await RazorpayWebhookController.handleRefundProcessed(payload.refund.entity);
           break;
           
         default:
@@ -181,18 +90,36 @@ class WebhookController {
    */
   static verifyWebhookSignature(payload, signature, secret) {
     try {
+      if (!payload || !signature || !secret) {
+        return {
+          success: true,
+          isValid: false,
+          error: 'Missing required parameters'
+        };
+      }
+
+      // Ensure payload is a string
+      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(JSON.stringify(payload))
+        .update(payloadString)
         .digest('hex');
       
-      return crypto.timingSafeEqual(
-        Buffer.from(signature, 'utf8'),
-        Buffer.from(expectedSignature, 'utf8')
-      );
+      // Compare signatures using simple string comparison first
+      const isValid = signature === expectedSignature;
+      
+      return {
+        success: true,
+        isValid: isValid
+      };
     } catch (error) {
       console.error('❌ Signature verification error:', error);
-      return false;
+      return {
+        success: true,
+        isValid: false,
+        error: error.message
+      };
     }
   }
 
@@ -513,4 +440,4 @@ class WebhookController {
   }
 }
 
-export default WebhookController; 
+export default RazorpayWebhookController; 

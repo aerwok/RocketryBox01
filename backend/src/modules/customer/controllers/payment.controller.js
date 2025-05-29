@@ -5,6 +5,8 @@ import CustomerOrder from '../models/customerOrder.model.js';
 import Payment from '../models/payment.model.js';
 import { logger } from '../../../utils/logger.js';
 import { bookShipment } from '../../../utils/shipping.js';
+import { razorpayService } from '../../../services/razorpay.service.js';
+import Order from '../models/order.model.js';
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -13,298 +15,349 @@ const razorpay = new Razorpay({
 });
 
 /**
- * Create Razorpay payment order
+ * Payment Controller
+ * Handles all payment-related operations
  */
-export const createPaymentOrder = async (req, res, next) => {
-  try {
-    const { orderId, amount } = req.body;
-    const customerId = req.user.id;
 
-    // Validate order exists and belongs to customer
-    const order = await CustomerOrder.findOne({ 
-      _id: orderId, 
-      customerId: customerId,
-      paymentStatus: 'pending'
-    });
+class PaymentController {
 
-    if (!order) {
-      return next(new AppError('Order not found or already paid', 404));
-    }
+  /**
+   * Create payment order
+   */
+  static async createPaymentOrder(req, res, next) {
+    try {
+      const { orderId, amount, currency = 'INR' } = req.body;
+      const customerId = req.user.id; // Assuming user authentication middleware
 
-    // Create Razorpay order
-    const razorpayOrder = await razorpay.orders.create({
-      amount: Math.round(amount * 100), // Convert to paise
-      currency: 'INR',
-      receipt: `order_${order.orderNumber}`,
-      notes: {
-        orderId: order._id.toString(),
-        customerId: customerId,
-        orderNumber: order.orderNumber
+      // Validate order exists and belongs to customer
+      const order = await Order.findOne({ _id: orderId, customerId });
+      if (!order) {
+        return next(new AppError('Order not found', 404));
       }
-    });
 
-    // Create payment record
-    const payment = new Payment({
-      orderId: order._id,
-      customerId: customerId,
-      razorpayOrderId: razorpayOrder.id,
-      amount: amount,
-      currency: 'INR',
-      status: 'created'
-    });
+      // Create Razorpay order
+      const razorpayResult = await razorpayService.createOrder({
+        amount,
+        currency,
+        receipt: `order_${orderId}_${Date.now()}`,
+        notes: {
+          orderId: orderId.toString(),
+          customerId: customerId.toString(),
+          customerEmail: req.user.email
+        }
+      });
 
-    await payment.save();
-
-    logger.info('Payment order created:', {
-      orderId: order._id,
-      razorpayOrderId: razorpayOrder.id,
-      amount: amount
-    });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        razorpayOrderId: razorpayOrder.id,
-        amount: razorpayOrder.amount,
-        currency: razorpayOrder.currency,
-        orderId: order._id
+      if (!razorpayResult.success) {
+        return next(new AppError('Failed to create payment order', 500));
       }
-    });
-  } catch (error) {
-    logger.error('Error creating payment order:', error);
-    next(new AppError('Failed to create payment order', 500));
-  }
-};
 
-/**
- * Verify payment and generate AWB
- */
-export const verifyPayment = async (req, res, next) => {
-  try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      orderId
-    } = req.body;
+      // Create payment record in database
+      const payment = new Payment({
+        orderId,
+        customerId,
+        razorpayOrderId: razorpayResult.order.id,
+        amount,
+        currency,
+        status: 'created',
+        metadata: {
+          createdAt: new Date(),
+          razorpayOrderData: razorpayResult.order
+        }
+      });
 
-    const customerId = req.user.id;
-
-    // Find payment record
-    const payment = await Payment.findOne({
-      razorpayOrderId: razorpay_order_id,
-      customerId: customerId
-    });
-
-    if (!payment) {
-      return next(new AppError('Payment record not found', 404));
-    }
-
-    // Verify signature
-    const body = razorpay_order_id + '|' + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest('hex');
-
-    if (expectedSignature !== razorpay_signature) {
-      // Update payment status to failed
-      payment.status = 'failed';
-      payment.failureReason = 'Invalid signature';
       await payment.save();
 
-      return next(new AppError('Payment verification failed', 400));
+      console.log('💳 Payment order created:', {
+        paymentId: payment._id,
+        razorpayOrderId: razorpayResult.order.id,
+        amount,
+        orderId
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          paymentId: payment._id,
+          razorpayOrder: razorpayResult.order,
+          keyId: razorpayResult.keyId,
+          amount,
+          currency,
+          prefill: {
+            name: req.user.name,
+            email: req.user.email,
+            contact: req.user.phone
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error creating payment order:', error);
+      next(new AppError(error.message, 500));
     }
-
-    // Find the order
-    const order = await CustomerOrder.findById(orderId);
-    if (!order) {
-      return next(new AppError('Order not found', 404));
-    }
-
-    // Update payment record
-    payment.razorpayPaymentId = razorpay_payment_id;
-    payment.razorpaySignature = razorpay_signature;
-    payment.status = 'completed';
-    payment.paidAt = new Date();
-    await payment.save();
-
-    // Update order status
-    order.paymentStatus = 'paid';
-    order.status = 'confirmed';
-    order.paymentId = payment._id;
-    await order.save();
-
-    logger.info('Payment verified successfully:', {
-      orderId: order._id,
-      paymentId: razorpay_payment_id,
-      amount: payment.amount
-    });
-
-    // Generate AWB asynchronously
-    generateAWBAsync(order);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        paymentId: razorpay_payment_id,
-        orderId: order._id,
-        status: 'verified'
-      }
-    });
-  } catch (error) {
-    logger.error('Error verifying payment:', error);
-    next(new AppError('Payment verification failed', 500));
   }
-};
 
-/**
- * Generate AWB asynchronously after payment
- */
-const generateAWBAsync = async (order) => {
-  try {
-    logger.info('Starting AWB generation for order:', order._id);
-
-    // Prepare shipment details for booking
-    const shipmentDetails = {
-      serviceType: order.selectedProvider.serviceType,
-      weight: order.packageDetails.weight,
-      dimensions: order.packageDetails.dimensions,
-      declaredValue: order.packageDetails.declaredValue,
-      cod: false, // Always prepaid for customers
-      codAmount: 0,
-      
-      // Shipper details (pickup)
-      shipper: {
-        name: order.pickupAddress.name,
-        phone: order.pickupAddress.phone,
-        email: order.pickupAddress.email || '',
-        address: order.pickupAddress.address
-      },
-      
-      // Consignee details (delivery)
-      consignee: {
-        name: order.deliveryAddress.name,
-        phone: order.deliveryAddress.phone,
-        email: order.deliveryAddress.email || '',
-        address: order.deliveryAddress.address
-      },
-      
-      // Additional details
-      referenceNumber: order.orderNumber,
-      invoiceNumber: order.orderNumber,
-      commodity: 'General Goods'
-    };
-
-    // Book shipment with the selected provider
-    const bookingResponse = await bookShipment(
-      order.selectedProvider.name,
-      shipmentDetails
-    );
-
-    if (bookingResponse.success) {
-      // Update order with AWB details
-      order.awb = bookingResponse.awb;
-      order.trackingUrl = bookingResponse.trackingUrl;
-      order.courierPartner = bookingResponse.courierName;
-      order.bookingType = bookingResponse.bookingType;
-      order.status = 'shipped';
-      
-      if (bookingResponse.bookingType === 'MANUAL_REQUIRED') {
-        order.notes = `Manual booking required. ${bookingResponse.message}`;
-      }
-      
-      await order.save();
-
-      logger.info('AWB generated successfully:', {
-        orderId: order._id,
-        awb: bookingResponse.awb,
-        courier: bookingResponse.courierName,
-        bookingType: bookingResponse.bookingType
-      });
-    } else {
-      // AWB generation failed, but order is still confirmed
-      order.status = 'confirmed';
-      order.notes = `AWB generation failed: ${bookingResponse.error}. Manual processing required.`;
-      await order.save();
-
-      logger.error('AWB generation failed:', {
-        orderId: order._id,
-        error: bookingResponse.error
-      });
-    }
-  } catch (error) {
-    logger.error('Error in AWB generation:', {
-      orderId: order._id,
-      error: error.message
-    });
-    
-    // Update order with error note
+  /**
+   * Verify payment
+   */
+  static async verifyPayment(req, res, next) {
     try {
-      order.status = 'confirmed';
-      order.notes = `AWB generation error: ${error.message}. Manual processing required.`;
-      await order.save();
-    } catch (saveError) {
-      logger.error('Failed to update order with AWB error:', saveError);
-    }
-  }
-};
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+      const customerId = req.user.id;
 
-/**
- * Get payment history for customer
- */
-export const getPaymentHistory = async (req, res, next) => {
-  try {
-    const customerId = req.user.id;
-    const { page = 1, limit = 10 } = req.query;
-
-    const payments = await Payment.find({ customerId })
-      .populate('orderId', 'orderNumber status totalAmount')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Payment.countDocuments({ customerId });
-
-    res.status(200).json({
-      success: true,
-      data: payments,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return next(new AppError('Missing payment verification data', 400));
       }
-    });
-  } catch (error) {
-    logger.error('Error fetching payment history:', error);
-    next(new AppError('Failed to fetch payment history', 500));
-  }
-};
 
-/**
- * Get payment details by ID
- */
-export const getPaymentById = async (req, res, next) => {
-  try {
-    const { paymentId } = req.params;
-    const customerId = req.user.id;
+      // Find payment record
+      const payment = await Payment.findOne({ 
+        razorpayOrderId: razorpay_order_id,
+        customerId 
+      });
 
-    const payment = await Payment.findOne({
-      _id: paymentId,
-      customerId: customerId
-    }).populate('orderId');
+      if (!payment) {
+        return next(new AppError('Payment record not found', 404));
+      }
 
-    if (!payment) {
-      return next(new AppError('Payment not found', 404));
+      // Process payment verification
+      const verificationResult = await razorpayService.processPaymentVerification({
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature
+      });
+
+      if (!verificationResult.success) {
+        return next(new AppError(verificationResult.error, 400));
+      }
+
+      // Update order status if payment is successful
+      if (verificationResult.payment.status === 'completed') {
+        await Order.findByIdAndUpdate(payment.orderId, {
+          paymentStatus: 'paid',
+          status: 'confirmed',
+          paidAt: new Date()
+        });
+      }
+
+      console.log('✅ Payment verified successfully:', {
+        paymentId: payment._id,
+        razorpayPaymentId: razorpay_payment_id,
+        status: verificationResult.payment.status
+      });
+
+      res.json({
+        success: true,
+        data: {
+          payment: verificationResult.payment,
+          razorpayPayment: verificationResult.razorpayPayment,
+          verified: true
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error verifying payment:', error);
+      next(new AppError(error.message, 500));
     }
-
-    res.status(200).json({
-      success: true,
-      data: payment
-    });
-  } catch (error) {
-    logger.error('Error fetching payment details:', error);
-    next(new AppError('Failed to fetch payment details', 500));
   }
-}; 
+
+  /**
+   * Get payment details
+   */
+  static async getPayment(req, res, next) {
+    try {
+      const { paymentId } = req.params;
+      const customerId = req.user.id;
+
+      const payment = await Payment.findOne({ 
+        _id: paymentId, 
+        customerId 
+      }).populate('orderId');
+
+      if (!payment) {
+        return next(new AppError('Payment not found', 404));
+      }
+
+      res.json({
+        success: true,
+        data: { payment }
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching payment:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+
+  /**
+   * Get customer payments
+   */
+  static async getCustomerPayments(req, res, next) {
+    try {
+      const customerId = req.user.id;
+      const { page = 1, limit = 10, status } = req.query;
+
+      const filter = { customerId };
+      if (status) filter.status = status;
+
+      const payments = await Payment.find(filter)
+        .populate('orderId', 'orderNumber totalAmount status')
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit);
+
+      const total = await Payment.countDocuments(filter);
+
+      res.json({
+        success: true,
+        data: {
+          payments,
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            pages: Math.ceil(total / limit)
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching customer payments:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+
+  /**
+   * Create refund
+   */
+  static async createRefund(req, res, next) {
+    try {
+      const { paymentId } = req.params;
+      const { amount, reason } = req.body;
+      const customerId = req.user.id;
+
+      // Find payment
+      const payment = await Payment.findOne({ 
+        _id: paymentId, 
+        customerId 
+      });
+
+      if (!payment) {
+        return next(new AppError('Payment not found', 404));
+      }
+
+      if (!payment.canBeRefunded()) {
+        return next(new AppError('Payment cannot be refunded', 400));
+      }
+
+      // Create refund via Razorpay
+      const refundResult = await razorpayService.createRefund(
+        payment.razorpayPaymentId,
+        {
+          amount,
+          notes: {
+            reason,
+            requestedBy: customerId.toString(),
+            paymentId: paymentId.toString()
+          }
+        }
+      );
+
+      if (!refundResult.success) {
+        return next(new AppError('Failed to create refund', 500));
+      }
+
+      // Update payment record
+      await Payment.findByIdAndUpdate(paymentId, {
+        refundId: refundResult.refund.id,
+        refundAmount: refundResult.refund.amount / 100, // Convert from paise
+        refundStatus: 'pending',
+        metadata: {
+          ...payment.metadata,
+          refundCreatedAt: new Date(),
+          refundReason: reason
+        }
+      });
+
+      console.log('💸 Refund initiated:', {
+        paymentId,
+        refundId: refundResult.refund.id,
+        amount: refundResult.refund.amount / 100
+      });
+
+      res.json({
+        success: true,
+        data: {
+          refund: refundResult.refund,
+          message: 'Refund initiated successfully'
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error creating refund:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+
+  /**
+   * Get payment statistics
+   */
+  static async getPaymentStats(req, res, next) {
+    try {
+      const customerId = req.user.id;
+      const { startDate, endDate } = req.query;
+
+      const stats = await Payment.getPaymentStats(customerId, startDate, endDate);
+
+      res.json({
+        success: true,
+        data: { stats }
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching payment stats:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+
+  /**
+   * Get Razorpay configuration
+   */
+  static async getRazorpayConfig(req, res, next) {
+    try {
+      const config = razorpayService.getConfig();
+      
+      res.json({
+        success: true,
+        data: { config }
+      });
+
+    } catch (error) {
+      console.error('❌ Error fetching Razorpay config:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+
+  /**
+   * Health check for payment service
+   */
+  static async healthCheck(req, res, next) {
+    try {
+      const razorpayHealth = await razorpayService.healthCheck();
+      
+      res.json({
+        success: true,
+        data: {
+          service: 'payment',
+          status: razorpayHealth.status,
+          razorpay: razorpayHealth,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Payment health check failed:', error);
+      next(new AppError(error.message, 500));
+    }
+  }
+}
+
+export default PaymentController; 

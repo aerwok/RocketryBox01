@@ -21,12 +21,7 @@ import {
   getOrderById,
   getOrderHistory
 } from '../controllers/order.controller.js';
-import {
-  createPaymentOrder,
-  verifyPayment,
-  getPaymentHistory,
-  getPaymentById
-} from '../controllers/payment.controller.js';
+import PaymentController from '../controllers/payment.controller.js';
 import {
   listServices,
   checkAvailability
@@ -98,10 +93,10 @@ router.get('/orders/awb/:awb', getOrderDetails);
 router.get('/orders/:id/label', downloadLabel);
 
 // Payment routes (Razorpay integration)
-router.post('/payments/create-order', paymentLimiter, createPaymentOrder);
-router.post('/payments/verify', paymentLimiter, verifyPayment);
-router.get('/payments/history', paymentLimiter, getPaymentHistory);
-router.get('/payments/:paymentId', paymentLimiter, getPaymentById);
+router.post('/payments/create-order', paymentLimiter, PaymentController.createPaymentOrder);
+router.post('/payments/verify', paymentLimiter, PaymentController.verifyPayment);
+router.get('/payments/history', paymentLimiter, PaymentController.getCustomerPayments);
+router.get('/payments/:paymentId', paymentLimiter, PaymentController.getPayment);
 
 // Legacy payment routes (keep for backward compatibility)
 router.post('/payments', paymentLimiter, validateRequest([createPaymentSchema]), createPayment);
