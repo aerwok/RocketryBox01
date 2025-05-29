@@ -47,11 +47,8 @@ const SellerProfilePage = () => {
 
     const handleEditRequest = async () => {
         try {
-            const response = await ServiceFactory.seller.profile.update({ editRequested: true });
-            if (!response.success) {
-                throw new Error(response.message || 'Failed to send edit request');
-            }
-            toast.info("Your edit request has been sent to the admin for approval");
+            // TODO: Implement proper edit request endpoint
+            toast.info("Edit request functionality will be available soon. Please contact support for profile changes.");
         } catch (err) {
             console.error('Error sending edit request:', err);
             toast.error('Failed to send edit request. Please try again.');
@@ -324,29 +321,33 @@ const SellerProfilePage = () => {
                                             <div>
                                                 <h3 className="text-lg font-semibold mb-4">Required Documents</h3>
                                                 <div className="space-y-4">
-                                                    {profile.documents.documents.map((doc, index) => (
-                                                        <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                                            <div className="flex items-center gap-3">
-                                                                <FileText className="w-5 h-5 text-gray-400" />
-                                                                <div>
-                                                                    <p className="font-medium">{doc.name}</p>
-                                                                    <p className="text-sm text-gray-500">{doc.type}</p>
+                                                    {profile.documents.documents && Array.isArray(profile.documents.documents) && profile.documents.documents.length > 0 ? (
+                                                        profile.documents.documents.map((doc, index) => (
+                                                            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                                                <div className="flex items-center gap-3">
+                                                                    <FileText className="w-5 h-5 text-gray-400" />
+                                                                    <div>
+                                                                        <p className="font-medium">{doc.name}</p>
+                                                                        <p className="text-sm text-gray-500">{doc.type}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`px-2 py-1 rounded-full text-xs ${
+                                                                        doc.status === 'verified' ? 'bg-green-100 text-green-800' :
+                                                                        doc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                        'bg-red-100 text-red-800'
+                                                                    }`}>
+                                                                        {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
+                                                                    </span>
+                                                                    <Button variant="ghost" size="sm" onClick={() => window.open(doc.url, '_blank')}>
+                                                                        View
+                                                                    </Button>
                                                                 </div>
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                                                    doc.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                                                    doc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                    'bg-red-100 text-red-800'
-                                                                }`}>
-                                                                    {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
-                                                                </span>
-                                                                <Button variant="ghost" size="sm" onClick={() => window.open(doc.url, '_blank')}>
-                                                                    View
-                                                                </Button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-gray-500">No documents uploaded yet</p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -365,7 +366,7 @@ const SellerProfilePage = () => {
                                                     Bank account details and cancelled cheque were collected during your registration process. Any updates require admin approval.
                                                 </p>
                                             </div>
-                                            {profile.bankDetails.map((bank, index) => (
+                                            {profile.bankDetails?.map((bank, index) => (
                                                 <div key={index} className="p-4 border rounded-lg">
                                                     <div className="flex items-center justify-between mb-4">
                                                         <h3 className="text-lg font-semibold">{bank.bankName}</h3>

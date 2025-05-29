@@ -10,6 +10,7 @@
     "install-deps": "npm install node-fetch dotenv"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.812.0",
     "axios": "^1.9.0",
     "dotenv": "^16.5.0",
     "node-fetch": "^3.3.2"

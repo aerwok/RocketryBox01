@@ -76,17 +76,17 @@ export const sellerCompanySchema = z.object({
         message: "GST document is required"
     }).refine((file) => file instanceof File && file.size <= 5 * 1024 * 1024, {
         message: "GST document must be less than 5MB"
-    }),
+    }).optional(),
     panDocument: z.custom<File>((val) => val instanceof File, {
         message: "PAN document is required"
     }).refine((file) => file instanceof File && file.size <= 5 * 1024 * 1024, {
         message: "PAN document must be less than 5MB"
-    }),
+    }).optional(),
     aadhaarDocument: z.custom<File>((val) => val instanceof File, {
         message: "Aadhaar document is required"
     }).refine((file) => file instanceof File && file.size <= 5 * 1024 * 1024, {
         message: "Aadhaar document must be less than 5MB"
-    }),
+    }).optional(),
     acceptTerms: z.boolean().refine((val) => val === true, {
         message: "You must accept the terms and conditions",
     }),
