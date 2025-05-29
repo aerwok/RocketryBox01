@@ -53,35 +53,8 @@ const RegisterForm = () => {
         mutationFn: async (mobile: string) => {
             try {
                 console.log('Sending mobile OTP request for:', mobile);
-                const response = await fetch('http://localhost:8000/api/v2/customer/auth/otp/send', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        phoneOrEmail: mobile,
-                        purpose: 'register'
-                    }),
-                    credentials: 'include',
-                });
-                
-                console.log('Response status:', response.status);
-                const responseText = await response.text();
-                console.log('Response text:', responseText);
-                
-                if (!response.ok) {
-                    let errorMessage;
-                    try {
-                        const errorData = JSON.parse(responseText);
-                        errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
-                    } catch (e) {
-                        errorMessage = `HTTP error! status: ${response.status}, response: ${responseText}`;
-                    }
-                    throw new Error(errorMessage);
-                }
-                
-                const data = JSON.parse(responseText);
-                return data;
+                const response = await authService.sendMobileOTP(mobile);
+                return response;
             } catch (error: any) {
                 console.error('Mobile OTP request error:', {
                     error,
@@ -105,35 +78,8 @@ const RegisterForm = () => {
         mutationFn: async (email: string) => {
             try {
                 console.log('Sending email OTP request for:', email);
-                const response = await fetch('http://localhost:8000/api/v2/customer/auth/otp/send', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        phoneOrEmail: email,
-                        purpose: 'register'
-                    }),
-                    credentials: 'include',
-                });
-                
-                console.log('Response status:', response.status);
-                const responseText = await response.text();
-                console.log('Response text:', responseText);
-                
-                if (!response.ok) {
-                    let errorMessage;
-                    try {
-                        const errorData = JSON.parse(responseText);
-                        errorMessage = errorData.message || `HTTP error! status: ${response.status}`;
-                    } catch (e) {
-                        errorMessage = `HTTP error! status: ${response.status}, response: ${responseText}`;
-                    }
-                    throw new Error(errorMessage);
-                }
-                
-                const data = JSON.parse(responseText);
-                return data;
+                const response = await authService.sendEmailOTP(email);
+                return response;
             } catch (error: any) {
                 console.error('Email OTP request error:', {
                     error,

@@ -382,21 +382,112 @@ export const verifyOTPHandler = async (req, res, next) => {
             return next(new AppError(result.message, 400));
         }
 
-        // Generate tokens
-        const accessToken = customer.generateAuthToken();
-        const refreshToken = customer.generateRefreshToken();
+        // Generate password reset token (valid for 1 hour)
+        const resetToken = generateOTPHelper() + generateOTPHelper(); // 12 digit token
+        const resetTokenExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
 
-        // Update customer
-        customer.lastLogin = new Date();
+        // Save reset token to customer
+        customer.passwordResetToken = resetToken;
+        customer.passwordResetTokenExpiry = resetTokenExpiry;
         await customer.save();
+
+        // Create reset link
+        const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(customer.email)}`;
+
+        // Send password reset email
+        try {
+            await sendEmail({
+                to: customer.email,
+                subject: 'Reset Your Password - RocketryBox',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #333;">Reset Your Password</h2>
+                        <p>Hello ${customer.name},</p>
+                        <p>You have successfully verified your identity. Click the button below to reset your password:</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="${resetLink}" style="background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
+                        </div>
+                        <p>Or copy and paste this link in your browser:</p>
+                        <p style="word-break: break-all; color: #007bff;">${resetLink}</p>
+                        <p><strong>This link will expire in 1 hour.</strong></p>
+                        <p>If you didn't request this password reset, please ignore this email.</p>
+                        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                        <p style="color: #666; font-size: 12px;">RocketryBox - Shipping & Logistics</p>
+                    </div>
+                `,
+                text: `Hello ${customer.name},\n\nYou have successfully verified your identity. Please click the following link to reset your password:\n\n${resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nRocketryBox - Shipping & Logistics`
+            });
+
+            console.log('\n=========== PASSWORD RESET EMAIL SENT ===========');
+            console.log(`📧 Email sent to: ${customer.email}`);
+            console.log(`🔗 Reset link: ${resetLink}`);
+            console.log(`⏱️ Expires in: 1 hour`);
+            console.log('===============================================\n');
+
+        } catch (emailError) {
+            console.error('Failed to send password reset email:', emailError);
+            // In development mode, still return success but log the error
+            if (process.env.NODE_ENV !== 'development') {
+                return next(new AppError('Failed to send password reset email. Please try again.', 500));
+            }
+        }
 
         res.status(200).json({
             success: true,
             data: {
-                message: 'OTP verified successfully',
-                accessToken,
-                refreshToken,
-                user: customer
+                message: 'OTP verified successfully. A password reset link has been sent to your email.',
+                resetTokenSent: true
+            }
+        });
+    } catch (error) {
+        next(new AppError(error.message, 400));
+    }
+};
+
+// Reset Password
+export const resetPassword = async (req, res, next) => {
+    try {
+        const { token, email, newPassword, confirmPassword } = req.body;
+
+        // Validate input
+        if (!token || !email || !newPassword || !confirmPassword) {
+            return next(new AppError('All fields are required', 400));
+        }
+
+        if (newPassword !== confirmPassword) {
+            return next(new AppError('Passwords do not match', 400));
+        }
+
+        if (newPassword.length < 8) {
+            return next(new AppError('Password must be at least 8 characters long', 400));
+        }
+
+        // Find customer with valid reset token
+        const customer = await Customer.findOne({
+            email: email,
+            passwordResetToken: token,
+            passwordResetTokenExpiry: { $gt: Date.now() }
+        }).select('+passwordResetToken +passwordResetTokenExpiry');
+
+        if (!customer) {
+            return next(new AppError('Invalid or expired reset token', 400));
+        }
+
+        // Update password and clear reset token
+        customer.password = newPassword;
+        customer.passwordResetToken = undefined;
+        customer.passwordResetTokenExpiry = undefined;
+        await customer.save();
+
+        console.log('\n=========== PASSWORD RESET SUCCESSFUL ===========');
+        console.log(`📧 Password reset for: ${customer.email}`);
+        console.log(`👤 Customer: ${customer.name}`);
+        console.log('===============================================\n');
+
+        res.status(200).json({
+            success: true,
+            data: {
+                message: 'Password reset successfully. You can now login with your new password.'
             }
         });
     } catch (error) {

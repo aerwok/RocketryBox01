@@ -8,12 +8,14 @@ import { motion } from "framer-motion";
 import { z } from "zod";
 
 const addressSchema = z.object({
-    address1: z.string().min(1, "Address line 1 is required"),
+    name: z.string().min(2, "Name must be at least 2 characters").max(50, "Name cannot exceed 50 characters"),
+    address1: z.string().min(5, "Address line 1 must be at least 5 characters").max(100, "Address line 1 cannot exceed 100 characters"),
     address2: z.string().optional(),
     city: z.string().min(1, "City is required"),
     state: z.string().min(1, "State is required"),
     pincode: z.string().min(6, "Pincode must be 6 digits").max(6, "Pincode must be 6 digits"),
-    phone: z.string().min(10, "Phone number must be 10 digits").max(10, "Phone number must be 10 digits"),
+    phone: z.string()
+        .regex(/^[6-9]\d{9}$/, "Please provide a valid Indian phone number (10 digits starting with 6-9)"),
 });
 
 type AddressFormValues = z.infer<typeof addressSchema>;
@@ -21,7 +23,7 @@ type AddressFormValues = z.infer<typeof addressSchema>;
 interface AddressModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: AddressFormValues) => void;
+    onSubmit: (data: AddressFormValues) => Promise<void>;
 }
 
 const AddressModal = ({ isOpen, onClose, onSubmit }: AddressModalProps) => {
@@ -29,6 +31,7 @@ const AddressModal = ({ isOpen, onClose, onSubmit }: AddressModalProps) => {
     const form = useForm<AddressFormValues>({
         resolver: zodResolver(addressSchema),
         defaultValues: {
+            name: "",
             address1: "",
             address2: "",
             city: "",
@@ -38,10 +41,15 @@ const AddressModal = ({ isOpen, onClose, onSubmit }: AddressModalProps) => {
         },
     });
 
-    const handleSubmit = (data: AddressFormValues) => {
-        onSubmit(data);
-        form.reset();
-        onClose();
+    const handleSubmit = async (data: AddressFormValues) => {
+        try {
+            await onSubmit(data);
+            form.reset();
+            onClose();
+        } catch (error) {
+            // Don't reset form or close modal if there's an error
+            console.error('Error submitting address:', error);
+        }
     };
 
     return (
@@ -55,6 +63,26 @@ const AddressModal = ({ isOpen, onClose, onSubmit }: AddressModalProps) => {
 
                 <Form {...form}>
                     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                        <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>
+                                        Name
+                                    </FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            placeholder="Enter name for this address"
+                                            className="bg-[#99BCDDB5]"
+                                            {...field}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
                         <FormField
                             control={form.control}
                             name="address1"

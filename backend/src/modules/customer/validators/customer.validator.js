@@ -97,6 +97,56 @@ export const otpSchema = Joi.object({
     })
 });
 
+// OTP verification validation schema
+export const verifyOTPSchema = Joi.object({
+  phoneOrEmail: Joi.string()
+    .required()
+    .messages({
+      'string.empty': 'Phone number or email is required'
+    }),
+  otp: Joi.string()
+    .required()
+    .length(6)
+    .pattern(/^\d+$/)
+    .messages({
+      'string.empty': 'OTP is required',
+      'string.length': 'OTP must be 6 digits',
+      'string.pattern.base': 'OTP must contain only digits'
+    })
+});
+
+// Reset password validation schema
+export const resetPasswordSchema = Joi.object({
+  token: Joi.string()
+    .required()
+    .messages({
+      'string.empty': 'Reset token is required'
+    }),
+  email: Joi.string()
+    .required()
+    .email()
+    .messages({
+      'string.empty': 'Email is required',
+      'string.email': 'Please provide a valid email address'
+    }),
+  newPassword: Joi.string()
+    .required()
+    .min(8)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .messages({
+      'string.empty': 'New password is required',
+      'string.min': 'Password must be at least 8 characters long',
+      'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+    }),
+  confirmPassword: Joi.string()
+    .required()
+    .valid(Joi.ref('newPassword'))
+    .messages({
+      'string.empty': 'Please confirm your password',
+      'any.only': 'Passwords do not match'
+    })
+});
+
 // Profile update validation schema
 export const profileUpdateSchema = Joi.object({
   name: Joi.string()

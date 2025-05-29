@@ -47,7 +47,10 @@ export class AuthService {
 
   async sendMobileOTP(mobile: string): Promise<ApiResponse<{ message: string }>> {
     try {
-      return await this.api.post<{ message: string }>('/customer/auth/otp/send', { mobile });
+      return await this.api.post<{ message: string }>('/customer/auth/otp/send', { 
+        phoneOrEmail: mobile,
+        purpose: 'reset'
+      });
     } catch (error) {
       const apiError = error as ApiError;
       toast.error(apiError.message || 'Failed to send OTP');
@@ -57,7 +60,10 @@ export class AuthService {
 
   async sendEmailOTP(email: string): Promise<ApiResponse<{ message: string }>> {
     try {
-      return await this.api.post<{ message: string }>('/customer/auth/otp/send', { email });
+      return await this.api.post<{ message: string }>('/customer/auth/otp/send', { 
+        phoneOrEmail: email,
+        purpose: 'reset'
+      });
     } catch (error) {
       const apiError = error as ApiError;
       toast.error(apiError.message || 'Failed to send OTP');
@@ -69,8 +75,7 @@ export class AuthService {
     try {
       return await this.api.post<{ message: string }>('/customer/auth/otp/verify', {
         phoneOrEmail: mobile,
-        otp,
-        type: 'mobile'
+        otp
       });
     } catch (error) {
       const apiError = error as ApiError;
@@ -83,8 +88,7 @@ export class AuthService {
     try {
       return await this.api.post<{ message: string }>('/customer/auth/otp/verify', {
         phoneOrEmail: email,
-        otp,
-        type: 'email'
+        otp
       });
     } catch (error) {
       const apiError = error as ApiError;
@@ -135,13 +139,11 @@ export class AuthService {
   
   async checkAuthStatus(): Promise<{ isAuthenticated: boolean; user: any | null }> {
     try {
-      const response = await axios.get('/api/v2/customer/auth/check', { 
-        withCredentials: true 
-      });
+      const response = await this.api.get<{ user: any }>('/customer/auth/check');
       
       return {
-        isAuthenticated: response.data.success,
-        user: response.data.data?.user || null
+        isAuthenticated: response.success,
+        user: response.data?.user || null
       };
     } catch (error) {
       return {

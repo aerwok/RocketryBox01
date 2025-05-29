@@ -73,6 +73,18 @@ const customerSchema = new mongoose.Schema({
     minlength: [8, 'Password must be at least 8 characters long'],
     select: false
   },
+  passwordResetToken: {
+    type: String,
+    select: false
+  },
+  passwordResetTokenExpiry: {
+    type: Date,
+    select: false
+  },
+  profileImage: {
+    type: String,
+    default: null
+  },
   addresses: [addressSchema],
   preferences: {
     language: {

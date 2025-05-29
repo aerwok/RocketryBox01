@@ -13,6 +13,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { secureStorage } from "@/utils/secureStorage";
+import { authService } from "@/services/auth.service";
 
 const CustomerLoginPage = () => {
 
@@ -23,7 +24,6 @@ const CustomerLoginPage = () => {
     const [isForgotPassword, setIsForgotPassword] = useState<boolean>(false);
     const [isOtpSent, setIsOtpSent] = useState<boolean>(false);
     const [otpTimer, setOtpTimer] = useState<number>(0);
-    const [generatedOtp, setGeneratedOtp] = useState<string>("");
     const [isLoading, setIsLoading] = useState(false);
 
     const form = useForm<CustomerLoginInput>({
@@ -79,60 +79,115 @@ const CustomerLoginPage = () => {
 
         try {
             setIsLoading(true);
-            const response = await fetch('/api/v2/customer/auth/send-otp', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ phoneOrEmail }),
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to send OTP');
+            console.log('Sending OTP to:', phoneOrEmail);
+            
+            let response;
+            if (isEmail) {
+                response = await authService.sendEmailOTP(phoneOrEmail);
+            } else {
+                response = await authService.sendMobileOTP(phoneOrEmail);
             }
+            
+            console.log('OTP Response:', response);
+            
+            // Show success message
+            toast.success('OTP sent successfully! Please check your email or SMS for the OTP code.');
 
             setIsOtpSent(true);
             setOtpTimer(30);
             form.setValue("otp", "");
-            toast.success('OTP sent successfully');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error sending OTP:", error);
+            
+            // Better error handling
+            let errorMessage = 'Failed to send OTP. Please try again.';
+            if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
             form.setError("phoneOrEmail", {
-                message: "Failed to send OTP. Please try again.",
+                message: errorMessage,
             });
-            toast.error('Failed to send OTP');
+            toast.error(errorMessage);
         } finally {
             setIsLoading(false);
         }
     };
 
     const onSubmit = async (data: CustomerLoginInput) => {
-        console.log('=== Login Form Submit STARTED ===');
+        console.log('=== Form Submit STARTED ===');
         console.log('Form Data:', data);
+        console.log('Is Forgot Password Mode:', isForgotPassword);
 
         try {
             setIsLoading(true);
-            console.log('=== Login Attempt STARTED ===');
             
-            // Call the login function directly
-            console.log('Calling login function...');
-            const response = await login(data.phoneOrEmail, data.password, data.rememberMe);
-            console.log('=== Login Response ===');
-            console.log('Response:', response);
-            
-            if (response.success && response.data?.accessToken) {
-                console.log('Login successful, storing token and navigating to home');
-                await secureStorage.setItem('auth_token', response.data.accessToken);
-                toast.success('Login successful');
-                navigate("/customer/home", { replace: true });
+            if (isForgotPassword) {
+                // Handle OTP verification for password reset
+                console.log('=== OTP Verification for Password Reset ===');
+                
+                if (!data.otp) {
+                    form.setError("otp", {
+                        message: "Please enter the OTP",
+                    });
+                    return;
+                }
+                
+                try {
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    const isEmail = emailRegex.test(data.phoneOrEmail);
+                    
+                    let verifyResponse;
+                    if (isEmail) {
+                        verifyResponse = await authService.verifyEmailOTP(data.phoneOrEmail, data.otp);
+                    } else {
+                        verifyResponse = await authService.verifyMobileOTP(data.phoneOrEmail, data.otp);
+                    }
+                    
+                    console.log('OTP Verification Response:', verifyResponse);
+                    
+                    if (verifyResponse.success) {
+                        toast.success('OTP verified successfully! A password reset link has been sent to your email.');
+                        
+                        // Show success message and redirect to login after delay
+                        setTimeout(() => {
+                            toast.info('Please check your email for the password reset link.');
+                            handleBackToLogin();
+                        }, 3000);
+                    } else {
+                        throw new Error(verifyResponse.message || 'OTP verification failed');
+                    }
+                } catch (otpError: any) {
+                    console.error('OTP Verification Error:', otpError);
+                    form.setError("otp", {
+                        message: otpError.message || "Invalid OTP. Please try again.",
+                    });
+                    toast.error(otpError.message || 'Invalid OTP. Please try again.');
+                }
             } else {
-                console.error('Login failed:', response);
-                toast.error(response.message || 'Login failed. Please check your credentials.');
+                // Handle normal login
+                console.log('=== Normal Login Attempt ===');
+                
+                const response = await login(data.phoneOrEmail, data.password, data.rememberMe);
+                console.log('=== Login Response ===');
+                console.log('Response:', response);
+                
+                if (response.success && response.data?.accessToken) {
+                    console.log('Login successful, storing token and navigating to home');
+                    await secureStorage.setItem('auth_token', response.data.accessToken);
+                    toast.success('Login successful');
+                    navigate("/customer/home", { replace: true });
+                } else {
+                    console.error('Login failed:', response);
+                    toast.error(response.message || 'Login failed. Please check your credentials.');
+                }
             }
         } catch (error: any) {
-            console.error('=== Login Error ===');
+            console.error('=== Form Submit Error ===');
             console.error('Error details:', error);
-            toast.error(error.response?.data?.message || 'Login failed. Please check your credentials.');
+            toast.error(error.response?.data?.message || error.message || 'An error occurred. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -148,7 +203,6 @@ const CustomerLoginPage = () => {
         setIsOtpSent(false);
         setOtpTimer(0);
         form.setValue("otp", "");
-        setGeneratedOtp("");
     };
 
     return (
@@ -243,19 +297,23 @@ const CustomerLoginPage = () => {
                                                             placeholder="Enter your password"
                                                             className="bg-[#99BCDDB5] pr-10"
                                                         />
-                                                        <Button
+                                                        <button
                                                             type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                                            onClick={() => setShowPassword(!showPassword)}
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded z-10 flex items-center justify-center"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                console.log('Show password button clicked, current state:', showPassword);
+                                                                setShowPassword(!showPassword);
+                                                            }}
+                                                            tabIndex={-1}
                                                         >
                                                             {showPassword ? (
-                                                                <EyeOff className="h-4 w-4" />
+                                                                <EyeOff className="h-4 w-4 text-gray-600" />
                                                             ) : (
-                                                                <Eye className="h-4 w-4" />
+                                                                <Eye className="h-4 w-4 text-gray-600" />
                                                             )}
-                                                        </Button>
+                                                        </button>
                                                     </div>
                                                 </FormControl>
                                                 <FormMessage />
@@ -352,10 +410,10 @@ const CustomerLoginPage = () => {
                                     type="submit"
                                     variant="customer"
                                     className="w-full"
-                                    disabled={(isForgotPassword && !isOtpSent) || isLoading}
+                                    disabled={isLoading || (isForgotPassword && !form.watch("otp"))}
                                     onClick={() => console.log('Login button clicked')}
                                 >
-                                    {isLoading ? "Please wait..." : isForgotPassword ? "Reset Password" : "Login"}
+                                    {isLoading ? "Please wait..." : isForgotPassword ? "Verify OTP" : "Login"}
                                 </Button>
 
                                 <motion.div
@@ -369,20 +427,6 @@ const CustomerLoginPage = () => {
                                         Register
                                     </Link>
                                 </motion.div>
-
-                                {/* Testing Info Section */}
-                                {isForgotPassword && (
-                                    <div className="mt-8 p-4 space-y-2">
-                                        <div className="text-sm space-y-1">
-                                            <p>
-                                                Generated OTP:
-                                                <span className="font-mono bg-white px-2 py-0.5 rounded">
-                                                    {generatedOtp || 'Not generated'}
-                                                </span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
                             </form>
                         </Form>
                     </div>

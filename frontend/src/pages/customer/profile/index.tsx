@@ -13,12 +13,14 @@ import { ServiceFactory } from "@/services/service-factory";
 
 interface Address {
     id: string;
+    name: string;
     address1: string;
     address2?: string;
     city: string;
     state: string;
     pincode: string;
     phone: string;
+    mobile?: string;
 }
 
 const CustomerProfilePage = () => {
@@ -57,7 +59,14 @@ const CustomerProfilePage = () => {
                         phone: response.data.phone || "",
                     });
                     setProfileImage(response.data.profileImage || null);
-                    setAddresses(response.data.addresses || []);
+                    
+                    // Map addresses from backend (mobile) to frontend (phone)
+                    const mappedAddresses = (response.data.addresses || []).map((addr: any) => ({
+                        ...addr,
+                        id: addr._id || addr.id,
+                        phone: addr.mobile || addr.phone, // Map mobile to phone for frontend
+                    }));
+                    setAddresses(mappedAddresses);
                 } else {
                     throw new Error(response.message || 'Failed to fetch profile data');
                 }
@@ -123,17 +132,34 @@ const CustomerProfilePage = () => {
         try {
             setError(null);
             
+            console.log('Adding address with data:', data);
             const response = await ServiceFactory.customer.profile.addAddress(data);
+            console.log('Add address response:', response);
+            
             if (response.success) {
-                setAddresses(prev => [...prev, response.data]);
-                setIsAddressModalOpen(false);
+                // The backend returns the full addresses array, so we need to update our state
+                if (response.data.addresses) {
+                    // Map addresses from backend (mobile) to frontend (phone)
+                    const mappedAddresses = response.data.addresses.map((addr: any) => ({
+                        ...addr,
+                        id: addr._id || addr.id,
+                        phone: addr.mobile || addr.phone, // Map mobile to phone for frontend
+                    }));
+                    setAddresses(mappedAddresses);
+                } else {
+                    // Fallback: add the new address to existing ones
+                    setAddresses(prev => [...prev, { ...data, id: Date.now().toString() }]);
+                }
                 toast.success("Address added successfully");
             } else {
                 throw new Error(response.message || 'Failed to add address');
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error adding address:", err);
-            toast.error("Failed to add address");
+            const errorMessage = err.message || err.response?.data?.message || 'Failed to add address';
+            setError(`Error adding address: ${errorMessage}`);
+            toast.error(errorMessage);
+            throw err; // Re-throw to prevent modal from closing
         }
     };
 
@@ -142,16 +168,33 @@ const CustomerProfilePage = () => {
             setDeletingAddressId(id);
             setError(null);
             
+            console.log('Deleting address with id:', id);
             const response = await ServiceFactory.customer.profile.deleteAddress(id);
+            console.log('Delete address response:', response);
+            
             if (response.success) {
-                setAddresses(addresses.filter(address => address.id !== id));
+                // The backend returns the updated addresses array
+                if (response.data.addresses) {
+                    // Map addresses from backend (mobile) to frontend (phone)
+                    const mappedAddresses = response.data.addresses.map((addr: any) => ({
+                        ...addr,
+                        id: addr._id || addr.id,
+                        phone: addr.mobile || addr.phone, // Map mobile to phone for frontend
+                    }));
+                    setAddresses(mappedAddresses);
+                } else {
+                    // Fallback: remove from current state
+                    setAddresses(addresses.filter(address => address.id !== id));
+                }
                 toast.success("Address deleted successfully");
             } else {
                 throw new Error(response.message || 'Failed to delete address');
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Error deleting address:", err);
-            toast.error("Failed to delete address");
+            const errorMessage = err.message || err.response?.data?.message || 'Failed to delete address';
+            setError(`Error deleting address: ${errorMessage}`);
+            toast.error(errorMessage);
         } finally {
             setDeletingAddressId(null);
         }
@@ -468,7 +511,7 @@ const CustomerProfilePage = () => {
                                         )}
                                     </Button>
                                 </div>
-                                <div className="text-main font-medium mb-1">Address {address.id}</div>
+                                <div className="text-main font-medium mb-1">{address.name}</div>
                                 <div className="space-y-1 text-sm">
                                     <p>{address.address1}</p>
                                     {address.address2 && <p>{address.address2}</p>}
