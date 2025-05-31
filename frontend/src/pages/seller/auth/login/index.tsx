@@ -201,19 +201,26 @@ function SellerLoginPage() {
             return;
         }
 
-        // Normal login flow
+        // Normal login flow - validate required fields manually since schema is flexible
+        if (!data.emailOrPhone?.trim()) {
+            form.setError("emailOrPhone", {
+                message: "Email or phone number is required",
+            });
+            toast.error('Please enter your email or phone number');
+            return;
+        }
+
+        if (!data.password?.trim()) {
+            form.setError("password", {
+                message: "Password is required",
+            });
+            toast.error('Please enter your password');
+            return;
+        }
+
         try {
             console.log('🔄 Starting normal login flow...');
             
-            if (!data.emailOrPhone || !data.password) {
-                console.error('❌ Missing required fields:', {
-                    hasEmailOrPhone: !!data.emailOrPhone,
-                    hasPassword: !!data.password
-                });
-                toast.error('Please fill in all required fields');
-                return;
-            }
-
             setIsLoading(true);
             console.log('🚀 Calling sellerAuthService.login...');
 
@@ -399,6 +406,7 @@ function SellerLoginPage() {
                                                             placeholder="Enter password"
                                                             className="bg-[#99BCDDB5]"
                                                             {...field}
+                                                            value={field.value || ""}
                                                             onChange={(e) => {
                                                                 field.onChange(e);
                                                                 // Clear errors when user starts typing
@@ -511,10 +519,20 @@ function SellerLoginPage() {
                                         type="submit"
                                         className="w-full bg-[#2B4EA8] hover:bg-[#2B4EA8]/90 text-white"
                                         disabled={isLoading}
-                                        onClick={() => {
-                                            console.log('Login button clicked');
+                                        onClick={(e) => {
+                                            console.log('🖱️ Login button clicked directly');
                                             console.log('Form state:', form.getValues());
                                             console.log('Form errors:', form.formState.errors);
+                                            console.log('Form valid:', form.formState.isValid);
+                                            console.log('isForgotPassword:', isForgotPassword);
+                                            
+                                            // If normal login, bypass form validation and call onSubmit directly
+                                            if (!isForgotPassword) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                console.log('🔄 Calling onSubmit directly...');
+                                                onSubmit(form.getValues());
+                                            }
                                         }}
                                     >
                                         {isLoading ? (
@@ -545,11 +563,6 @@ function SellerLoginPage() {
                                             New User?{" "}
                                             <Link to="/seller/register" className="text-[#2B4EA8] hover:underline">
                                                 Create account
-                                            </Link>
-                                        </div>
-                                        <div className="text-center text-sm text-gray-600">
-                                            <Link to="/seller/dashboard" className="text-[#2B4EA8] hover:underline">
-                                                Go to Dashboard
                                             </Link>
                                         </div>
                                     </>

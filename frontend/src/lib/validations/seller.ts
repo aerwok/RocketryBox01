@@ -17,10 +17,8 @@ export const sellerLoginSchema = z.object({
         }, {
             message: "Please enter a valid email address or phone number (10 digits)",
         }),
-    password: z.string()
-        .min(1, "Password is required")
-        .min(6, "Password must be at least 6 characters"),
-    otp: z.string().length(6, "OTP must be 6 digits").optional(),
+    password: z.string().optional(),
+    otp: z.string().optional(),
     newPassword: passwordSchema.optional(),
     confirmPassword: passwordSchema.optional(),
     rememberMe: z.boolean().default(false),
