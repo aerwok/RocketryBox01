@@ -200,10 +200,11 @@ class PaymentController {
         shippingRate: orderData.shippingRate || payment.amount,
         totalAmount: payment.amount,
         instructions: orderData.instructions || '',
+        pickupDate: orderData.pickupDate ? new Date(orderData.pickupDate) : new Date(),
         status: 'confirmed',
-          paymentStatus: 'paid',
-          paidAt: new Date()
-        });
+        paymentStatus: 'paid',
+        paidAt: new Date()
+      });
 
       // Generate AWB number (format: RB + timestamp + random)
       const generateAWB = () => {

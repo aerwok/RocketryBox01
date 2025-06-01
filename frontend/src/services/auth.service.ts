@@ -9,7 +9,6 @@ import {
   ERROR_CODES 
 } from '@/types/api';
 import { CustomerRegisterInput } from '@/lib/validations/customer';
-import axios from 'axios';
 
 interface LoginResponse {
   accessToken: string;

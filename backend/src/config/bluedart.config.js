@@ -38,6 +38,12 @@ export const BLUEDART_CONFIG = {
     // Waybill Generation
     WAYBILL: process.env.BLUEDART_WAYBILL_URL || 'https://apigateway.bluedart.com/in/transportation/waybill/v1',
     
+    // E-Way Bill Generation (Production)
+    GENERATE_EWAY_BILL: process.env.BLUEDART_EWAY_BILL_URL || 'https://apigateway.bluedart.com/in/transportation/waybill/v1/GenerateWayBill',
+    
+    // E-Way Bill Generation (Sandbox)
+    GENERATE_EWAY_BILL_SANDBOX: 'https://apigateway-sandbox.bluedart.com/in/transportation/waybill/v1/GenerateWayBill',
+    
     // Master Download
     MASTER_DOWNLOAD: process.env.BLUEDART_MASTER_URL || 'https://apigateway.bluedart.com/in/transportation/master/v1',
     
@@ -87,6 +93,7 @@ export const BLUEDART_CONFIG = {
     ALT_INSTRUCTION: 'AVAILABLE', // BD-Alt-Instruction
     CANCEL_PICKUP: 'AVAILABLE', // BD-Cancel Pickup Registration
     WAYBILL: 'AVAILABLE', // BD-Waybill
+    GENERATE_EWAY_BILL: 'AVAILABLE', // BD-E-Way Bill Generation
     MASTER_DOWNLOAD: 'AVAILABLE', // BD-Master Download
     LOCATION_FINDER: 'AVAILABLE' // BD-Location Finder
   },
@@ -100,6 +107,7 @@ export const BLUEDART_CONFIG = {
     ALT_INSTRUCTION: 'BD-Alt-Instruction',
     CANCEL_PICKUP: 'BD-Cancel Pickup Registration',
     WAYBILL: 'BD-Waybill',
+    GENERATE_EWAY_BILL: 'BD-E-Way Bill Generation',
     MASTER_DOWNLOAD: 'BD-Master Download',
     LOCATION_FINDER: 'BD-Location Finder'
   },
