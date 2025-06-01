@@ -326,21 +326,110 @@ async function processOrdersInBackground(uploadId, headers, rows, sellerId) {
 
         let processedCount = 0;
         let failedCount = 0;
+        let skippedCount = 0;
         const errors = [];
 
         for (let i = 0; i < rows.length; i++) {
+            let rowData = {}; // Declare outside try block
             try {
-                const rowData = {};
                 headers.forEach((header, index) => {
                     rowData[header] = rows[i][index];
                 });
 
                 // Validate required fields
-                const requiredFields = ['Order Id *', 'Payment Type *', 'Shipping Full Name *', 'Shipping Contact Number *', 'Shipping Pincode *'];
+                const requiredFields = [
+                    'Order Id *', 
+                    'Payment Type *', 
+                    'Order Date *',
+                    'Shipping Full Name *', 
+                    'Shipping Address Line1 *',
+                    'Shipping Address Line2 *',
+                    'Shipping Contact Number *', 
+                    'Shipping City *',
+                    'Shipping Pincode *',
+                    'Package Weight *',
+                    'Product Name1 *',
+                    'Quantity1 *',
+                    'Item Weight1 *',
+                    'Item Price1 *',
+                    'Package Length *',
+                    'Package Width *',
+                    'Package Height *',
+                    'Purchase Amount *'
+                ];
                 const missingFields = requiredFields.filter(field => !rowData[field]);
 
                 if (missingFields.length > 0) {
                     throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+                }
+
+                // Validate data types and format
+                const quantity = parseInt(rowData['Quantity1 *']);
+                const price = parseFloat(rowData['Item Price1 *']);
+                const weight = parseFloat(rowData['Item Weight1 *']);
+                const packageWeight = parseFloat(rowData['Package Weight *']);
+                const length = parseFloat(rowData['Package Length *']);
+                const width = parseFloat(rowData['Package Width *']);
+                const height = parseFloat(rowData['Package Height *']);
+                const amount = parseFloat(rowData['Purchase Amount *']);
+
+                if (isNaN(quantity) || quantity <= 0) {
+                    throw new Error('Invalid quantity value');
+                }
+                if (isNaN(price) || price < 0) {
+                    throw new Error('Invalid price value');
+                }
+                if (isNaN(weight) || weight <= 0) {
+                    throw new Error('Invalid weight value');
+                }
+                if (isNaN(packageWeight) || packageWeight <= 0) {
+                    throw new Error('Invalid package weight value');
+                }
+                if (isNaN(amount) || amount < 0) {
+                    throw new Error('Invalid purchase amount value');
+                }
+
+                // Validate phone number format
+                const phone = rowData['Shipping Contact Number *'].toString().trim();
+                if (!/^[0-9]{10}$/.test(phone)) {
+                    throw new Error('Phone number must be 10 digits');
+                }
+
+                // Validate pincode format
+                const pincode = rowData['Shipping Pincode *'].toString().trim();
+                if (!/^[0-9]{6}$/.test(pincode)) {
+                    throw new Error('Pincode must be 6 digits');
+                }
+
+                // Derive state from city or provide default
+                const city = rowData['Shipping City *'] || '';
+                let state = '';
+                
+                // Simple state mapping based on common cities
+                const cityStateMap = {
+                    'delhi': 'Delhi',
+                    'new delhi': 'Delhi',
+                    'mumbai': 'Maharashtra',
+                    'bangalore': 'Karnataka',
+                    'bengaluru': 'Karnataka',
+                    'chennai': 'Tamil Nadu',
+                    'kolkata': 'West Bengal',
+                    'hyderabad': 'Telangana',
+                    'pune': 'Maharashtra',
+                    'ahmedabad': 'Gujarat',
+                    'jaipur': 'Rajasthan'
+                };
+                
+                state = cityStateMap[city.toLowerCase()] || city || 'Unknown';
+
+                // Check if order with this orderId already exists
+                const existingOrder = await Order.findOne({ orderId: rowData['Order Id *'] });
+                if (existingOrder) {
+                    // Skip duplicate order and log as warning
+                    logger.warn(`Order ${rowData['Order Id *']} already exists, skipping...`);
+                    processedCount++;
+                    skippedCount++;
+                    continue;
                 }
 
                 // Create order
@@ -350,32 +439,32 @@ async function processOrdersInBackground(uploadId, headers, rows, sellerId) {
                     orderDate: new Date(rowData['Order Date *'] || new Date()),
                     customer: {
                         name: rowData['Shipping Full Name *'],
-                        phone: rowData['Shipping Contact Number *'],
+                        phone: phone,
                         email: rowData['Shipping Email'] || '',
                         address: {
                             street: `${rowData['Shipping Address Line1 *'] || ''} ${rowData['Shipping Address Line2 *'] || ''}`.trim(),
-                            city: rowData['Shipping City *'] || '',
-                            state: rowData['Shipping State *'] || '',
-                            pincode: rowData['Shipping Pincode *'],
+                            city: city,
+                            state: state,
+                            pincode: pincode,
                             country: 'India'
                         }
                     },
                     product: {
                         name: rowData['Product Name1 *'] || 'Bulk Order Item',
                         sku: rowData['SKU1'] || '',
-                        quantity: parseInt(rowData['Quantity1 *']) || 1,
-                        price: parseFloat(rowData['Item Price1 *']) || 0,
-                        weight: (parseFloat(rowData['Item Weight1 *']) || 0.5).toString(),
+                        quantity: quantity,
+                        price: price,
+                        weight: weight.toString(),
                         dimensions: {
-                            length: parseFloat(rowData['Package Length *']) || 10,
-                            width: parseFloat(rowData['Package Width *']) || 10,
-                            height: parseFloat(rowData['Package Height *']) || 10
+                            length: length || 10,
+                            width: width || 10,
+                            height: height || 10
                         }
                     },
                     payment: {
                         method: rowData['Payment Type *'] === 'COD' ? 'COD' : 'Prepaid',
-                        amount: (rowData['Purchase Amount *'] || '0').toString(),
-                        total: (rowData['Purchase Amount *'] || '0').toString()
+                        amount: amount.toString(),
+                        total: amount.toString()
                     },
                     channel: 'EXCEL',
                     status: 'Pending'
@@ -385,14 +474,16 @@ async function processOrdersInBackground(uploadId, headers, rows, sellerId) {
                 await order.save();
 
                 processedCount++;
+                logger.info(`Successfully processed order: ${rowData['Order Id *']}`);
             } catch (error) {
                 failedCount++;
+                const errorMessage = error.message || 'Unknown error occurred';
                 errors.push({
                     row: i + 2, // +2 because we skip header and array is 0-indexed
                     orderId: rowData['Order Id *'] || 'N/A',
-                    message: error.message
+                    message: errorMessage
                 });
-                logger.error(`Error processing row ${i + 2}:`, error);
+                logger.error(`Error processing row ${i + 2}: ${errorMessage}`, error);
             }
 
             // Update progress
@@ -407,7 +498,7 @@ async function processOrdersInBackground(uploadId, headers, rows, sellerId) {
         bulkUpload.updatedAt = new Date();
         await bulkUpload.save();
 
-        logger.info(`Bulk order processing completed: ${processedCount} success, ${failedCount} failed`);
+        logger.info(`Bulk order processing completed: ${processedCount} success, ${failedCount} failed, ${skippedCount} skipped`);
 
     } catch (error) {
         logger.error('Error in background processing:', error);
