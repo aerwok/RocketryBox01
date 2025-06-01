@@ -620,7 +620,7 @@ export class ServiceFactory {
   static customer = {
     orders: {
       getByAwb: async (awb: string): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/orders/${awb}`, 'GET');
+        return ServiceFactory.callApi(`/customer/orders/awb/${awb}`, 'GET');
       },
       submitRating: async (awb: string, data: any): Promise<ApiResponse<any>> => {
         return ServiceFactory.callApi(`/customer/orders/${awb}/rating`, 'POST', data);
@@ -650,7 +650,76 @@ export class ServiceFactory {
         return ServiceFactory.callApi('/customer/orders/status-counts', 'GET');
       },
       downloadLabel: async (awb: string): Promise<ApiResponse<Blob>> => {
-        return ServiceFactory.callApi(`/customer/orders/${awb}/label`, 'GET', undefined, 'blob');
+        try {
+          console.log('ServiceFactory: Downloading shipping label for AWB:', awb);
+          
+          // Call the updated backend endpoint that uses PDFKit
+          const response = await ServiceFactory.callApi<Blob>(`/customer/orders/awb/${awb}/label`, 'GET', undefined, 'blob');
+          
+          console.log('ServiceFactory: API response received:', {
+            success: response.success,
+            status: response.status,
+            message: response.message,
+            hasData: !!response.data,
+            dataType: response.data ? typeof response.data : 'no data'
+          });
+          
+          if (response.success && response.data) {
+            console.log('ServiceFactory: PDF label downloaded successfully');
+            
+            // Validate that we received a valid PDF
+            const blob = response.data;
+            if (blob.type === 'application/pdf' || blob.size > 0) {
+              return response;
+            } else {
+              console.warn('ServiceFactory: Downloaded file may not be a valid PDF', {
+                type: blob.type,
+                size: blob.size
+              });
+              // Still return the response, let the UI handle it
+              return response;
+            }
+          } else {
+            const errorMessage = response.message || 'Unknown error occurred while downloading shipping label';
+            console.error('ServiceFactory: Failed to download PDF label:', errorMessage);
+            return {
+              success: false,
+              data: null as unknown as Blob,
+              message: errorMessage,
+              status: response.status || 500
+            };
+          }
+        } catch (error: any) {
+          console.error('ServiceFactory: PDF download error:', error);
+          console.error('ServiceFactory: Error details:', {
+            message: error?.message,
+            status: error?.status,
+            response: error?.response,
+            name: error?.name
+          });
+          
+          // Enhanced error handling with better default messages
+          let errorMessage = 'Failed to download shipping label. Please try again.';
+          
+          if (error?.message) {
+            errorMessage = error.message;
+          } else if (error?.response?.data?.message) {
+            errorMessage = error.response.data.message;
+          } else if (error?.status === 404) {
+            errorMessage = 'Shipping label not found. The label may not have been generated yet.';
+          } else if (error?.status === 401) {
+            errorMessage = 'Authentication failed. Please log in again.';
+          } else if (error?.status >= 500) {
+            errorMessage = 'Server error occurred. Please try again later.';
+          }
+          
+          return {
+            success: false,
+            data: null as unknown as Blob,
+            message: errorMessage,
+            status: error?.status || 500
+          };
+        }
       }
     },
     profile: {
@@ -872,8 +941,80 @@ export class ServiceFactory {
 
       return response;
     } catch (error: any) {
-      // Preserve the original error details instead of returning generic message
       console.error('ServiceFactory.callApi error:', error);
+      
+      // For blob responses, try a direct fetch fallback if the main call fails
+      if (responseType === 'blob' && method.toUpperCase() === 'GET') {
+        try {
+          console.log('ServiceFactory: Attempting direct fetch fallback for PDF download...');
+          const { secureStorage } = await import('@/utils/secureStorage');
+          const authToken = await secureStorage.getItem('auth_token');
+          
+          if (!authToken) {
+            throw new Error('No authentication token found. Please log in again.');
+          }
+          
+          const fallbackResponse = await fetch(`/api/v2${endpoint}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${authToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (fallbackResponse.ok) {
+            const blob = await fallbackResponse.blob();
+            
+            // Additional validation for PDF downloads
+            if (endpoint.includes('/label') && blob.size > 0) {
+              console.log('ServiceFactory: Fallback PDF download successful', {
+                size: blob.size,
+                type: blob.type
+              });
+              
+              // Ensure the blob has the correct MIME type
+              const pdfBlob = blob.type === 'application/pdf' 
+                ? blob 
+                : new Blob([blob], { type: 'application/pdf' });
+              
+              return {
+                success: true,
+                data: pdfBlob as unknown as T,
+                message: 'PDF downloaded successfully (fallback)',
+                status: fallbackResponse.status
+              };
+            } else {
+              return {
+                success: true,
+                data: blob as unknown as T,
+                message: 'Request successful (fallback)',
+                status: fallbackResponse.status
+              };
+            }
+          } else if (fallbackResponse.status === 404) {
+            throw new Error('Shipping label not found. The label may not have been generated yet.');
+          } else if (fallbackResponse.status === 401) {
+            throw new Error('Authentication failed. Please log in again.');
+          } else {
+            throw new Error(`Server error: ${fallbackResponse.status}. Please try again later.`);
+          }
+        } catch (fallbackError: any) {
+          console.error('ServiceFactory fallback error:', fallbackError);
+          
+          // Enhanced error messages for PDF downloads
+          let errorMessage = fallbackError.message || 'Failed to download shipping label';
+          if (endpoint.includes('/label')) {
+            errorMessage = 'Unable to download shipping label. This may be due to network issues or the label not being ready yet. Please try again in a few moments.';
+          }
+          
+          return {
+            success: false,
+            data: null as unknown as T,
+            message: errorMessage,
+            status: fallbackError.status || 500
+          };
+        }
+      }
       
       return {
         success: false,

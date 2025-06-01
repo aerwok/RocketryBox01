@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, } from "@/components/ui/table";
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Search, ArrowUp, ArrowDown, ArrowUpDown, Loader2, AlertCircle, RefreshCw, FilterX } from "lucide-react";
+import { Search, ArrowUp, ArrowDown, ArrowUpDown, Loader2, AlertCircle, RefreshCw, FilterX, Download } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ServiceFactory } from "@/services/service-factory";
@@ -147,25 +147,72 @@ const CustomerOrdersPage = () => {
         try {
             setDownloadingLabel(awb);
             
+            console.log('🔄 Starting label download for AWB:', awb);
             const response = await ServiceFactory.customer.orders.downloadLabel(awb);
-            if (response.success) {
-                const blob = response.data;
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `label-${awb}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
+            
+            // Check if response is a raw Blob (ServiceFactory bug) or proper ApiResponse
+            const isRawBlob = response instanceof Blob;
+            
+            if (isRawBlob) {
+                console.log('📥 Received raw Blob from ServiceFactory:', {
+                    size: response.size,
+                    type: response.type,
+                    isValid: response.size > 0
+                });
                 
-                toast.success("Label downloaded successfully");
+                if (response.size > 0) {
+                    const blob = response;
+                    console.log('✅ Valid raw blob received, proceeding with download');
+                    
+                    // Create download URL
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    // We're now generating PDFs instead of HTML
+                    a.download = `shipping-label-${awb}.pdf`;
+                    
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    toast.success('PDF label downloaded successfully');
+                } else {
+                    throw new Error('Received empty blob from server');
+                }
             } else {
-                throw new Error(response.message || 'Failed to download label');
+                // Handle proper ApiResponse format
+                console.log('📥 Received ApiResponse from ServiceFactory:', response);
+                
+                const isValidResponse = response.success || (response.data instanceof Blob && response.data.size > 0);
+                
+                if (isValidResponse) {
+                    const blob = response.data as Blob;
+                    console.log('✅ Valid ApiResponse blob received, proceeding with download');
+                    
+                    // Create download URL
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    // We're now generating PDFs instead of HTML
+                    a.download = `shipping-label-${awb}.pdf`;
+                    
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    
+                    toast.success('PDF label downloaded successfully');
+                } else {
+                    console.error('❌ ServiceFactory returned invalid ApiResponse:', response);
+                    throw new Error(response.message || 'Failed to download label - no valid data received');
+                }
             }
-        } catch (err) {
-            console.error("Error downloading label:", err);
-            toast.error("Failed to download label. Please try again.");
+        } catch (error: any) {
+            console.error('💥 Error downloading label:', error);
+            toast.error(error.message || 'Failed to download label');
         } finally {
             setDownloadingLabel(null);
         }
@@ -310,7 +357,7 @@ const CustomerOrdersPage = () => {
                                     <TableHead onClick={() => handleSort("amount")} className="cursor-pointer hidden lg:table-cell">
                                         Amount {getSortIcon("amount")}
                                     </TableHead>
-                                    <TableHead>Label</TableHead>
+                                    <TableHead className="text-center">Label</TableHead>
                                     <TableHead onClick={() => handleSort("status")} className="cursor-pointer">
                                         Status {getSortIcon("status")}
                                     </TableHead>
@@ -332,19 +379,17 @@ const CustomerOrdersPage = () => {
                                         <TableCell className="hidden md:table-cell">{order.product}</TableCell>
                                         <TableCell className="hidden md:table-cell">{order.courier}</TableCell>
                                         <TableCell className="hidden lg:table-cell">₹{order.amount}</TableCell>
-                                        <TableCell>
+                                        <TableCell className="text-center">
                                             <button 
-                                                className="text-main hover:underline"
+                                                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-colors text-gray-600 hover:text-gray-900"
                                                 onClick={() => handleDownloadPDF(order.awb)}
                                                 disabled={downloadingLabel === order.awb}
+                                                title="Download Shipping Label"
                                             >
                                                 {downloadingLabel === order.awb ? (
-                                                    <span className="flex items-center">
-                                                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                                        Downloading...
-                                                    </span>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
                                                 ) : (
-                                                    order.label
+                                                    <Download className="h-4 w-4" />
                                                 )}
                                             </button>
                                         </TableCell>

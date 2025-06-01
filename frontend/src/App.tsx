@@ -32,6 +32,7 @@ import CustomerProfile from "./pages/customer/profile";
 import CustomerOrdersPage from "./pages/customer/orders";
 import CustomerCreateOrderPage from "./pages/customer/create-order";
 import CustomerPaymentPage from "./pages/customer/payment";
+import CustomerTrackOrderPage from "./pages/customer/track-order";
 import CustomerLayout from "./layouts/customer-layout";
 import OrderDetails from "./pages/customer/OrderDetails";
 import SellerLayout from "./layouts/seller-layout";
@@ -157,6 +158,7 @@ const AppRoutes = () => {
         <Route path="orders/:orderId" element={<OrderDetails />} />
         <Route path="create-order" element={<CustomerCreateOrderPage />} />
         <Route path="payment" element={<CustomerPaymentPage />} />
+        <Route path="track-order" element={<CustomerTrackOrderPage />} />
       </Route>
 
       {/* Seller Auth Routes */}

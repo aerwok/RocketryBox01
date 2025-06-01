@@ -1,4 +1,6 @@
 // Types for tracking data
+import { secureStorage } from '@/utils/secureStorage';
+
 export interface TrackingEvent {
   status: string;
   location: string;
@@ -180,25 +182,59 @@ const generateRandomTrackingInfo = (awbNumber: string): TrackingInfo => {
 
 /**
  * Fetch tracking information for an AWB number.
- * In a real application, this would make an API call to a backend service.
+ * Now connects to actual customer order data.
  */
 export const fetchTrackingInfo = async (awbNumber: string): Promise<TrackingInfo> => {
   try {
     // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Validate AWB format
-    if (!awbNumber || !/^\d{10}$/.test(awbNumber)) {
-      throw new Error('Invalid AWB number. Please provide a 10-digit AWB number.');
+    // Validate AWB format - now supports both formats
+    if (!awbNumber || (!/^\d{10}$/.test(awbNumber) && !/^RB\d{9}$/.test(awbNumber))) {
+      throw new Error('Invalid AWB number. Please provide a valid AWB number.');
     }
 
-    // In a real app, this would be:
-    // const response = await fetch(`/api/tracking/${awbNumber}`);
-    // if (!response.ok) throw new Error('Failed to fetch tracking info');
-    // return await response.json();
+    // Try to fetch from real API first for RB format AWBs
+    if (/^RB\d{9}$/.test(awbNumber)) {
+      try {
+        // Get the auth token properly
+        const authToken = await secureStorage.getItem('auth_token');
+        
+        if (!authToken) {
+          throw new Error('Authentication required. Please log in again.');
+        }
+        
+        const response = await fetch(`/api/v2/customer/orders/awb/${awbNumber}/tracking`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ Real tracking data received:', data.data);
+          return data.data;
+        } else {
+          console.log('❌ API response not ok:', response.status, response.statusText);
+          const errorData = await response.text();
+          console.log('Error details:', errorData);
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+      } catch (apiError) {
+        console.error('❌ Real API failed:', apiError);
+        throw apiError; // Don't fall back to mock data for real AWBs
+      }
+    }
     
-    // Get tracking info from dummy data or generate random
-    return dummyTrackingData[awbNumber] || generateRandomTrackingInfo(awbNumber);
+    // Fall back to dummy data only for old format AWB numbers (10 digits)
+    if (/^\d{10}$/.test(awbNumber)) {
+      console.log('📋 Using dummy data for old format AWB:', awbNumber);
+      return dummyTrackingData[awbNumber] || generateRandomTrackingInfo(awbNumber);
+    }
+    
+    throw new Error('Unable to fetch tracking information');
   } catch (error) {
     console.error('Error fetching tracking info:', error);
     throw error;

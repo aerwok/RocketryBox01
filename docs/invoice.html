@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing, Credit & Debit Notes Admin Panel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 5px; box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1); }
+        h2 { text-align: center; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #007bff; color: white; }
+        button { padding: 8px 12px; margin-top: 10px; border: none; cursor: pointer; border-radius: 4px; color: white; }
+        .add-btn { background: #28a745; }
+        .hidden { display: none; }
+        input, select { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Billing & Notes Management</h2>
+        <button class="add-btn" onclick="toggleForm()">+ Add New Transaction</button>
+
+        <!-- Transactions Table -->
+        <table id="transactionTable">
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th>Seller</th>
+                <th>Amount (₹)</th>
+                <th>Payment/Reason</th>
+                <th>Status</th>
+                <th>Excel File</th>
+                <th>Action</th>
+            </tr>
+        </table>
+
+        <!-- Unified Transaction Form -->
+        <div id="transactionForm" class="hidden">
+            <h3>Add New Transaction</h3>
+
+            <label>Transaction Type:</label>
+            <select id="transactionType" onchange="updateFormFields()">
+                <option value="Invoice">Invoice</option>
+                <option value="Credit Note">Credit Note</option>
+                <option value="Debit Note">Debit Note</option>
+            </select>
+
+            <label>Transaction ID:</label>
+            <input type="text" id="transactionID" readonly>
+
+            <label>Seller ID:</label>
+            <input type="text" id="sellerID" placeholder="Enter Seller ID" oninput="fetchSellerName(this.value)">
+
+            <label>Seller Name:</label>
+            <input type="text" id="sellerName" readonly>
+
+            <label>Amount (₹):</label>
+            <input type="number" id="transactionAmount" placeholder="Enter Amount">
+
+            <label id="paymentLabel">Payment Type:</label>
+            <select id="paymentType">
+                <option value="Wallet">Wallet</option>
+                <option value="Credit">Credit</option>
+            </select>
+
+            <label id="statusLabel">Payment Status:</label>
+            <select id="paymentStatus">
+                <option value="Due">Due</option>
+                <option value="Paid">Paid</option>
+            </select>
+
+            <label id="reasonLabel" class="hidden">Reason:</label>
+            <input type="text" id="transactionReason" class="hidden" placeholder="Enter Reason">
+
+            <!-- Excel Upload for All Transactions -->
+            <label>Upload Excel:</label>
+            <input type="file" id="uploadExcel" accept=".xlsx" onchange="showFileName()">
+            <p id="uploadedFileName"></p>
+
+            <button class="add-btn" onclick="saveTransaction()">Save Transaction</button>
+        </div>
+
+    </div>
+
+    <script>
+        function toggleForm() {
+            document.getElementById("transactionForm").classList.toggle("hidden");
+            generateTransactionID();
+        }
+
+        function generateTransactionID() {
+            let type = document.getElementById("transactionType").value;
+            let prefix = type === "Invoice" ? "RBX" : type === "Credit Note" ? "CRN" : "DBN";
+            let date = new Date();
+            let year = date.getFullYear().toString().substr(-2);
+            let month = ('0' + (date.getMonth() + 1)).slice(-2);
+            let randomNum = Math.floor(100 + Math.random() * 900);
+            document.getElementById("transactionID").value = `${prefix}/${year}/${month}/${randomNum}`;
+        }
+
+        function fetchSellerName(id) {
+            let sellerData = { "SELL001": "John Doe", "SELL002": "Jane Smith", "SELL003": "Michael Johnson" };
+            document.getElementById("sellerName").value = sellerData[id] || "";
+        }
+
+        function updateFormFields() {
+            let type = document.getElementById("transactionType").value;
+            let paymentLabel = document.getElementById("paymentLabel");
+            let paymentField = document.getElementById("paymentType");
+            let statusLabel = document.getElementById("statusLabel");
+            let statusField = document.getElementById("paymentStatus");
+            let reasonLabel = document.getElementById("reasonLabel");
+            let reasonField = document.getElementById("transactionReason");
+
+            if (type === "Invoice") {
+                paymentLabel.classList.remove("hidden");
+                paymentField.classList.remove("hidden");
+                statusLabel.classList.remove("hidden");
+                statusField.classList.remove("hidden");
+                reasonLabel.classList.add("hidden");
+                reasonField.classList.add("hidden");
+            } else {
+                paymentLabel.classList.add("hidden");
+                paymentField.classList.add("hidden");
+                statusLabel.classList.add("hidden");
+                statusField.classList.add("hidden");
+                reasonLabel.classList.remove("hidden");
+                reasonField.classList.remove("hidden");
+            }
+            
+            generateTransactionID();
+        }
+
+        function showFileName() {
+            let fileInput = document.getElementById("uploadExcel");
+            let fileNameDisplay = document.getElementById("uploadedFileName");
+            fileNameDisplay.innerText = fileInput.files.length > 0 ? `Uploaded: ${fileInput.files[0].name}` : "";
+        }
+
+        function saveTransaction() {
+            let type = document.getElementById("transactionType").value;
+            let id = document.getElementById("transactionID").value;
+            let date = new Date().toISOString().split('T')[0];
+            let seller = document.getElementById("sellerName").value;
+            let amount = document.getElementById("transactionAmount").value;
+            let paymentOrReason = type === "Invoice" ? document.getElementById("paymentType").value : document.getElementById("transactionReason").value;
+            let status = type === "Invoice" ? document.getElementById("paymentStatus").value : "-";
+            let excelFile = document.getElementById("uploadExcel").files[0]?.name || "-";
+
+            if (!seller || !amount || (!paymentOrReason && type === "Invoice")) {
+                alert("Please fill in all required fields.");
+                return;
+            }
+
+            let table = document.getElementById("transactionTable");
+            let row = table.insertRow();
+            row.insertCell().innerText = id;
+            row.insertCell().innerText = type;
+            row.insertCell().innerText = date;
+            row.insertCell().innerText = seller;
+            row.insertCell().innerText = `₹${amount}`;
+            row.insertCell().innerText = paymentOrReason;
+            row.insertCell().innerText = status;
+            row.insertCell().innerText = excelFile;
+            row.insertCell().innerHTML = '<button class="download-btn">Download</button>';
+
+            document.getElementById("transactionForm").classList.add("hidden");
+        }
+    </script>
+
+</body>
+</html>

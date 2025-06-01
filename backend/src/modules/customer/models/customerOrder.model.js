@@ -172,6 +172,10 @@ const customerOrderSchema = new mongoose.Schema({
     type: String,
     maxlength: [500, 'Instructions cannot exceed 500 characters']
   },
+  pickupDate: {
+    type: Date,
+    required: [true, 'Pickup date is required']
+  },
   // AWB and tracking details (populated after payment)
   awb: {
     type: String,
@@ -196,6 +200,10 @@ const customerOrderSchema = new mongoose.Schema({
   // Additional fields
   notes: {
     type: String
+  },
+  label: {
+    type: String,
+    select: false // Don't include by default due to size
   },
   metadata: {
     type: mongoose.Schema.Types.Mixed

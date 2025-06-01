@@ -223,7 +223,7 @@ class PaymentController {
 
       // Generate tracking URL
       const awbNumber = generateAWB();
-      const trackingUrl = `${process.env.FRONTEND_URL || 'https://rocketrybox.com'}/track/${awbNumber}`;
+      const trackingUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/track-order?awb=${awbNumber}`;
 
       // Update order with tracking details
       const updatedOrder = await CustomerOrder.findByIdAndUpdate(

@@ -4,12 +4,14 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Camera, MailIcon, PhoneIcon, Plus, User2Icon, UserIcon, Loader2, AlertCircle, X } from "lucide-react";
+import { Camera, MailIcon, PhoneIcon, Plus, User2Icon, UserIcon, Loader2, AlertCircle, X, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formSchema, type ProfileFormValues } from "@/lib/validations/profile";
 import AddressModal from "@/components/customer/address-modal";
 import { toast } from "sonner";
 import { ServiceFactory } from "@/services/service-factory";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 interface Address {
     id: string;
@@ -25,6 +27,8 @@ interface Address {
 
 const CustomerProfilePage = () => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { logout } = useAuth();
+    const navigate = useNavigate();
 
     const [profileImage, setProfileImage] = useState<string | null>(null);
     const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
@@ -34,6 +38,7 @@ const CustomerProfilePage = () => {
     const [error, setError] = useState<string | null>(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [deletingAddressId, setDeletingAddressId] = useState<string | null>(null);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     const form = useForm<ProfileFormValues>({
         resolver: zodResolver(formSchema),
@@ -200,6 +205,24 @@ const CustomerProfilePage = () => {
         }
     };
 
+    const handleLogout = async () => {
+        try {
+            setIsLoggingOut(true);
+            setError(null);
+            
+            await logout();
+            toast.success("Logged out successfully");
+            navigate("/customer/login");
+        } catch (error: any) {
+            console.error("Logout error:", error);
+            const errorMessage = error.message || "Failed to logout. Please try again.";
+            setError(`Logout failed: ${errorMessage}`);
+            toast.error(errorMessage);
+        } finally {
+            setIsLoggingOut(false);
+        }
+    };
+
     const containerVariants = {
         hidden: { opacity: 0 },
         visible: {
@@ -258,6 +281,18 @@ const CustomerProfilePage = () => {
                     </Button>
                 </motion.div>
             )}
+            
+            {/* Header with Logout Button */}
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-8"
+            >
+                <div>
+                    <h1 className="text-2xl lg:text-3xl font-bold text-[#412A5F]">My Profile</h1>
+                    <p className="text-muted-foreground mt-1">Manage your account settings and preferences</p>
+                </div>
+            </motion.div>
             
             <div className="grid lg:grid-cols-2 gap-8 items-center">
                 {/* Left Side - Image */}
@@ -450,6 +485,17 @@ const CustomerProfilePage = () => {
                                     ) : (
                                         "Save Changes"
                                     )}
+                                </Button>
+                                
+                                {/* Logout Button */}
+                                <Button 
+                                    variant="outline" 
+                                    onClick={handleLogout}
+                                    disabled={isLoggingOut}
+                                    className="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+                                >
+                                    <LogOut className="w-4 h-4 mr-2" />
+                                    {isLoggingOut ? "Logging out..." : "Logout"}
                                 </Button>
                             </motion.div>
                         </form>

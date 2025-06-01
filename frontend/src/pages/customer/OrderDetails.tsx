@@ -66,12 +66,6 @@ const OrderDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [paymentLoading, setPaymentLoading] = useState(false);
 
-  useEffect(() => {
-    if (orderId) {
-      fetchOrderDetails();
-    }
-  }, [orderId]);
-
   const fetchOrderDetails = async () => {
     try {
       const response = await orderService.getOrderById(orderId!);
@@ -83,6 +77,12 @@ const OrderDetails: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (orderId) {
+      fetchOrderDetails();
+    }
+  }, [orderId]);
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {

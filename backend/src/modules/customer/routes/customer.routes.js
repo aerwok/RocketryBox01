@@ -21,7 +21,8 @@ import {
   calculateRates,
   getOrderById,
   getOrderHistory,
-  getOrderStatusCounts
+  getOrderStatusCounts,
+  getTrackingInfo
 } from '../controllers/order.controller.js';
 import PaymentController from '../controllers/payment.controller.js';
 import {
@@ -98,7 +99,7 @@ router.get('/orders/status-counts', getOrderStatusCounts);
 router.get('/orders', getOrderHistory);
 router.get('/orders/:orderId', getOrderById);
 router.get('/orders/awb/:awb', getOrderDetails);
-router.get('/orders/:id/label', downloadLabel);
+router.get('/orders/awb/:awb/label', downloadLabel);
 
 // Payment routes (Razorpay integration)
 router.post('/payments/create-order', paymentLimiter, PaymentController.createPaymentOrder);
@@ -113,6 +114,7 @@ router.get('/payments/status/:paymentId', paymentLimiter, checkPaymentStatus);
 
 // Tracking routes
 router.post('/tracking/subscribe', trackingLimiter, validateRequest([subscribeTrackingSchema]), subscribeTracking);
+router.get('/orders/awb/:awb/tracking', trackingLimiter, getTrackingInfo);
 
 // Refund routes
 router.post('/refunds', refundLimiter, validateRequest([refundSchema]), refundPayment);

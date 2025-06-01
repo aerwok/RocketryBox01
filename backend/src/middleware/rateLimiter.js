@@ -98,12 +98,13 @@ export const paymentLimiter = async (req, res, next) => {
     }
 };
 
-// Stricter limiter for tracking subscription
+// More reasonable limiter for tracking requests
 export const trackingLimiter = async (req, res, next) => {
     try {
         const key = `trackinglimit:${req.ip}`;
-        const windowMs = 24 * 60 * 60 * 1000; // 24 hours
-        const maxRequests = 3; // 3 requests per day
+        const windowMs = 60 * 60 * 1000; // 1 hour
+        // Much more reasonable limits: users should be able to track multiple times
+        const maxRequests = process.env.NODE_ENV === 'development' ? 100 : 50; // 100 dev, 50 prod per hour
         
         const result = await checkRateLimit(
             key,
@@ -113,7 +114,7 @@ export const trackingLimiter = async (req, res, next) => {
 
         if (!result.isAllowed) {
             const error = new AppError(
-                'Too many tracking subscription attempts, please try again later',
+                'Too many tracking requests, please try again later',
                 429
             );
             error.remainingAttempts = result.remainingAttempts;

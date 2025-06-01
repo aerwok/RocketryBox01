@@ -168,6 +168,25 @@ export class ApiService {
         withCredentials: true // Ensure cookies are sent with each request
       });
 
+      console.log('API response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseType: config.responseType,
+        dataType: typeof response.data,
+        isBlob: response.data instanceof Blob
+      });
+
+      // Handle blob responses differently
+      if (config.responseType === 'blob') {
+        // For blob responses, wrap the raw blob in our API response format
+        return {
+          success: true,
+          data: response.data as T,
+          message: 'Request successful',
+          status: response.status
+        };
+      }
+
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

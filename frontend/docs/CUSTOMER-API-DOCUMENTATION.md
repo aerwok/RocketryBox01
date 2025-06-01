@@ -274,12 +274,10 @@ Response:
 ```
 
 ### Download Order Label
-```typescript
-GET /api/v1/customer/orders/:awb/label
 
-Response:
-Blob // PDF file
-```
+Download the shipping label for an order.
+
+**Endpoint:** `GET /api/v1/customer/orders/awb/:awb/label`
 
 ## Track Order
 
