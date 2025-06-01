@@ -42,33 +42,110 @@ export const useWallet = (): UseWalletReturn => {
     }, []);
 
     const rechargeWallet = useCallback(async (params: { amount: number; paymentMethod: string }) => {
+        // Prevent multiple concurrent recharge attempts
+        if (isRecharging) {
+            return;
+        }
+
         try {
             setIsRecharging(true);
+            
             const response = await walletService.rechargeWallet(params);
+            
+            // Update wallet balance immediately
             setWalletBalance(response.data);
-            toast.success('Wallet recharged successfully');
+            
+            // Refresh wallet balance from server to ensure consistency
+            try {
+                await getWalletBalance();
+            } catch (balanceError) {
+                console.warn('[WALLET] Failed to refresh balance from server:', balanceError);
+            }
+            
+            // Refresh transaction history
+            try {
+                // Force refresh by clearing current data
+                setTransactions([]);
+                setCurrentPage(1);
+                setHasMoreTransactions(false);
+                
+                // Load fresh transactions
+                const historyResponse = await walletService.getWalletHistory(1, 10);
+                const historyData = historyResponse?.data || {};
+                const newTransactions = historyData.data || [];
+                const pagination = historyData.pagination || { total: 0, page: 1, pages: 1 };
+                
+                setTransactions(newTransactions);
+                setCurrentPage(pagination.page);
+                setTotalPages(pagination.pages);
+                setHasMoreTransactions(pagination.page < pagination.pages);
+                
+            } catch (historyError) {
+                console.warn('[WALLET] Failed to refresh transaction history:', historyError);
+            }
+            
+            toast.success(`Wallet recharged successfully with ₹${params.amount}! 🎉`);
+            
         } catch (error) {
-            console.error('Error recharging wallet:', error);
-            toast.error(error instanceof Error ? error.message : ERROR_MESSAGES.SERVER_ERROR);
+            console.error('[WALLET] Error recharging wallet:', error);
+            
+            // Handle different error types
+            if (error instanceof Error) {
+                if (error.message.includes('cancelled') || error.message.includes('dismissed')) {
+                    // Don't show error for user cancellation
+                } else if (error.message.includes('already in progress')) {
+                    toast.error('Payment is already in progress. Please wait.');
+                } else {
+                    toast.error(error.message || 'Failed to recharge wallet. Please try again.');
+                }
+            } else {
+                toast.error('Failed to recharge wallet. Please try again.');
+            }
+            
             throw error;
         } finally {
             setIsRecharging(false);
         }
-    }, []);
+    }, [isRecharging, getWalletBalance]);
 
     const loadTransactions = useCallback(async (page: number = 1, isRefresh: boolean = false) => {
         try {
             setIsLoadingTransactions(true);
-            const response = await walletService.getWalletHistory(page);
-            const { transactions: newTransactions, totalPages: total, hasMore } = response.data;
             
+            const response = await walletService.getWalletHistory(page);
+            
+            // Safely extract data with fallbacks
+            const responseData = response?.data || {};
+            const newTransactions = responseData.data || [];
+            const pagination = responseData.pagination || {
+                total: 0,
+                page: page,
+                pages: 1
+            };
+            
+            // Update state
             setTransactions(prev => isRefresh ? newTransactions : [...prev, ...newTransactions]);
-            setCurrentPage(page);
-            setTotalPages(total);
-            setHasMoreTransactions(hasMore);
+            setCurrentPage(pagination.page || page);
+            setTotalPages(pagination.pages || 1);
+            setHasMoreTransactions((pagination.page || page) < (pagination.pages || 1));
+            
         } catch (error) {
-            console.error('Error fetching transactions:', error);
-            toast.error(error instanceof Error ? error.message : ERROR_MESSAGES.SERVER_ERROR);
+            console.error('[WALLET] Error fetching transactions:', error);
+            
+            // Set empty state on error
+            if (isRefresh) {
+                setTransactions([]);
+                setCurrentPage(1);
+                setTotalPages(1);
+                setHasMoreTransactions(false);
+            }
+            
+            // Show user-friendly error message
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : 'Failed to load wallet transactions. Please try again.';
+            
+            toast.error(errorMessage);
         } finally {
             setIsLoadingTransactions(false);
         }

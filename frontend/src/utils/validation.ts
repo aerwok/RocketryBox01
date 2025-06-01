@@ -1,6 +1,6 @@
 // Constants
 export const MAX_RECHARGE_AMOUNT = 100000; // ₹1,00,000
-export const MIN_RECHARGE_AMOUNT = 100; // ₹100
+export const MIN_RECHARGE_AMOUNT = 10; // ₹10 (matching backend validation)
 export const VALID_PAYMENT_METHODS = ['remittance', 'onlineBanking'] as const;
 export const VALID_USER_ROLES = ['customer', 'seller', 'admin', 'super-admin'] as const;
 export const VALID_USER_STATUSES = ['active', 'inactive', 'suspended', 'pending_verification'] as const;

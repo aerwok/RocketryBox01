@@ -4,6 +4,8 @@ import {
     DialogClose,
     DialogContent,
     DialogHeader,
+    DialogTitle,
+    DialogDescription,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -50,26 +52,56 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
     }, [isOpen]);
 
     const handleRecharge = async () => {
+        // Prevent multiple concurrent recharge attempts
+        if (isRecharging) {
+            return;
+        }
+
+        // Validate inputs first
+        const amount = Number(rechargeAmount);
+        
+        if (!validateAmount(amount)) {
+            toast.error(ERROR_MESSAGES.INVALID_AMOUNT);
+            return;
+        }
+
+        if (!paymentMethod) {
+            toast.error("Please select a payment method");
+            return;
+        }
+
+        // Check payment method
+        if (paymentMethod === "remittance") {
+            toast.error("Remittance/COD recharge is handled separately through COD settlements");
+            return;
+        }
+
+        if (paymentMethod !== "onlineBanking") {
+            toast.error("Invalid payment method selected");
+            return;
+        }
+
         try {
-            const amount = Number(rechargeAmount);
-            
-            // Validate amount
-            if (!validateAmount(amount)) {
-                toast.error(ERROR_MESSAGES.INVALID_AMOUNT);
-                return;
-            }
-
-            // Validate payment method
-            if (!paymentMethod) {
-                toast.error("Please select a payment method");
-                return;
-            }
-
+            // Call the recharge function
             await rechargeWallet({ amount, paymentMethod });
+            
+            // Only close modal on successful completion
             onClose();
+            
         } catch (error) {
-            console.error("Recharge error:", error);
-            // Error is already handled in the hook
+            console.error("[WALLET] Recharge failed:", error);
+            
+            // Handle different error scenarios
+            if (error instanceof Error) {
+                if (error.message.includes('cancelled') || error.message.includes('dismissed')) {
+                    // Keep modal open for user to retry
+                } else if (error.message.includes('already in progress')) {
+                    // Keep modal open but show message
+                } else {
+                    // Keep modal open for retry on other errors
+                }
+            }
+            // Don't close modal on error - let user retry or cancel manually
         }
     };
 
@@ -96,6 +128,7 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
             return (
                 <div className="flex items-center justify-center h-32">
                     <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading transactions...</span>
                 </div>
             );
         }
@@ -103,40 +136,60 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
         if (transactions.length === 0) {
             return (
                 <div className="text-center text-muted-foreground py-8">
-                    No transactions found
+                    <div className="mb-2">No transactions found</div>
+                    <div className="text-xs">
+                        Transactions will appear here after your first wallet recharge
+                    </div>
                 </div>
             );
         }
 
         return (
             <div className="space-y-4">
-                {transactions.map((transaction) => (
-                    <div
-                        key={transaction.transactionId}
-                        className="flex items-center justify-between p-4 rounded-lg border"
-                    >
-                        <div>
-                            <div className="font-medium">
-                                {transaction.type === "Credit" ? "Recharge" : "Withdrawal"}
+                {transactions.map((transaction) => {
+                    // Safely handle transaction data
+                    const transactionId = transaction?._id || Math.random().toString();
+                    const transactionType = transaction?.type || 'Unknown';
+                    const transactionDate = transaction?.date || transaction?.createdAt || new Date().toISOString();
+                    const transactionAmount = parseFloat(transaction?.amount || '0');
+                    const closingBalance = parseFloat(transaction?.closingBalance || '0');
+                    const remark = transaction?.remark || '';
+                    
+                    return (
+                        <div
+                            key={transactionId}
+                            className="flex items-center justify-between p-4 rounded-lg border"
+                        >
+                            <div>
+                                <div className="font-medium">
+                                    {transactionType}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                    {new Date(transactionDate).toLocaleDateString()}
+                                </div>
+                                {remark && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                        {remark}
+                                    </div>
+                                )}
                             </div>
-                            <div className="text-sm text-muted-foreground">
-                                {new Date(transaction.date).toLocaleDateString()}
+                            <div className="text-right">
+                                <div className={cn(
+                                    "font-medium",
+                                    transactionType === "Recharge" || transactionType === "COD Credit" 
+                                        ? "text-green-600" 
+                                        : "text-red-600"
+                                )}>
+                                    {transactionType === "Recharge" || transactionType === "COD Credit" ? "+" : "-"}
+                                    {formatCurrency(transactionAmount)}
+                                </div>
+                                <div className="text-sm text-muted-foreground">
+                                    Balance: {formatCurrency(closingBalance)}
+                                </div>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <div className={cn(
-                                "font-medium",
-                                transaction.type === "Credit" ? "text-green-600" : "text-red-600"
-                            )}>
-                                {transaction.type === "Credit" ? "+" : "-"}
-                                {formatCurrency(transaction.amount)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                                Balance: {formatCurrency(transaction.balance)}
-                            </div>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
                 {hasMoreTransactions && (
                     <Button
                         variant="outline"
@@ -165,6 +218,12 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
                     <DialogClose className="absolute right-6 top-6 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
                         <XIcon className="h-4 w-4" />
                     </DialogClose>
+                    
+                    <DialogTitle className="sr-only">Wallet Management</DialogTitle>
+                    <DialogDescription className="sr-only">
+                        Manage your wallet balance, recharge funds, and view transaction history
+                    </DialogDescription>
+                    
                     <div className="flex w-full p-1 gap-2">
                         <button
                             className={cn(
@@ -270,15 +329,30 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
                                                 Remittance/COD
                                             </SelectItem>
                                             <SelectItem value="onlineBanking">
-                                                Online Banking
+                                                Online Banking (Razorpay)
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 {paymentMethod === "remittance" && (
-                                    <div className="flex justify-between items-center text-sm text-muted-foreground">
-                                        <span>Available Balance:</span>
-                                        <span className="font-medium">{formatCurrency(getAvailableBalance())}</span>
+                                    <div className="p-3 border rounded-md bg-blue-50 border-blue-200">
+                                        <div className="text-sm text-blue-800">
+                                            <span className="font-medium">Remittance/COD Balance:</span>
+                                            <span className="ml-2">{formatCurrency(getAvailableBalance())}</span>
+                                        </div>
+                                        <div className="text-xs text-blue-600 mt-1">
+                                            COD settlements are processed automatically when your orders are delivered.
+                                        </div>
+                                    </div>
+                                )}
+                                {paymentMethod === "onlineBanking" && (
+                                    <div className="p-3 border rounded-md bg-green-50 border-green-200">
+                                        <div className="text-sm text-green-800">
+                                            <span className="font-medium">Secure payment via Razorpay</span>
+                                        </div>
+                                        <div className="text-xs text-green-600 mt-1">
+                                            Supports UPI, Net Banking, Credit/Debit Cards, and Wallets
+                                        </div>
                                     </div>
                                 )}
                                 <Button
@@ -291,6 +365,10 @@ const WalletModal = ({ isOpen, onClose }: WalletModalProps) => {
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                             Processing...
                                         </>
+                                    ) : paymentMethod === "onlineBanking" ? (
+                                        "Recharge with Razorpay"
+                                    ) : paymentMethod === "remittance" ? (
+                                        "Transfer from COD Balance"
                                     ) : (
                                         "Recharge"
                                     )}
