@@ -211,6 +211,7 @@ interface Product {
 
 /**
  * Service factory that provides real API services
+ * Uses singleton pattern to ensure consistent service instances
  */
 export class ServiceFactory {
   private static instance: ServiceFactory;
@@ -223,7 +224,8 @@ export class ServiceFactory {
   private profileService: ProfileService;
 
   private constructor() {
-    this.apiService = new ApiService();
+    // Use singleton instances for all services to prevent multiple initialization
+    this.apiService = ApiService.getInstance();
     this.authService = new AuthService();
     this.adminService = new AdminService();
     this.uploadService = new UploadService();
@@ -376,7 +378,7 @@ export class ServiceFactory {
     // Legacy method - kept for backward compatibility
     async calculateRates(rateData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/shipping/calculate-rates', rateData);
+      return apiService.post('/seller/rate-card/calculate', rateData);
     },
 
     async getShipmentDetails(id: string): Promise<ApiResponse<any>> {

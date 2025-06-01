@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/tooltip";
 import { NewOrderInput, newOrderSchema } from "@/lib/validations/new-order";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { BoxesIcon, Info, MinusIcon, PlusIcon, Save, Truck, Package, CreditCard, MapPin, Calculator, Printer, FileText } from "lucide-react";
+import { BoxesIcon, Info, MinusIcon, PlusIcon, Save, Truck, Package, CreditCard, MapPin, Calculator, Printer, FileText, RefreshCw, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +33,7 @@ import { ShippingOptionsModal } from "@/components/seller/shipping-options-modal
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { ServiceFactory } from "@/services/service-factory";
+import { generateBusinessOrderNumber } from "@/utils/orderNumberGenerator";
 
 const SellerNewOrderPage = () => {
     const navigate = useNavigate();
@@ -59,6 +60,9 @@ const SellerNewOrderPage = () => {
         itemWeight: number;
         itemPrice: number;
     }>>([]);
+    
+    // Order number generation states
+    const [isGeneratingOrderNumber, setIsGeneratingOrderNumber] = useState<boolean>(false);
 
     const form = useForm<NewOrderInput>({
         resolver: zodResolver(newOrderSchema),
@@ -99,6 +103,53 @@ const SellerNewOrderPage = () => {
             shippingMode: "",
         },
     });
+
+    // Auto-generate order number on component mount
+    useEffect(() => {
+        generateNewOrderNumber();
+    }, []);
+
+    /**
+     * Generate a new order number automatically
+     */
+    const generateNewOrderNumber = async () => {
+        setIsGeneratingOrderNumber(true);
+        
+        try {
+            // Simulate a small delay for better UX
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Get seller ID from context/storage (fallback to random if not available)
+            const sellerId = localStorage.getItem('seller_id') || Math.random().toString(36).substr(2, 8);
+            
+            // Generate professional order number
+            const newOrderNumber = generateBusinessOrderNumber(sellerId);
+            
+            // Set the order number in the form
+            form.setValue('orderNumber', newOrderNumber, { 
+                shouldValidate: true,
+                shouldDirty: false // Don't mark as dirty since it's auto-generated
+            });
+            
+            toast.success(`Order number generated: ${newOrderNumber}`, {
+                description: "Professional order number generated automatically",
+                duration: 3000,
+            });
+            
+        } catch (error) {
+            console.error('Error generating order number:', error);
+            toast.error('Failed to generate order number. Please try again.');
+        } finally {
+            setIsGeneratingOrderNumber(false);
+        }
+    };
+
+    /**
+     * Handle manual order number regeneration
+     */
+    const handleRegenerateOrderNumber = () => {
+        generateNewOrderNumber();
+    };
 
     // Calculate volumetric weight when dimensions or actual weight change
     useEffect(() => {
@@ -160,52 +211,94 @@ const SellerNewOrderPage = () => {
 
     const handleCheckRates = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
-
-        // Check if dimensions and weight are filled
-        const length = form.getValues('length');
-        const width = form.getValues('width');
-        const height = form.getValues('height');
-        const itemWeight = form.getValues('itemWeight');
-        const itemPrice = form.getValues('itemPrice');
-        const pincode = form.getValues('pincode');
-        const city = form.getValues('city');
-        const state = form.getValues('state');
-
-        // Validate all required fields
-        let missingFields = [];
-
-        if (!length || length <= 0) missingFields.push("length");
-        if (!width || width <= 0) missingFields.push("width");
-        if (!height || height <= 0) missingFields.push("height");
-        if (!itemWeight || itemWeight <= 0) missingFields.push("item weight");
-        if (!itemPrice || itemPrice <= 0) missingFields.push("item price");
         
-        if (missingFields.length > 0) {
-            toast.error(`Please enter valid ${missingFields.join(", ")} values`);
-            return;
-        }
+        // Get all form values
+        const formValues = form.getValues();
+        
+        // Extract and validate required fields
+        const fullName = formValues.fullName;
+        const contactNumber = formValues.contactNumber;
+        const addressLine1 = formValues.addressLine1;
+        const pincode = formValues.pincode;
+        const city = formValues.city;
+        const state = formValues.state;
 
-        if (!pincode || !city || !state) {
+        // Validate delivery address details
+        if (!fullName || !contactNumber || !addressLine1 || !pincode || !city || !state) {
             toast.error("Please fill in all delivery address details");
             return;
         }
+
+        // Check for items - either in the items array or current form fields
+        let totalWeight = 0;
+        let totalPrice = 0;
+        let itemSource = '';
+
+        if (items.length > 0) {
+            // Preferred workflow: Calculate from added items
+            totalWeight = items.reduce((sum, item) => sum + (item.itemWeight * item.quantity), 0);
+            totalPrice = items.reduce((sum, item) => sum + (item.itemPrice * item.quantity), 0);
+            itemSource = `${items.length} added item(s)`;
+        } else {
+            // Alternative workflow: Use current form fields
+            const itemWeightValue = formValues.itemWeight;
+            const itemPriceValue = formValues.itemPrice;
+            const quantity = formValues.quantity || 1;
+            
+            // Validate current form fields
+            if (!itemWeightValue || isNaN(Number(itemWeightValue)) || Number(itemWeightValue) <= 0) {
+                toast.error("Please add items to the list or enter valid item weight (greater than 0)");
+                return;
+            }
+
+            if (!itemPriceValue || isNaN(Number(itemPriceValue)) || Number(itemPriceValue) <= 0) {
+                toast.error("Please add items to the list or enter valid item price (greater than 0)");
+                return;
+            }
+
+            totalWeight = Number(itemWeightValue) * quantity;
+            totalPrice = Number(itemPriceValue) * quantity;
+            itemSource = 'current form fields';
+        }
+        
+        // Get package dimensions
+        const length = Number(formValues.length) || 10; // Default dimensions if not provided
+        const width = Number(formValues.width) || 10;
+        const height = Number(formValues.height) || 10;
+
+        // Debug logging
+        console.log('Form values for shipping rate calculation:', {
+            itemSource,
+            totalWeight,
+            totalPrice,
+            itemsCount: items.length,
+            dimensions: { length, width, height },
+            address: { fullName, contactNumber, addressLine1, pincode, city, state }
+        });
 
         try {
             const result = await form.trigger(['pincode', 'city', 'state']);
 
             if (result) {
-                const response = await ServiceFactory.shipping.calculateRates({
-                    pickupPincode: pincode,
-                    deliveryPincode: pincode,
-                    paymentType: form.getValues('paymentType'),
-                    purchaseAmount: itemPrice,
-                    weight: itemWeight
+                // Use the correct method with proper parameters
+                const response = await ServiceFactory.shipping.calculateRatesFromPincodes({
+                    fromPincode: "110001", // Default pickup pincode (can be made configurable)
+                    toPincode: pincode,
+                    weight: totalWeight,
+                    length: length,
+                    width: width,
+                    height: height,
+                    mode: 'Surface',
+                    orderType: formValues.paymentType === 'COD' ? 'cod' : 'prepaid',
+                    codCollectableAmount: formValues.paymentType === 'COD' ? totalPrice : 0,
+                    includeRTO: false
                 });
 
                 if (!response.success) {
                     throw new Error(response.message || 'Failed to calculate rates');
                 }
 
+                toast.success(`Shipping rates calculated successfully for ${itemSource}!`);
                 setShippingModalOpen(true);
             } else {
                 const errors = form.formState.errors;
@@ -220,8 +313,8 @@ const SellerNewOrderPage = () => {
                 }
             }
         } catch (error) {
-            console.error("Validation error:", error);
-            toast.error("An error occurred during validation");
+            console.error("Rate calculation error:", error);
+            toast.error("Failed to calculate shipping rates. Please try again.");
         }
     };
 
@@ -415,12 +508,72 @@ const SellerNewOrderPage = () => {
                                 name="orderNumber"
                                 render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-sm font-medium">
+                                        <FormLabel className="text-sm font-medium flex items-center gap-2">
                                             Order Number *
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger>
+                                                        <Info className="w-4 h-4 text-gray-400" />
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p className="max-w-xs">
+                                                            Professional order number auto-generated with date and unique sequence. 
+                                                            Click regenerate to create a new number.
+                                                        </p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
                                         </FormLabel>
-                                        <FormControl>
-                                            <Input placeholder="Enter order number" {...field} className="mt-1" />
-                                        </FormControl>
+                                        <div className="flex gap-2">
+                                            <FormControl className="flex-1">
+                                                <div className="relative">
+                                                    <Input 
+                                                        {...field} 
+                                                        placeholder={isGeneratingOrderNumber ? "Generating..." : "Auto-generated order number"}
+                                                        readOnly={true}
+                                                        disabled={isGeneratingOrderNumber}
+                                                        className={`mt-1 bg-gray-50 border-gray-200 ${
+                                                            isGeneratingOrderNumber ? 'animate-pulse' : ''
+                                                        } pr-8`}
+                                                    />
+                                                    {isGeneratingOrderNumber && (
+                                                        <RefreshCw className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-gray-400" />
+                                                    )}
+                                                    {!isGeneratingOrderNumber && (
+                                                        <Lock className="absolute right-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                                    )}
+                                                </div>
+                                            </FormControl>
+                                            
+                                            {/* Regenerate Button */}
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="icon"
+                                                            onClick={handleRegenerateOrderNumber}
+                                                            disabled={isGeneratingOrderNumber}
+                                                            className="mt-1 h-10"
+                                                        >
+                                                            <RefreshCw className={`w-4 h-4 ${isGeneratingOrderNumber ? 'animate-spin' : ''}`} />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>Generate new order number</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+                                        
+                                        <FormDescription className="text-xs text-gray-500">
+                                            <span className="flex items-center gap-1">
+                                                <Lock className="w-3 h-3" />
+                                                Auto-generated professional format (RB-YYYYMMDD-XXXX)
+                                            </span>
+                                        </FormDescription>
+                                        
                                         <FormMessage />
                                     </FormItem>
                                 )}

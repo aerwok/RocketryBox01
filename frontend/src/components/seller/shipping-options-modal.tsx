@@ -5,7 +5,7 @@ import { calculateShippingRate, determineZone } from "@/lib/shipping-calculator"
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RateData } from "@/types/shipping";
-import { ApiService } from "@/services/api.service";
+import { ServiceFactory } from "@/services/service-factory";
 
 interface ShippingOptionsModalProps {
     open: boolean;
@@ -41,58 +41,49 @@ export function ShippingOptionsModal({
     
     const destinationPincode = "110001";
     const weight = 0.5;
-    const apiService = new ApiService();
 
-    const { data: rateData, isLoading } = useQuery<RateData[]>({
-        queryKey: ['rateCards'],
+    // Use proper shipping rates API instead of rate-cards
+    const { data: rateData, isLoading } = useQuery<any>({
+        queryKey: ['shippingRates', warehouse, destinationPincode, weight],
         queryFn: async () => {
-            const response = await apiService.get<RateData[]>('/rate-cards');
+            const response = await ServiceFactory.shipping.calculateRatesFromPincodes({
+                fromPincode: warehouse,
+                toPincode: destinationPincode,
+                weight: weight,
+                length: 10, // Default dimensions
+                width: 10,
+                height: 10,
+                mode: 'Surface',
+                orderType: isCOD ? 'cod' : 'prepaid',
+                codCollectableAmount: isCOD ? 100 : 0,
+                includeRTO: false
+            });
             return response.data;
         }
     });
 
     useEffect(() => {
         const calculateRates = async () => {
-            if (!rateData) return;
+            if (!rateData?.calculations) return;
 
-            const zone = determineZone(warehouse, destinationPincode);
-            setCurrentZone(zone);
+            // The data is already calculated from the API
+            const rates = rateData.calculations.map((calculation: any) => ({
+                mode: `${calculation.courier} ${calculation.productName}`,
+                courier: calculation.courier,
+                baseCharge: calculation.shippingCost,
+                additionalWeightCharge: 0, // Already included in shippingCost
+                codCharge: calculation.codCharges,
+                gst: calculation.gst,
+                total: calculation.total,
+                gstPercentage: 18 // Standard GST rate
+            }));
 
-            const rates = await Promise.all(
-                rateData.map(async rateCard => {
-                    try {
-                        const rates = await calculateShippingRate(
-                            warehouse,
-                            destinationPincode,
-                            weight,
-                            rateCard.mode,
-                            isCOD,
-                            rateData
-                        );
-
-                        return {
-                            mode: rateCard.mode,
-                            courier: rateCard.mode.split(" ")[0],
-                            baseCharge: rates.baseCharge,
-                            additionalWeightCharge: rates.additionalWeightCharge,
-                            codCharge: isCOD ? rates.codCharge : 0,
-                            gst: rates.gst,
-                            total: rates.total,
-                            gstPercentage: rates.gstPercentage
-                        };
-                    } catch (error) {
-                        console.error(`Error calculating rates for ${rateCard.mode}:`, error);
-                        return null;
-                    }
-                })
-            );
-
-            const validRates = rates.filter(rate => rate !== null);
-            setCourierRates(validRates);
+            setCourierRates(rates);
+            setCurrentZone(rateData.zone || 'Unknown');
         };
 
         calculateRates();
-    }, [warehouse, destinationPincode, weight, isCOD, rateData]);
+    }, [rateData]);
 
     const handleCourierSelect = (rate: any) => {
         setSelectedCourier(rate.courier);
