@@ -917,11 +917,25 @@ const SellerOrdersPage = () => {
     const fetchOrders = async () => {
         try {
             setIsLoading(true);
-            const response = await ServiceFactory.seller.order.getOrders({
-                status: activeTab as OrderData['status'],
-                startDate: dateRange?.from?.toISOString(),
-                endDate: dateRange?.to?.toISOString()
-            });
+            
+            // Build parameters object, only including dates if they exist
+            const params: {
+                status: OrderData['status'];
+                startDate?: string;
+                endDate?: string;
+            } = {
+                status: activeTab as OrderData['status']
+            };
+            
+            // Only add date parameters if they exist and are valid
+            if (dateRange?.from) {
+                params.startDate = dateRange.from.toISOString();
+            }
+            if (dateRange?.to) {
+                params.endDate = dateRange.to.toISOString();
+            }
+            
+            const response = await ServiceFactory.seller.order.getOrders(params);
 
             if (!response.success) {
                 throw new Error(response.message || 'Failed to fetch orders');

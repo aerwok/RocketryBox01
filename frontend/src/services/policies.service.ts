@@ -30,14 +30,20 @@ const DEMO_POLICIES: PolicyValues[] = [
   },
 ];
 
-export class PoliciesService extends ApiService {
+export class PoliciesService {
+    private apiService: ApiService;
+
+    constructor() {
+        this.apiService = ApiService.getInstance();
+    }
+
     async getPolicyBySlug(slug: string) {
         if (import.meta.env.MODE === "development") {
             let policy = DEMO_POLICIES.find((p) => p.slug === slug);
             if (!policy) policy = DEMO_POLICIES[0]; // fallback to first demo policy
             return { data: policy };
         }
-        return this.get(`/policies/${slug}`);
+        return this.apiService.get(`/policies/${slug}`);
     }
 
     async updatePolicy(slug: string, data: PolicyValues) {
@@ -45,7 +51,7 @@ export class PoliciesService extends ApiService {
             // Just return the data for demo purposes
             return { data };
         }
-        return this.put(`/policies/${slug}`, data);
+        return this.apiService.put(`/policies/${slug}`, data);
     }
 
     async createPolicy(data: PolicyValues) {
@@ -53,6 +59,6 @@ export class PoliciesService extends ApiService {
             // Just return the data for demo purposes
             return { data };
         }
-        return this.post(`/policies`, data);
+        return this.apiService.post(`/policies`, data);
     }
 } 

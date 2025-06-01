@@ -17,6 +17,7 @@ import settingsRoutes from './routes/settings.routes.js';
 import rateCardRoutes from './routes/ratecard.routes.js';
 import teamUserRoutes from './routes/teamUser.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
+import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
 
 const router = express.Router();
 
@@ -63,5 +64,8 @@ router.use('/team', teamUserRoutes);
 
 // Dashboard
 router.use('/dashboard', dashboardRoutes);
+
+// Bulk Orders
+router.use('/bulk-orders', bulkOrdersRoutes);
 
 export default router; 

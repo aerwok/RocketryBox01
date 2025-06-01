@@ -17,17 +17,30 @@ export const createOrder = async (req, res, next) => {
 
     // Get seller's pickup pincode
     const seller = await Seller.findById(req.user.id);
-    const sellerPincode = seller.pickupPincode;
+    const sellerPincode = seller.address?.pincode;
     if (!sellerPincode) {
-      throw new AppError('Seller pickup pincode not configured', 400);
+      throw new AppError('Seller pickup pincode not configured. Please update your address in profile settings.', 400);
     }
 
     // Validate pickup and delivery pincodes
     const pickupDetails = await getPincodeDetails(sellerPincode);
     const deliveryDetails = await getPincodeDetails(req.body.customer.address.pincode);
 
-    if (!pickupDetails || !deliveryDetails) {
-      throw new AppError('Invalid pickup or delivery pincode', 400);
+    console.log('Pincode validation:', {
+      sellerPincode,
+      customerPincode: req.body.customer.address.pincode,
+      pickupValid: !!pickupDetails,
+      deliveryValid: !!deliveryDetails,
+      pickupFallback: pickupDetails?._isFallback,
+      deliveryFallback: deliveryDetails?._isFallback
+    });
+
+    if (!pickupDetails) {
+      throw new AppError(`Invalid seller pickup pincode: ${sellerPincode}. Please ensure your address has a valid 6-digit pincode.`, 400);
+    }
+    
+    if (!deliveryDetails) {
+      throw new AppError(`Invalid customer delivery pincode: ${req.body.customer.address.pincode}. Please check the delivery address pincode.`, 400);
     }
 
     // Calculate shipping rates
@@ -131,8 +144,21 @@ export const getOrders = async (req, res, next) => {
 
     const query = { seller: req.user.id };
     
+    // Map frontend status to backend status
+    const statusMapping = {
+      'not-booked': 'Pending',
+      'processing': 'Processing', 
+      'booked': 'Shipped',
+      'cancelled': 'Cancelled',
+      'shipment-cancelled': 'Cancelled', // Could be separate if needed
+      'error': 'Returned' // Map error to returned for now
+    };
+
     // Apply filters
-    if (status) query.status = status;
+    if (status && statusMapping[status]) {
+      query.status = statusMapping[status];
+    }
+    
     if (startDate || endDate) {
       query.orderDate = {};
       if (startDate) query.orderDate.$gte = new Date(startDate);
@@ -156,9 +182,45 @@ export const getOrders = async (req, res, next) => {
 
     const total = await SellerOrder.countDocuments(query);
 
+    // Transform orders to match frontend expected format
+    const transformedOrders = orders.map(order => {
+      // Map backend status to frontend status
+      const frontendStatusMapping = {
+        'Pending': 'not-booked',
+        'Processing': 'processing',
+        'Shipped': 'booked', 
+        'Delivered': 'booked',
+        'Cancelled': 'cancelled',
+        'Returned': 'error'
+      };
+
+      return {
+        orderId: order.orderId,
+        date: order.orderDate.toISOString().split('T')[0], // Format: YYYY-MM-DD
+        customer: order.customer.name,
+        contact: order.customer.phone,
+        items: [{
+          name: order.product.name,
+          sku: order.product.sku,
+          quantity: order.product.quantity,
+          price: order.product.price
+        }],
+        amount: order.payment.total || order.payment.amount,
+        payment: order.payment.method, // COD or Prepaid
+        chanel: order.channel || 'MANUAL', // Note: frontend uses 'chanel', not 'channel'
+        weight: order.product.weight,
+        tags: '', // Empty for now, can be added later
+        action: order.status === 'Pending' ? 'Ship' : order.status,
+        whatsapp: 'Message Delivered', // Default value
+        status: frontendStatusMapping[order.status] || 'not-booked',
+        awbNumber: order.awb || null,
+        pincode: order.customer.address.pincode
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: orders,
+      data: transformedOrders,
       pagination: {
         total,
         page: parseInt(page),
@@ -197,16 +259,28 @@ export const updateOrderStatus = async (req, res, next) => {
     const { status, comment } = req.body;
     if (!status) throw new AppError('Status is required', 400);
 
+    // Map frontend status to backend status
+    const statusMapping = {
+      'not-booked': 'Pending',
+      'processing': 'Processing', 
+      'booked': 'Shipped',
+      'cancelled': 'Cancelled',
+      'shipment-cancelled': 'Cancelled',
+      'error': 'Returned'
+    };
+
+    const backendStatus = statusMapping[status] || status;
+
     const order = await SellerOrder.findOne({ _id: req.params.id, seller: req.user.id });
     if (!order) throw new AppError('Order not found', 404);
 
-    order.status = status;
+    order.status = backendStatus;
     order.updatedAt = new Date();
-    order.orderTimeline.push({ status, timestamp: new Date(), comment: comment || '' });
+    order.orderTimeline.push({ status: backendStatus, timestamp: new Date(), comment: comment || '' });
     await order.save();
 
     // If there's an associated shipment, update its status too
-    if (order.awb && status === 'Cancelled') {
+    if (order.awb && backendStatus === 'Cancelled') {
       await SellerShipment.findOneAndUpdate(
         { awb: order.awb },
         { status: 'Cancelled', updatedAt: new Date() }
@@ -592,11 +666,27 @@ export const importOrders = async (req, res, next) => {
 export const bulkUpdateStatus = async (req, res, next) => {
   try {
     const { orderIds, status } = req.body;
-    const { error } = validateBulkOrderStatus({ status });
-    if (error) throw new AppError(error.details[0].message, 400);
-
+    
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       throw new AppError('Please provide an array of order IDs', 400);
+    }
+
+    // Map frontend status to backend status
+    const statusMapping = {
+      'not-booked': 'Pending',
+      'processing': 'Processing', 
+      'booked': 'Shipped',
+      'cancelled': 'Cancelled',
+      'shipment-cancelled': 'Cancelled',
+      'error': 'Returned'
+    };
+
+    const backendStatus = statusMapping[status] || status;
+
+    // Validate the mapped status
+    const validStatuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Returned'];
+    if (!validStatuses.includes(backendStatus)) {
+      throw new AppError(`Invalid status: ${status}`, 400);
     }
 
     const result = await SellerOrder.updateMany(
@@ -606,14 +696,14 @@ export const bulkUpdateStatus = async (req, res, next) => {
       },
       {
         $set: {
-          status,
+          status: backendStatus,
           updatedAt: new Date()
         }
       }
     );
 
     // If orders have associated shipments, update their status too
-    if (status === 'Cancelled') {
+    if (backendStatus === 'Cancelled') {
       const orders = await SellerOrder.find({
         _id: { $in: orderIds },
         seller: req.user.id,

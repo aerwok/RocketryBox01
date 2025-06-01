@@ -211,6 +211,7 @@ interface Product {
 
 /**
  * Service factory that provides real API services
+ * Uses singleton pattern to ensure consistent service instances
  */
 export class ServiceFactory {
   private static instance: ServiceFactory;
@@ -223,7 +224,8 @@ export class ServiceFactory {
   private profileService: ProfileService;
 
   private constructor() {
-    this.apiService = new ApiService();
+    // Use singleton instances for all services to prevent multiple initialization
+    this.apiService = ApiService.getInstance();
     this.authService = new AuthService();
     this.adminService = new AdminService();
     this.uploadService = new UploadService();
@@ -376,7 +378,7 @@ export class ServiceFactory {
     // Legacy method - kept for backward compatibility
     async calculateRates(rateData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/shipping/calculate-rates', rateData);
+      return apiService.post('/seller/rate-card/calculate', rateData);
     },
 
     async getShipmentDetails(id: string): Promise<ApiResponse<any>> {
@@ -922,8 +924,57 @@ export class ServiceFactory {
       getDetails: async (id: string): Promise<ApiResponse<any>> => {
         return ServiceFactory.callApi(`/seller/orders/${id}`);
       },
+      createOrder: async (orderData: {
+        orderId: string;
+        customer: {
+          name: string;
+          phone: string;
+          email: string;
+          address: {
+            street: string;
+            city: string;
+            state: string;
+            pincode: string;
+            country?: string;
+          };
+        };
+        product: {
+          name: string;
+          sku: string;
+          quantity: number;
+          price: number;
+          weight: string;
+          dimensions: {
+            length: number;
+            width: number;
+            height: number;
+          };
+        };
+        payment: {
+          method: 'COD' | 'Prepaid';
+          amount: string;
+          codCharge?: string;
+          shippingCharge: string;
+          gst: string;
+          total: string;
+        };
+        channel?: string;
+      }): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi('/seller/orders', 'POST', orderData);
+      },
       getOrders: async (params: { status?: string; startDate?: string; endDate?: string }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/seller/orders?${new URLSearchParams(params as any)}`);
+        // Filter out undefined values to prevent URLSearchParams from converting them to "undefined" strings
+        const cleanParams: Record<string, string> = {};
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            cleanParams[key] = String(value);
+          }
+        });
+        
+        const queryString = new URLSearchParams(cleanParams).toString();
+        const endpoint = queryString ? `/seller/orders?${queryString}` : '/seller/orders';
+        
+        return ServiceFactory.callApi(endpoint);
       },
       updateStatus: async (id: string, status: string): Promise<ApiResponse<void>> => {
         return ServiceFactory.callApi(`/seller/orders/${id}/status`, 'PATCH', { status });

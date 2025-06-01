@@ -26,7 +26,14 @@ export const updateProfile = async (req, res, next) => {
             return next(new AppError('Seller not found', 404));
         }
 
-        const updatedSeller = await seller.updateSafe(req.body);
+        // Handle address field mapping: frontend sends postalCode, backend expects pincode
+        const updateData = { ...req.body };
+        if (updateData.address && updateData.address.postalCode) {
+            updateData.address.pincode = updateData.address.postalCode;
+            delete updateData.address.postalCode;
+        }
+
+        const updatedSeller = await seller.updateSafe(updateData);
         res.status(200).json({
             success: true,
             data: updatedSeller
@@ -76,6 +83,12 @@ export const updateCompanyDetails = async (req, res, next) => {
 
         // Update address
         if (address) {
+            // Handle field mapping: frontend sends postalCode, backend expects pincode
+            if (address.postalCode) {
+                address.pincode = address.postalCode;
+                delete address.postalCode;
+            }
+            
             seller.address = {
                 ...seller.address,
                 ...address
