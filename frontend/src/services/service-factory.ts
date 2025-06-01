@@ -772,7 +772,7 @@ export class ServiceFactory {
         return await ServiceFactory.callApi<{ 
           lastUpdated: string;
           rates: any[];
-        }>('/seller/billing/rate-card');
+        }>('/seller/rate-card');
       },
       calculateRates: async (data: {
         pickupPincode: string;
@@ -780,17 +780,30 @@ export class ServiceFactory {
         paymentType: string;
         purchaseAmount: number;
         weight: number;
+        packageLength?: number;
+        packageWidth?: number;
+        packageHeight?: number;
+        includeRTO?: boolean;
       }) => {
         return await ServiceFactory.callApi<{
           zone: string;
+          billedWeight: string;
+          volumetricWeight: string;
           rates: Array<{
             name: string;
+            courier: string;
+            productName: string;
+            mode: string;
             baseCharge: number;
             codCharge: number;
+            rtoCharges: number;
             gst: number;
             total: number;
+            finalWeight: string;
+            weightMultiplier: number;
+            rateCardId: string;
           }>;
-        }>('/seller/billing/calculate-rates', 'POST', data);
+        }>('/seller/rate-card/calculate', 'POST', data);
       },
       getWalletTransactions: async (params: WalletTransactionParams): Promise<ApiResponse<{ transactions: WalletTransaction[]; total: number }>> => {
         return ServiceFactory.callApi('GET', '/seller/wallet/transactions', params);
