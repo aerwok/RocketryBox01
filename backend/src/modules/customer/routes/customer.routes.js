@@ -20,7 +20,8 @@ import {
   checkPaymentStatus,
   calculateRates,
   getOrderById,
-  getOrderHistory
+  getOrderHistory,
+  getOrderStatusCounts
 } from '../controllers/order.controller.js';
 import PaymentController from '../controllers/payment.controller.js';
 import {
@@ -93,6 +94,7 @@ router.delete('/address/:id', deleteAddress);
 
 // Order routes
 router.post('/orders', validateRequest([createOrderSchema]), createOrder);
+router.get('/orders/status-counts', getOrderStatusCounts);
 router.get('/orders', getOrderHistory);
 router.get('/orders/:orderId', getOrderById);
 router.get('/orders/awb/:awb', getOrderDetails);

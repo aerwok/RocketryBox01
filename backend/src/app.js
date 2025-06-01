@@ -51,6 +51,7 @@ import customerRoutes from './modules/customer/index.js';
 import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
 import adminRoutes from './modules/admin/index.js';
+import shippingRoutes from './modules/shipping/index.js';
 import pincodeRoutes from './modules/common/routes/pincode.routes.js';
 import webhookRoutes from './modules/customer/routes/webhook.routes.js';
 
@@ -224,6 +225,7 @@ app.use('/api/v2/customer', customerRoutes);
 app.use('/api/v2/marketing', marketingRoutes);
 app.use('/api/v2/seller', sellerRoutes);
 app.use('/api/v2/admin', adminRoutes);
+app.use('/api/v2/shipping', shippingRoutes);
 app.use('/api/v2/pincodes', pincodeRoutes);
 
 // Mount webhook routes at root level (no version prefix)

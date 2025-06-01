@@ -190,6 +190,9 @@ const customerOrderSchema = new mongoose.Schema({
   estimatedDelivery: {
     type: Date
   },
+  paidAt: {
+    type: Date
+  },
   // Additional fields
   notes: {
     type: String

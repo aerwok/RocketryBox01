@@ -4,7 +4,7 @@ const paymentSchema = new mongoose.Schema({
   orderId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Order',
-    required: [true, 'Order ID is required']
+    required: false
   },
   customerId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -76,7 +76,7 @@ const paymentSchema = new mongoose.Schema({
 
 // Indexes for better query performance
 paymentSchema.index({ customerId: 1, createdAt: -1 });
-paymentSchema.index({ orderId: 1 });
+paymentSchema.index({ orderId: 1 }, { sparse: true });
 // razorpayOrderId already has unique: true which creates an index
 // razorpayPaymentId already has sparse: true which creates an index
 paymentSchema.index({ status: 1 });

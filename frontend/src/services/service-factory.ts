@@ -267,6 +267,113 @@ export class ServiceFactory {
    * Shipping Services
    */
   static shipping = {
+    // New pincode-based rate calculation (recommended for frontend usage)
+    async calculateRatesFromPincodes(rateData: {
+      fromPincode: string;
+      toPincode: string;
+      weight: number;
+      length: number;
+      width: number;
+      height: number;
+      mode?: 'Surface' | 'Air';
+      orderType?: 'prepaid' | 'cod';
+      codCollectableAmount?: number;
+      includeRTO?: boolean;
+      courier?: string;
+    }): Promise<ApiResponse<{
+      calculations: Array<{
+        courier: string;
+        productName: string;
+        mode: string;
+        zone: string;
+        volumetricWeight: number;
+        finalWeight: number;
+        weightMultiplier: number;
+        shippingCost: number;
+        codCharges: number;
+        rtoCharges: number;
+        gst: number;
+        total: number;
+        baseRate: number;
+        addlRate: number;
+        rateCardId: string;
+      }>;
+      bestOptions: any[];
+      zone: string;
+      billedWeight: number;
+      volumetricWeight: number;
+      deliveryEstimate: string;
+      inputData: any;
+    }>> {
+      // Use the shipping controller that handles pincode-to-zone determination
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.post('/shipping/ratecards/calculate', rateData);
+    },
+
+    // Direct zone-based rate calculation (for admin/testing purposes)
+    async calculateRatesFromDB(rateData: {
+      zone: string;
+      weight: number;
+      length: number;
+      width: number;
+      height: number;
+      orderType?: 'prepaid' | 'cod';
+      codCollectableAmount?: number;
+      includeRTO?: boolean;
+      courier?: string;
+    }): Promise<ApiResponse<{
+      calculations: Array<{
+        courier: string;
+        productName: string;
+        mode: string;
+        zone: string;
+        volumetricWeight: number;
+        finalWeight: number;
+        shippingCost: number;
+        codCharges: number;
+        rtoCharges: number;
+        gst: number;
+        total: number;
+        rateCardId: string;
+      }>;
+      inputData: any;
+      cheapestOption: any;
+      totalOptions: number;
+    }>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.post('/shipping/ratecards/calculate', rateData);
+    },
+
+    // Get all active rate cards
+    async getRateCards(filters?: {
+      courier?: string;
+      zone?: string;
+      mode?: string;
+    }): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.get('/shipping/ratecards', { params: filters });
+    },
+
+    // Get active couriers
+    async getActiveCouriers(): Promise<ApiResponse<string[]>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.get('/shipping/ratecards/couriers');
+    },
+
+    // Get rate cards by zone
+    async getRateCardsByZone(zone: string, courier?: string): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      const params = courier ? { courier } : {};
+      return apiService.get(`/shipping/ratecards/zone/${zone}`, { params });
+    },
+
+    // Get rate card statistics
+    async getRateCardStatistics(): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.get('/shipping/ratecards/statistics');
+    },
+
+    // Legacy method - kept for backward compatibility
     async calculateRates(rateData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.post('/shipping/calculate-rates', rateData);
@@ -526,7 +633,18 @@ export class ServiceFactory {
         sortDirection?: string;
         status?: string;
       }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/customer/orders?${new URLSearchParams(params as any)}`, 'GET');
+        // Filter out undefined values to prevent URLSearchParams from converting them to "undefined" strings
+        const cleanParams: Record<string, string> = {};
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            cleanParams[key] = String(value);
+          }
+        });
+        
+        const queryString = new URLSearchParams(cleanParams).toString();
+        const endpoint = queryString ? `/customer/orders?${queryString}` : '/customer/orders';
+        
+        return ServiceFactory.callApi(endpoint, 'GET');
       },
       getStatusCounts: async (): Promise<ApiResponse<any>> => {
         return ServiceFactory.callApi('/customer/orders/status-counts', 'GET');

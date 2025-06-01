@@ -12,6 +12,7 @@
     "create-super-admin": "node src/scripts/create-super-admin.js",
     "import-partner": "node src/scripts/import-partner.js",
     "import:ecomexpress": "node src/scripts/import-partner.js src/data/partners/ecomexpress.json",
+    "import-ratecards": "node src/scripts/import-ratecards.js",
     "check-partners": "node src/scripts/check-partners.js",
     "test-partners-api": "node src/scripts/test-partners-api.js"
   },

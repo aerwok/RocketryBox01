@@ -30,10 +30,17 @@ class RazorpayService {
       // Convert amount to paise (Razorpay expects amount in smallest unit)
       const amountInPaise = Math.round(amount * 100);
 
+      // Validate receipt length (Razorpay limit is 40 characters)
+      let finalReceipt = receipt || `order_${Date.now()}`;
+      if (finalReceipt.length > 40) {
+        console.warn('⚠️ Receipt too long, truncating:', finalReceipt);
+        finalReceipt = finalReceipt.substring(0, 40);
+      }
+
       const razorpayOrder = await this.razorpay.orders.create({
         amount: amountInPaise,
         currency,
-        receipt: receipt || `order_${Date.now()}`,
+        receipt: finalReceipt,
         notes: {
           ...notes,
           created_by: 'RocketryBox',

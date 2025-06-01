@@ -1,4 +1,5 @@
 import { ZoneType } from "@/types/shipping";
+import { ServiceFactory } from "@/services/service-factory";
 
 interface RateZone {
     base: string;
@@ -16,6 +17,15 @@ interface RateData {
     cod: string;
     codPercent: string;
 }
+
+// Database zone mapping - matches backend enum
+const DATABASE_ZONE_MAPPING: Record<ZoneType, string> = {
+    "withinCity": "Within City",
+    "withinState": "Within State", 
+    "metroToMetro": "Metro to Metro",
+    "restOfIndia": "Rest of India",
+    "northEastJK": "Special Zone"
+};
 
 // Metro cities pincodes (sample)
 const metroPincodes = {
@@ -60,6 +70,77 @@ export function determineZone(fromPincode: string, toPincode: string): ZoneType 
     return "restOfIndia";
 }
 
+/**
+ * New Database-Powered Rate Calculation
+ * Uses the backend API with MongoDB rate cards
+ */
+export async function calculateShippingRateFromDB(
+    fromPincode: string,
+    toPincode: string,
+    weight: number,
+    length: number,
+    width: number,
+    height: number,
+    orderType: 'prepaid' | 'cod' = 'prepaid',
+    codCollectableAmount: number = 0,
+    includeRTO: boolean = false,
+    courier?: string
+) {
+    try {
+        // Determine zone using pincode logic
+        const zoneType = determineZone(fromPincode, toPincode);
+        const dbZone = DATABASE_ZONE_MAPPING[zoneType];
+
+        // Call the database API
+        const response = await ServiceFactory.shipping.calculateRatesFromDB({
+            zone: dbZone,
+            weight,
+            length,
+            width,
+            height,
+            orderType,
+            codCollectableAmount,
+            includeRTO,
+            courier
+        });
+
+        if (!response.success) {
+            throw new Error(response.message || 'Failed to calculate shipping rates');
+        }
+
+        return {
+            success: true,
+            zone: zoneType,
+            dbZone,
+            calculations: response.data.calculations,
+            inputData: response.data.inputData,
+            cheapestOption: response.data.cheapestOption,
+            totalOptions: response.data.totalOptions
+        };
+
+    } catch (error) {
+        console.error('Database rate calculation failed:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get available couriers from database
+ */
+export async function getAvailableCouriers() {
+    try {
+        const response = await ServiceFactory.shipping.getActiveCouriers();
+        return response.success ? response.data : [];
+    } catch (error) {
+        console.error('Failed to get couriers:', error);
+        return [];
+    }
+}
+
+/**
+ * Legacy function - kept for backward compatibility
+ * Uses hardcoded rate data
+ */
 export async function calculateShippingRate(
     fromPincode: string,
     toPincode: string,

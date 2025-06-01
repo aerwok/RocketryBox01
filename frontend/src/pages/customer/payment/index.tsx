@@ -1,11 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import axios from "axios";
+import apiClient from "@/config/api.config";
 import { formatCurrency, formatDate, formatAddress } from "@/lib/utils";
 
 // Types
@@ -16,7 +14,8 @@ interface RazorpayResponse {
 }
 
 interface OrderResponse {
-    awbNumber: string;
+    _id: string;
+    orderNumber: string;
     receiverName: string;
     receiverAddress1: string;
     receiverAddress2?: string;
@@ -34,10 +33,15 @@ interface OrderResponse {
         name: string;
         rate: number;
     };
+    status: string;
+    paymentStatus: string;
+    totalAmount: number;
+    awb?: string;
 }
 
 interface OrderData extends Omit<OrderResponse, 'pickupDate'> {
     pickupDate: Date;
+    temporaryOrderData?: any; // Store original temporary order data for payment creation
 }
 
 interface PriceDetail {
@@ -46,14 +50,6 @@ interface PriceDetail {
 }
 
 // Constants
-const PAYMENT_METHODS = {
-    UPI: 'upi',
-    CARD: 'card',
-    NETBANKING: 'netbanking'
-} as const;
-
-type PaymentMethod = typeof PAYMENT_METHODS[keyof typeof PAYMENT_METHODS];
-
 const GST_RATE = 0.18;
 const PLATFORM_FEE = 25;
 
@@ -66,28 +62,56 @@ const useOrderData = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        const fetchOrderData = async () => {
+        const loadOrderData = async () => {
             try {
                 setError(null);
-                const awbNumber = new URLSearchParams(location.search).get('awb') || 
-                              location.state?.awbNumber;
-
-                if (!awbNumber) {
-                    throw new Error("No AWB number found. Please create an order first.");
-                }
-
-                // Fetch order data from backend
-                const response = await axios.get<OrderResponse>(`/api/orders/awb/${awbNumber}`);
                 
-                if (!response.data) {
-                    throw new Error("Order not found");
+                // Try to get order data from navigation state first
+                let tempOrderData = location.state?.orderData;
+                
+                // If not in state, try session storage
+                if (!tempOrderData) {
+                    const storedData = sessionStorage.getItem('pendingOrderData');
+                    if (storedData) {
+                        tempOrderData = JSON.parse(storedData);
+                    }
                 }
 
-                // Convert ISO date string to Date object
-                setOrderData({
-                    ...response.data,
-                    pickupDate: new Date(response.data.pickupDate)
-                });
+                if (!tempOrderData) {
+                    throw new Error("No order data found. Please create an order first.");
+                }
+
+                console.log('📦 Loaded temporary order data:', tempOrderData);
+
+                // Transform temporary order data to match OrderData interface
+                const transformedData: OrderData = {
+                    _id: 'temp_' + Date.now(), // Temporary ID
+                    orderNumber: 'PENDING', // Will be generated after payment
+                    receiverName: tempOrderData.deliveryAddress.name,
+                    receiverAddress1: tempOrderData.deliveryAddress.address1,
+                    receiverAddress2: tempOrderData.deliveryAddress.address2 || '',
+                    receiverCity: tempOrderData.deliveryAddress.city,
+                    receiverState: tempOrderData.deliveryAddress.state,
+                    receiverPincode: tempOrderData.deliveryAddress.pincode,
+                    receiverMobile: tempOrderData.deliveryAddress.phone,
+                    weight: tempOrderData.package.weight,
+                    length: tempOrderData.package.dimensions.length,
+                    width: tempOrderData.package.dimensions.width,
+                    height: tempOrderData.package.dimensions.height,
+                    packageType: tempOrderData.selectedProvider?.serviceType || 'standard',
+                    pickupDate: new Date(tempOrderData.pickupDate),
+                    shippingPartner: {
+                        name: tempOrderData.selectedProvider?.name || 'RocketryBox Logistics',
+                        rate: tempOrderData.shippingRate || tempOrderData.selectedProvider?.totalRate || 0
+                    },
+                    status: 'pending',
+                    paymentStatus: 'pending',
+                    totalAmount: tempOrderData.shippingRate || tempOrderData.selectedProvider?.totalRate || 0,
+                    // Store the original temporary data for payment creation
+                    temporaryOrderData: tempOrderData
+                };
+
+                setOrderData(transformedData);
             } catch (error) {
                 const errorMessage = error instanceof Error 
                     ? error.message 
@@ -104,14 +128,13 @@ const useOrderData = () => {
             }
         };
 
-        fetchOrderData();
+        loadOrderData();
     }, [location, navigate]);
 
     return { orderData, isLoading, error };
 };
 
 const usePayment = (orderData: OrderData | null) => {
-    const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | ''>('');
     const [isProcessing, setIsProcessing] = useState(false);
     const navigate = useNavigate();
 
@@ -131,15 +154,54 @@ const usePayment = (orderData: OrderData | null) => {
     const total = priceDetails.reduce((acc, item) => acc + item.value, 0);
 
     const initializePayment = async () => {
-        if (!selectedPayment || !orderData) return;
+        console.log('🔘 Pay button clicked!');
+        console.log('📋 Current state:', {
+            orderDataExists: !!orderData,
+            orderData: orderData ? { _id: orderData._id, total } : null
+        });
+
+        if (!orderData) {
+            console.log('❌ No order data available');
+            toast.error('Order data not loaded. Please try again.');
+            return;
+        }
 
         setIsProcessing(true);
         try {
-            // Create payment order
-            const { data: { orderId, keyId } } = await axios.post<{ orderId: string; keyId: string }>('/api/v2/customer/payments/create-order', {
+            console.log('🚀 Initializing payment with data:', {
+                temporaryOrderData: orderData.temporaryOrderData,
                 amount: total,
-                currency: 'INR',
-                awbNumber: orderData.awbNumber
+                currency: 'INR'
+            });
+
+            // Create payment order with temporary order data
+            const response = await apiClient.post('/api/v2/customer/payments/create-order', {
+                orderData: orderData.temporaryOrderData, // Send temporary order data instead of orderId
+                amount: total,
+                currency: 'INR'
+            });
+
+            console.log('📦 Full response received:', response);
+            console.log('📊 Response data:', response.data);
+
+            // Check if response has the expected structure
+            if (!response.data || !response.data.success) {
+                throw new Error(`Invalid response structure: ${JSON.stringify(response.data)}`);
+            }
+
+            const { data: responseData } = response.data;
+            console.log('🔍 Extracted response data:', responseData);
+
+            if (!responseData.orderId || !responseData.keyId) {
+                throw new Error(`Missing required fields in response. orderId: ${responseData.orderId}, keyId: ${responseData.keyId}`);
+            }
+
+            const { orderId: razorpayOrderId, keyId } = responseData;
+
+            console.log('✅ Payment order created successfully:', {
+                razorpayOrderId,
+                keyId: keyId ? 'Present' : 'Missing',
+                amount: total
             });
 
             // Initialize Razorpay
@@ -148,22 +210,85 @@ const usePayment = (orderData: OrderData | null) => {
                 amount: total * 100, // amount in paisa
                 currency: "INR",
                 name: "RocketryBox",
-                description: `Order Payment - ${orderData.awbNumber}`,
-                order_id: orderId,
+                description: `Order Payment - ${orderData.orderNumber}`,
+                order_id: razorpayOrderId,
                 handler: async (response: RazorpayResponse) => {
                     try {
+                        console.log('🎉 Payment completed, verifying...', response);
+                        
                         // Verify payment
-                        await axios.post('/api/v2/customer/payments/verify', {
-                            awbNumber: orderData.awbNumber,
+                        const verificationResponse = await apiClient.post('/api/v2/customer/payments/verify', {
                             razorpay_payment_id: response.razorpay_payment_id,
                             razorpay_order_id: response.razorpay_order_id,
                             razorpay_signature: response.razorpay_signature
                         });
 
-                        toast.success("Payment successful!");
-                        navigate("/customer/orders");
+                        console.log('✅ Payment verification response:', verificationResponse.data);
+
+                        // Enhanced success notification with comprehensive order data
+                        const verifiedOrder = verificationResponse.data?.data?.order;
+                        const orderNumber = verifiedOrder?.orderNumber || 'PENDING';
+                        const awbNumber = verifiedOrder?.awb;
+                        const estimatedDelivery = verifiedOrder?.estimatedDelivery;
+                        const courierPartner = verifiedOrder?.courierPartner;
+
+                        // Clear temporary order data from session storage
+                        sessionStorage.removeItem('pendingOrderData');
+
+                        // Show comprehensive success message with all order details
+                        toast.success(
+                            <div className="flex flex-col gap-2">
+                                <div className="font-semibold text-green-800">🎉 Order Created Successfully!</div>
+                                <div className="text-sm text-gray-700">
+                                    <strong>Order #{orderNumber}</strong> has been confirmed and is being processed.
+                                </div>
+                                {awbNumber && (
+                                    <div className="text-sm text-gray-700">
+                                        <strong>AWB:</strong> {awbNumber}
+                                    </div>
+                                )}
+                                {courierPartner && (
+                                    <div className="text-sm text-gray-700">
+                                        <strong>Courier:</strong> {courierPartner}
+                                    </div>
+                                )}
+                                {estimatedDelivery && (
+                                    <div className="text-sm text-gray-700">
+                                        <strong>Estimated Delivery:</strong> {new Date(estimatedDelivery).toLocaleDateString()}
+                                    </div>
+                                )}
+                                <div className="text-xs text-gray-600 mt-1">
+                                    You will receive tracking updates via SMS/Email
+                                </div>
+                            </div>,
+                            {
+                                duration: 8000,
+                                className: "success-toast"
+                            }
+                        );
+
+                        // Small delay to let user see the success message, then navigate to order details
+                        setTimeout(() => {
+                            if (verifiedOrder?.id) {
+                                navigate(`/customer/orders/${verifiedOrder.id}`);
+                            } else {
+                                navigate("/customer/orders");
+                            }
+                        }, 2000);
+
                     } catch (error) {
-                        toast.error("Payment verification failed. Please contact support.");
+                        console.error('❌ Payment verification failed:', error);
+                        toast.error(
+                            <div className="flex flex-col gap-1">
+                                <div className="font-semibold">Payment Verification Failed</div>
+                                <div className="text-sm text-gray-600">
+                                    Your payment was processed but we couldn't verify it. Please contact support.
+                                </div>
+                            </div>,
+                            {
+                                duration: 8000
+                            }
+                        );
                     }
                 },
                 prefill: {
@@ -175,25 +300,53 @@ const usePayment = (orderData: OrderData | null) => {
                 },
                 modal: {
                     ondismiss: () => {
+                        console.log('💸 Payment modal dismissed');
                         setIsProcessing(false);
                     }
                 }
             };
 
+            console.log('🪟 Opening Razorpay modal with options:', {
+                key: keyId,
+                amount: total * 100,
+                order_id: razorpayOrderId
+            });
+
+            // Check if Razorpay is loaded
+            if (typeof (window as any).Razorpay === 'undefined') {
+                throw new Error('Razorpay library is not loaded. Please refresh the page and try again.');
+            }
+
             const razorpay = new (window as any).Razorpay(options);
             razorpay.open();
         } catch (error) {
             setIsProcessing(false);
-            const errorMessage = error instanceof Error 
-                ? error.message 
-                : "Payment initialization failed. Please try again.";
+            console.error('❌ Payment initialization failed:', error);
+            
+            let errorMessage = "Payment initialization failed. Please try again.";
+            
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            } else if (typeof error === 'object' && error !== null) {
+                // Handle axios error
+                const axiosError = error as any;
+                if (axiosError.response) {
+                    console.error('Response error:', axiosError.response.data);
+                    errorMessage = `Server error: ${axiosError.response.data?.message || axiosError.response.status}`;
+                } else if (axiosError.request) {
+                    console.error('Request error:', axiosError.request);
+                    errorMessage = "Network error. Please check your connection.";
+                } else {
+                    console.error('Unknown error:', axiosError.message);
+                    errorMessage = axiosError.message || errorMessage;
+                }
+            }
+            
             toast.error(errorMessage);
         }
     };
 
     return {
-        selectedPayment,
-        setSelectedPayment,
         isProcessing,
         priceDetails,
         total,
@@ -224,8 +377,6 @@ const ErrorDisplay = ({ error }: { error: string }) => (
 const PaymentPage = () => {
     const { orderData, isLoading, error } = useOrderData();
     const { 
-        selectedPayment, 
-        setSelectedPayment, 
         isProcessing, 
         priceDetails, 
         total, 
@@ -233,23 +384,40 @@ const PaymentPage = () => {
     } = usePayment(orderData);
     const navigate = useNavigate();
 
+    // Test Razorpay loading on component mount
+    useEffect(() => {
+        console.log('💳 PaymentPage mounted');
+        console.log('🔧 Razorpay loaded:', typeof (window as any).Razorpay !== 'undefined');
+        if (typeof (window as any).Razorpay === 'undefined') {
+            console.warn('⚠️ Razorpay not loaded! Check if script is included in index.html');
+        }
+    }, []);
+
     if (isLoading) return <LoadingSpinner />;
     if (error || !orderData) return <ErrorDisplay error={error || "Failed to load order details"} />;
 
     const handleChangeAddress = () => {
+        // Store current order data back to session storage for editing
+        if (orderData?.temporaryOrderData) {
+            sessionStorage.setItem('pendingOrderData', JSON.stringify(orderData.temporaryOrderData));
+        }
         navigate('/customer/create-order', { 
             state: { 
                 editMode: 'address',
-                awbNumber: orderData.awbNumber 
+                orderData: orderData?.temporaryOrderData 
             } 
         });
     };
 
     const handleChangeOrder = () => {
+        // Store current order data back to session storage for editing
+        if (orderData?.temporaryOrderData) {
+            sessionStorage.setItem('pendingOrderData', JSON.stringify(orderData.temporaryOrderData));
+        }
         navigate('/customer/create-order', { 
             state: { 
                 editMode: 'order',
-                awbNumber: orderData.awbNumber 
+                orderData: orderData?.temporaryOrderData 
             } 
         });
     };
@@ -296,27 +464,6 @@ const PaymentPage = () => {
                             Change
                         </button>
                     </div>
-
-                    {/* Payment Options */}
-                    <div className="bg-[#0070BA] text-white p-4 rounded">
-                        <p className="text-sm mb-3">Payment Options</p>
-                        <RadioGroup 
-                            value={selectedPayment} 
-                            onValueChange={(value: PaymentMethod | '') => setSelectedPayment(value)}
-                            className="space-y-3"
-                        >
-                            {Object.entries(PAYMENT_METHODS).map(([key, value]) => (
-                                <div key={value} className="flex items-center space-x-2">
-                                    <RadioGroupItem value={value} id={value} className="border-white text-white" />
-                                    <Label htmlFor={value} className="text-sm text-white cursor-pointer">
-                                        {key === 'UPI' ? 'UPI' : 
-                                         key === 'CARD' ? 'Credit / Debit / ATM Card' : 
-                                         'Net Banking'}
-                                    </Label>
-                                </div>
-                            ))}
-                        </RadioGroup>
-                    </div>
                 </div>
 
                 {/* Price Details */}
@@ -340,7 +487,7 @@ const PaymentPage = () => {
                 <Button 
                     className="w-full bg-[#0070BA] hover:bg-[#0070BA]/90 text-white"
                     size="sm"
-                    disabled={!selectedPayment || isProcessing}
+                    disabled={isProcessing}
                     onClick={initializePayment}
                 >
                     {isProcessing ? (
@@ -349,9 +496,36 @@ const PaymentPage = () => {
                             Processing...
                         </span>
                     ) : (
-                        'Pay'
+                        `Pay ${formatCurrency(total)}`
                     )}
                 </Button>
+                
+                {/* Debug Info */}
+                <div className="text-xs text-gray-500 text-center">
+                    Order: {orderData?._id ? 'Loaded' : 'Not loaded'} | 
+                    Total: {formatCurrency(total)}
+                </div>
+
+                {/* Debug Test Button (only in development) */}
+                {process.env.NODE_ENV === 'development' && (
+                    <Button 
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            console.log('🧪 Test button clicked');
+                            console.log('🔧 Razorpay available:', typeof (window as any).Razorpay !== 'undefined');
+                            console.log('�� Payment state:', { orderData: !!orderData, total });
+                            if (typeof (window as any).Razorpay !== 'undefined') {
+                                console.log('✅ Razorpay is loaded and ready');
+                            } else {
+                                console.error('❌ Razorpay is not loaded');
+                            }
+                        }}
+                        className="w-full"
+                    >
+                        🧪 Test Razorpay (Dev Only)
+                    </Button>
+                )}
             </div>
         </div>
     );

@@ -70,28 +70,62 @@ const SellerRateCalculatorPage = () => {
     const onSubmit = async (data: RateCalculatorForm) => {
         try {
             setIsLoading(true);
-            const response = await ServiceFactory.shipping.calculateRates({
-                originPincode: data.originPincode,
-                destinationPincode: data.destinationPincode,
-                weight: data.weight,
-                dimensions: {
+            
+            // Use seller rate card API that properly handles pincodes and script.js logic
+            const response = await fetch('/api/v2/seller/ratecards/calculate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}` // Add auth if needed
+                },
+                body: JSON.stringify({
+                    fromPincode: data.originPincode,
+                    toPincode: data.destinationPincode,
+                    weight: data.weight,
                     length: data.length,
                     width: data.width,
-                    height: data.height
-                },
-                declaredValue: data.value,
-                serviceType: data.serviceType.toLowerCase()
+                    height: data.height,
+                    mode: 'Surface', // Default to Surface, can be made configurable
+                    orderType: data.serviceType.toLowerCase() === 'cod' ? 'cod' : 'prepaid',
+                    codCollectableAmount: data.value,
+                    includeRTO: false
+                })
             });
 
-            if (!response.success) {
-                throw new Error(response.message || 'Failed to calculate rates');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
 
-            setRates(response.data.rates);
-            toast.success("Shipping rates calculated successfully!");
+            const result = await response.json();
+
+            if (result.success) {
+                // Transform database response to match frontend format
+                const transformedRates: RateResult[] = result.data.calculations.map((calc: any) => ({
+                    courier: calc.courier,
+                    serviceType: calc.productName,
+                    deliveryTime: calc.mode === 'Air' ? '1-2 days' : '3-5 days',
+                    baseRate: calc.baseRate,
+                    weightCharge: calc.addlRate * (calc.weightMultiplier - 1), // Calculate additional charges
+                    fuelSurcharge: 0, // Not used in script.js model
+                    codCharge: calc.codCharges,
+                    gst: calc.gst,
+                    totalCharge: calc.total,
+                    isRecommended: calc === result.data.calculations[0] // First is cheapest
+                }));
+
+                setRates(transformedRates);
+                toast.success(`Found ${transformedRates.length} shipping rates!`);
+                return;
+            } else {
+                throw new Error(result.message || 'Failed to calculate rates');
+            }
+
         } catch (error) {
             console.error("Error calculating rates:", error);
-            toast.error(error instanceof Error ? error.message : "Failed to calculate shipping rates. Please try again.");
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : "Failed to calculate shipping rates. Please try again.";
+            toast.error(errorMessage);
         } finally {
             setIsLoading(false);
         }

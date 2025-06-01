@@ -5,8 +5,9 @@ import { calculateRateSchema } from '../validators/ratecard.validator.js';
 import {
   getSellerRateCard,
   calculateShippingRate,
-  getRateCardHistory,
-  getZoneMapping
+  getRateComparison,
+  getZoneMapping,
+  getRateCardStatistics
 } from '../controllers/ratecard.controller.js';
 
 const router = express.Router();
@@ -14,16 +15,19 @@ const router = express.Router();
 // All routes require seller authentication
 router.use(protect);
 
-// Get seller's current rate card
+// Get available rate cards for seller
 router.get('/', getSellerRateCard);
 
-// Calculate shipping rate based on rate card
+// Calculate shipping rate using unified rate card system
 router.post('/calculate', validationHandler(calculateRateSchema), calculateShippingRate);
 
-// Get rate card change history
-router.get('/history', getRateCardHistory);
+// Get rate comparison across multiple couriers
+router.post('/compare', validationHandler(calculateRateSchema), getRateComparison);
 
 // Get zone mapping for pincodes
 router.get('/zones', getZoneMapping);
+
+// Get rate card statistics for seller dashboard
+router.get('/statistics', getRateCardStatistics);
 
 export default router; 

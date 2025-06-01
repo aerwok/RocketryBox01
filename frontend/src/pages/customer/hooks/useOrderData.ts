@@ -15,14 +15,14 @@ export const useOrderData = () => {
         const fetchOrderData = async () => {
             try {
                 setError(null);
-                const awbNumber = new URLSearchParams(location.search).get('awb') || 
-                              location.state?.awbNumber;
+                const orderId = new URLSearchParams(location.search).get('orderId') || 
+                              location.state?.orderId;
 
-                if (!awbNumber) {
-                    throw new Error("No AWB number found. Please create an order first.");
+                if (!orderId) {
+                    throw new Error("No Order ID found. Please create an order first.");
                 }
 
-                const response = await customerApi.orders.getByAwb(awbNumber);
+                const response = await customerApi.orders.getById(orderId);
                 
                 setOrderData({
                     ...response,

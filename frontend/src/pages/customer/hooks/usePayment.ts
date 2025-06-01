@@ -28,7 +28,7 @@ export const usePayment = (orderData: OrderData | null) => {
     const handlePaymentSuccess = async (response: RazorpayResponse) => {
         try {
             await customerApi.payments.verifyPayment({
-                awbNumber: orderData!.awbNumber,
+                orderId: orderData!._id,
                 ...response
             });
 
@@ -45,9 +45,9 @@ export const usePayment = (orderData: OrderData | null) => {
         setIsProcessing(true);
         try {
             const { orderId, keyId } = await customerApi.payments.createOrder({
+                orderId: orderData._id,
                 amount: total,
-                currency: 'INR',
-                awbNumber: orderData.awbNumber
+                currency: 'INR'
             });
 
             const options = {
@@ -55,7 +55,7 @@ export const usePayment = (orderData: OrderData | null) => {
                 amount: total * 100,
                 currency: "INR",
                 name: RAZORPAY_CONFIG.name,
-                description: `Order Payment - ${orderData.awbNumber}`,
+                description: `Order Payment - ${orderData.orderNumber}`,
                 order_id: orderId,
                 handler: handlePaymentSuccess,
                 prefill: {

@@ -1,86 +1,110 @@
 import Seller from '../models/seller.model.js';
-import RateCard from '../models/ratecard.model.js';
-import { rateCard as defaultRateCard } from '../../../utils/courierRates.js';
-import { getPincodeDetails } from '../../../utils/pincode.js';
+import RateCard from '../../../models/ratecard.model.js';
+import rateCardService from '../../../services/ratecard.service.js';
+import { logger } from '../../../utils/logger.js';
+import { AppError } from '../../../middleware/errorHandler.js';
 
-// Get the rate card for the authenticated seller
+// Get the rate card for the authenticated seller (now uses unified system)
 export const getSellerRateCard = async (req, res, next) => {
   try {
-    const seller = await Seller.findById(req.user.id).populate('rateCard');
-    let rateCardData;
-    if (seller && seller.rateCard) {
-      rateCardData = seller.rateCard.rates;
-    } else {
-      rateCardData = defaultRateCard;
+    // Get all active rate cards available to sellers
+    const result = await rateCardService.getAllRateCards({ isActive: true });
+    
+    if (!result.success) {
+      throw new AppError('Failed to fetch rate cards', 500);
     }
+
+    // Transform to match legacy response format for backward compatibility
+    const rateCardData = {};
+    result.rateCards.forEach(card => {
+      if (!rateCardData[card.courier]) {
+        rateCardData[card.courier] = {
+          zones: {},
+          slabs: [0.5, 1, 2, 5, 10, 20] // Standard weight slabs
+        };
+      }
+      
+      if (!rateCardData[card.courier].zones[card.zone]) {
+        rateCardData[card.courier].zones[card.zone] = {
+          base: [],
+          addl: [],
+          cod: card.codAmount,
+          codPct: card.codPercent
+        };
+      }
+      
+      // Convert unified rate structure to legacy format
+      rateCardData[card.courier].zones[card.zone].base.push(card.baseRate);
+      rateCardData[card.courier].zones[card.zone].addl.push(card.addlRate);
+    });
+
     res.status(200).json({
       success: true,
       data: rateCardData
     });
   } catch (error) {
+    logger.error(`Error in getSellerRateCard: ${error.message}`);
     next(error);
   }
 };
 
-// Calculate rates using the seller's rate card
+// Calculate rates using the unified rate card system
 export const calculateRateCard = async (req, res, next) => {
   try {
-    const { weight, pickupPincode, deliveryPincode, isCOD } = req.body;
+    const { 
+      weight, 
+      pickupPincode, 
+      deliveryPincode, 
+      isCOD = false,
+      dimensions,
+      declaredValue = 0 
+    } = req.body;
+
     if (!weight || !pickupPincode || !deliveryPincode) {
-      return res.status(400).json({ success: false, message: 'weight, pickupPincode, and deliveryPincode are required' });
+      return res.status(400).json({ 
+        success: false, 
+        message: 'weight, pickupPincode, and deliveryPincode are required' 
+      });
     }
-    // Get seller's rate card
-    const seller = await Seller.findById(req.user.id).populate('rateCard');
-    const rateCardData = (seller && seller.rateCard) ? seller.rateCard.rates : defaultRateCard;
-    // Validate pincodes
-    const pickupDetails = await getPincodeDetails(pickupPincode);
-    const deliveryDetails = await getPincodeDetails(deliveryPincode);
-    if (!pickupDetails || !deliveryDetails) {
-      return res.status(400).json({ success: false, message: 'Invalid pickup or delivery pincode' });
-    }
-    // Determine zone
-    const { determineZone } = await import('../../../utils/courierRates.js');
-    const zone = await determineZone(pickupPincode, deliveryPincode);
-    // Calculate rates for each courier in the rate card
-    const results = Object.keys(rateCardData).map(courier => {
-      const { slabs, zones } = rateCardData[courier];
-      const zoneRates = zones[zone];
-      // Find the correct slab
-      let slabIdx = 0;
-      for (let i = 0; i < slabs.length; i++) {
-        if (weight <= slabs[i]) {
-          slabIdx = i;
-          break;
-        }
-        if (i === slabs.length - 1) slabIdx = i;
-      }
-      let base = zoneRates.base[slabIdx];
-      let addl = zoneRates.addl[slabIdx];
-      const slabWeight = slabs[slabIdx];
-      let additionalWeight = Math.max(0, weight - slabWeight);
-      let addlUnits = Math.ceil(additionalWeight / 0.5);
-      let addlCharge = addlUnits * addl;
-      let total = base + addlCharge;
-      let codCharge = 0;
-      if (isCOD) {
-        codCharge = zoneRates.cod + (zoneRates.codPct / 100) * total;
-        total += codCharge;
-      }
-      return {
-        courier,
-        zone,
-        weight,
-        base,
-        addl,
-        addlCharge,
-        cod: isCOD ? zoneRates.cod : 0,
-        codPct: isCOD ? zoneRates.codPct : 0,
-        codCharge: isCOD ? codCharge : 0,
-        total: Math.round(total)
-      };
+
+    // Use unified rate card service for calculation
+    const result = await rateCardService.calculateShippingRate({
+      fromPincode: pickupPincode,
+      toPincode: deliveryPincode,
+      weight,
+      dimensions,
+      orderType: isCOD ? 'cod' : 'prepaid',
+      codCollectableAmount: declaredValue || 0,
+      includeRTO: false
     });
-    res.status(200).json({ success: true, data: results });
+
+    if (!result.success) {
+      return res.status(400).json({ 
+        success: false, 
+        message: result.error 
+      });
+    }
+
+    // Transform response to match legacy format
+    const legacyResults = result.calculations.map(calc => ({
+      courier: calc.courier,
+      zone: result.zone,
+      weight: result.billedWeight,
+      base: calc.baseRate,
+      addl: calc.addlRate,
+      addlCharge: calc.addlRate * (calc.weightMultiplier - 1),
+      cod: isCOD ? calc.codCharges : 0,
+      codPct: isCOD ? calc.codPercent : 0,
+      codCharge: isCOD ? calc.codCharges : 0,
+      total: Math.round(calc.total)
+    }));
+
+    res.status(200).json({ 
+      success: true, 
+      data: legacyResults 
+    });
   } catch (error) {
+    logger.error(`Error in calculateRateCard: ${error.message}`);
     next(error);
   }
 }; 

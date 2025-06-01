@@ -133,15 +133,46 @@ const OrderDetails: React.FC = () => {
             });
 
             if (verifyResponse.data.success) {
-              toast.success('Payment successful! Processing your order...');
+              console.log('✅ Payment verification response:', verifyResponse.data);
               
-              // Refresh order details to get AWB
+              // Enhanced success notification
+              const awbNumber = verifyResponse.data?.awb;
+              
+              toast.success(
+                <div className="flex flex-col gap-1">
+                  <div className="font-semibold">🎉 Order Created Successfully!</div>
+                  <div className="text-sm text-gray-600">
+                    Order #{order.orderNumber} has been confirmed and is being processed.
+                  </div>
+                  {awbNumber && (
+                    <div className="text-sm text-gray-600">
+                      AWB: {awbNumber}
+                    </div>
+                  )}
+                </div>,
+                {
+                  duration: 6000,
+                  className: "success-toast"
+                }
+              );
+              
+              // Refresh order details to get AWB after a delay
               setTimeout(() => {
                 fetchOrderDetails();
               }, 2000);
             }
           } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Payment verification failed');
+            toast.error(
+              <div className="flex flex-col gap-1">
+                <div className="font-semibold">Payment Verification Failed</div>
+                <div className="text-sm text-gray-600">
+                  Your payment was processed but we couldn't verify it. Please contact support.
+                </div>
+              </div>,
+              {
+                duration: 8000
+              }
+            );
           }
         },
         prefill: {

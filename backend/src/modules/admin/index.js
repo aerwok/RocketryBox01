@@ -17,6 +17,7 @@ import policyRoutes from './routes/policy.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import maintenanceRoutes from './routes/maintenance.routes.js';
 import billingRoutes from './routes/billing.routes.js';
+import rateCardRoutes from './routes/ratecard.routes.js';
 
 const router = express.Router();
 
@@ -73,5 +74,8 @@ router.use('/settings/maintenance', maintenanceRoutes);
 
 // Billing management routes
 router.use('/billing', billingRoutes);
+
+// Rate card management routes
+router.use('/ratecards', rateCardRoutes);
 
 export default router; 

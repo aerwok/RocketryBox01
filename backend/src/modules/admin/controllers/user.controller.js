@@ -4,7 +4,7 @@ import Seller from '../../seller/models/seller.model.js';
 import Customer from '../../customer/models/customer.model.js';
 import Order from '../../order/models/order.model.js';
 import Agreement from '../../seller/models/agreement.model.js';
-import RateCard from '../../seller/models/ratecard.model.js';
+import RateCard from '../../../models/ratecard.model.js';
 import { getIO } from '../../../utils/socketio.js';
 import { getSellerProfile } from '../../seller/services/realtime.service.js';
 import { getCustomerProfile } from '../../customer/services/realtime.service.js';
@@ -712,14 +712,14 @@ export const createSellerAgreement = async (req, res, next) => {
 };
 
 /**
- * Create or update rate card for seller
+ * Create or update rate cards for seller
  * @route POST /api/v1/admin/users/sellers/:id/ratecards
  * @access Private (Admin only)
  */
 export const manageSellerRateCard = async (req, res, next) => {
     try {
         const { id } = req.params;
-        const { title, rates, validFrom, validTo, isActive } = req.body;
+        const { rateCards } = req.body; // Expecting array of rate card objects
 
         // Find seller
         const seller = await Seller.findById(id);
@@ -728,46 +728,101 @@ export const manageSellerRateCard = async (req, res, next) => {
             return next(new AppError('Seller not found', 404));
         }
 
-        // Create or update rate card
-        let rateCard = await RateCard.findOne({ 
-            seller: id,
-            title: title
-        });
-
-        if (rateCard) {
-            // Update existing rate card
-            rateCard.rates = rates;
-            rateCard.validFrom = validFrom;
-            rateCard.validTo = validTo;
-            rateCard.isActive = isActive;
-            rateCard.updatedBy = req.user.id;
-        } else {
-            // Create new rate card
-            rateCard = new RateCard({
-                seller: id,
-                title,
-                rates,
-                validFrom,
-                validTo,
-                isActive,
-                createdBy: req.user.id
-            });
+        if (!Array.isArray(rateCards)) {
+            return next(new AppError('Rate cards must be an array', 400));
         }
 
-        await rateCard.save();
+        const createdRateCards = [];
+        const updatedRateCards = [];
+        const errors = [];
 
-        // Log the rate card operation
-        logger.info(`Admin ${req.user.id} ${rateCard.isNew ? 'created' : 'updated'} rate card for seller ${id}`);
+        // Process each rate card
+        for (const rateCardData of rateCards) {
+            try {
+                const {
+                    courier,
+                    productName,
+                    mode,
+                    zone,
+                    baseRate,
+                    addlRate,
+                    codAmount = 0,
+                    codPercent = 0,
+                    rtoCharges = 0,
+                    minimumBillableWeight = 0.5,
+                    isActive = true
+                } = rateCardData;
 
-        res.status(rateCard.isNew ? 201 : 200).json({
+                // Validate required fields
+                if (!courier || !productName || !mode || !zone || baseRate === undefined || addlRate === undefined) {
+                    errors.push(`Missing required fields for rate card: ${JSON.stringify(rateCardData)}`);
+                    continue;
+                }
+
+                // Check if rate card already exists
+                let existingRateCard = await RateCard.findOne({
+                    courier,
+                    productName,
+                    mode,
+                    zone
+        });
+
+                if (existingRateCard) {
+            // Update existing rate card
+                    existingRateCard.baseRate = baseRate;
+                    existingRateCard.addlRate = addlRate;
+                    existingRateCard.codAmount = codAmount;
+                    existingRateCard.codPercent = codPercent;
+                    existingRateCard.rtoCharges = rtoCharges;
+                    existingRateCard.minimumBillableWeight = minimumBillableWeight;
+                    existingRateCard.isActive = isActive;
+
+                    await existingRateCard.save();
+                    updatedRateCards.push(existingRateCard);
+        } else {
+            // Create new rate card
+                    const newRateCard = new RateCard({
+                        courier,
+                        productName,
+                        mode,
+                        zone,
+                        baseRate,
+                        addlRate,
+                        codAmount,
+                        codPercent,
+                        rtoCharges,
+                        minimumBillableWeight,
+                        isActive
+                    });
+
+                    await newRateCard.save();
+                    createdRateCards.push(newRateCard);
+        }
+            } catch (cardError) {
+                errors.push(`Error processing rate card: ${cardError.message}`);
+            }
+        }
+
+        // Log the rate card operations
+        logger.info(`Admin ${req.user.id} processed rate cards for seller ${id}: ${createdRateCards.length} created, ${updatedRateCards.length} updated, ${errors.length} errors`);
+
+        res.status(200).json({
             success: true,
             data: {
-                rateCard
+                created: createdRateCards,
+                updated: updatedRateCards,
+                errors: errors.length > 0 ? errors : undefined,
+                summary: {
+                    totalProcessed: rateCards.length,
+                    created: createdRateCards.length,
+                    updated: updatedRateCards.length,
+                    failed: errors.length
+                }
             }
         });
     } catch (error) {
         logger.error(`Error in manageSellerRateCard: ${error.message}`);
-        next(new AppError('Failed to manage seller rate card', 500));
+        next(new AppError('Failed to manage seller rate cards', 500));
     }
 };
 

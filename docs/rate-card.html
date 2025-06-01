@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rocketry Box | Rate Calculator</title>
+    <link rel="icon" href="images/Logo.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="rocket-sidebar">
+        <div class="sidebar">
+            <img src="images/Logo.png" alt="RocketryBox Logo">
+        </div>
+        <ul class="rocket-menu">
+            <li><button>Dashboard</button></li>
+            <li><button>Orders</button></li>
+            <li><button>NDR</button></li>
+            <li class="active"><button>Billing</button></li>
+            <li><button>Weight Dispute</button></li>
+            <li><button>COD</button></li>
+            <li><button>Tools</button></li>
+            <li><button>Settings</button></li>
+        </ul>
+    </nav>
+    <main class="rocket-main-content">
+        <header>
+            <div class="header-left">
+                <button class="hamburger">&#9776;</button>
+                <h1>Billing View</h1>
+            </div>
+            <div class="header-right">
+                <div class="wallet">
+                    <img src="images/wallet.png" alt="Wallet Image" id="walletImage">
+                    <span><b>5000</b></span>
+                </div>
+                <button class="create-order">Create Order</button>
+                <div class="profile">My Profile</div>
+                <button class="logout">Logout</button>
+            </div>
+        </header>
+        <div class="content">
+            <div class="form-section">
+                <div class="tabs">
+                    <button id="tab-rateCard" class="tab-button active">Rate Card</button>
+                    <button id="tab-walletHistory" class="tab-button">Wallet History</button>
+                    <button id="tab-invoices" class="tab-button">Invoices</button>
+                    <button id="tab-ledgerHistory" class="tab-button">Ledger History</button>
+                </div>
+                <div id="rateCard" class="tab-content" style="display: block;">
+                    <form>
+                        <div class="form-group">
+                            <label for="orderType">Order Type:</label> 
+                            <select id="orderType" onchange="togglecodCollectableAmountField()">
+                                <option value="prepaid">Prepaid</option>
+                                <option value="cod">COD</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pickupPincode">Pickup Pincode:</label>
+                            <input type="text" id="pickupPincode" placeholder="Enter Pickup Pincode (e.g., 100001)" required pattern="\d{6}" />
+                        </div>
+                        <div class="form-group">
+                            <label for="deliveryPincode">Delivery Pincode:</label>
+                            <input type="text" id="deliveryPincode" placeholder="Enter Delivery Pincode (e.g., 110001)" />
+                        </div>
+                        <div class="form-group">
+                            <label for="weight">Weight (kg):</label>
+                            <input type="number" id="weight" placeholder="Enter Weight in kg" min="0.01" step="0.01" required />
+                        </div>
+                        <div class="form-group">
+                            <label for="length">Length (cm):</label>
+                            <input type="number" id="length" placeholder="Enter Length in cm" />
+                        </div>
+                        <div class="form-group">
+                            <label for="width">Width (cm):</label>
+                            <input type="number" id="width" placeholder="Enter Width in cm" />
+                        </div>
+                        <div class="form-group">
+                            <label for="height">Height (cm):</label>
+                            <input type="number" id="height" placeholder="Enter Height in cm" />
+                        </div>
+                        <div class="form-group">
+                            <label for="includeRTO">Include RTO Charges:</label>
+                            <input type="checkbox" id="includeRTO" />
+                        </div>
+                        <div class="form-group">
+                            <div id="codCollectableAmountField" style="display: none;">
+                                <label for="codCollectableAmount">COD Collectable Amount (₹):</label>
+                                <input type="number" id="codCollectableAmount" placeholder="Enter COD Collectable Amount" />
+                            </div>
+                            <button type="button" onclick="calculateRate()">Get Shipping Rates</button>
+                        </div>
+                    </form>
+                    <div id="rateCardTable">
+                        <table id="rateTable">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2">Courier</th>
+                                    <th rowspan="2">Product Name</th>
+                                    <th rowspan="2">Mode</th>
+                                    <th rowspan="2">COD Amount</th>
+                                    <th rowspan="2">COD Percentage</th>
+                                    <th rowspan="2">MCW (in kg)</th>
+                                    <th colspan="3">Within City</th>
+                                    <th colspan="3">Within State</th>
+                                    <th colspan="3">Within Region</th>
+                                    <th colspan="3">Metro TO Metro</th>
+                                    <th colspan="3">Rest of India</th>
+                                    <th colspan="3">Special Zone</th>
+                                </tr>
+                                <tr>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                    <th>Base</th>
+                                    <th>Additional</th>
+                                    <th>RTO</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rateTableBody">
+                                <!-- Data will be populated here from the ratecard.json file -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="walletHistory" class="tab-content" style="display: none;">
+                    <h2>Wallet History</h2>
+                    <table class="wallet-history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Description</th>
+                                <th>Amount (₹)</th>
+                                <th>Type</th>
+                                <th>Balance (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>2025-05-10</td>
+                                <td>Wallet Recharge</td>
+                                <td>+1000</td>
+                                <td>Credit</td>
+                                <td>5000</td>
+                            </tr>
+                            <tr>
+                                <td>2025-05-09</td>
+                                <td>Shipping Payment</td>
+                                <td>-200</td>
+                                <td>Debit</td>
+                                <td>4000</td>
+                            </tr>
+                            <!-- Add more rows as needed -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="invoices" class="tab-content" style="display: none;">
+                    <h2>Invoices</h2>
+                    <table class="invoices-table">
+                        <thead>
+                            <tr>
+                                <th>Invoice No.</th>
+                                <th>Date</th>
+                                <th>Amount (₹)</th>
+                                <th>Status</th>
+                                <th>Download</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>INV-2025-001</td>
+                                <td>2025-05-01</td>
+                                <td>1200</td>
+                                <td>Paid</td>
+                                <td><a href="#">Download</a></td>
+                            </tr>
+                            <tr>
+                                <td>INV-2025-002</td>
+                                <td>2025-04-01</td>
+                                <td>950</td>
+                                <td>Paid</td>
+                                <td><a href="#">Download</a></td>
+                            </tr>
+                            <!-- Add more rows as needed -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="ledgerHistory" class="tab-content" style="display: none;">
+                    <h2>Ledger History</h2>
+                    <table class="ledger-history-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Particulars</th>
+                                <th>Debit (₹)</th>
+                                <th>Credit (₹)</th>
+                                <th>Balance (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>2025-05-10</td>
+                                <td>Wallet Recharge</td>
+                                <td></td>
+                                <td>1000</td>
+                                <td>5000</td>
+                            </tr>
+                            <tr>
+                                <td>2025-05-09</td>
+                                <td>Shipping Payment</td>
+                                <td>200</td>
+                                <td></td>
+                                <td>4000</td>
+                            </tr>
+                            <!-- Add more rows as needed -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <!-- Modal for displaying rates -->
+            <div id="ratesModal" class="modal" tabindex="-1" role="dialog">
+                <div class="modal-content">
+                    <span class="close-btn" onclick="closeModal()">&times;</span>
+                    <h2>Calculated Shipping Rates</h2>
+                    <table id="ratePopupTable">
+                        <thead>
+                            <tr>
+                                <th>Courier</th>
+                                <th>Product Name</th>
+                                <th>Mode</th>
+                                <th>Zone</th>
+                                <th>Volumetric Weight</th>
+                                <th>Final Weight</th>
+                                <th>Shipping Cost</th>
+                                <th>COD Charges</th>
+                                <th>RTO Charges</th>
+                                <th>GST</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated dynamically with the calculated rates -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</body>
+<script>
+    // Tab Switching Logic
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.addEventListener('click', () => {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.style.display = 'none';
+            });
+
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show clicked tab content and set the button active
+            const tabId = button.id.replace('tab-', '');
+            document.getElementById(tabId).style.display = 'block';
+            button.classList.add('active');
+        });
+    });
+
+    // Ensure correct tab is visible on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        const activeButton = document.querySelector('.tab-button.active');
+        if (activeButton) {
+            const tabId = activeButton.id.replace('tab-', '');
+            document.getElementById(tabId).style.display = 'block';
+        }
+    });
+
+    // Hamburger menu toggle logic
+    document.querySelector('.hamburger').addEventListener('click', () => {
+        document.querySelector('.rocket-sidebar').classList.toggle('open');
+    });
+
+    // Close modal when clicking outside of it
+    window.onclick = function(event) {
+        const modal = document.getElementById('ratesModal');
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    };
+
+    // Toggle COD Collectable Amount Field
+    function togglecodCollectableAmountField() {
+        const orderType = document.getElementById('orderType').value;
+        const codField = document.getElementById('codCollectableAmountField');
+        if (orderType === 'cod') {
+            codField.style.display = 'block';
+        } else {
+            codField.style.display = 'none';
+        }
+    }
+
+    // Calculate Rate Function
+    function calculateRate() {
+        // Get user input
+        const weight = parseFloat(document.getElementById('weight').value) || 0;
+        const length = parseFloat(document.getElementById('length').value) || 0;
+        const width = parseFloat(document.getElementById('width').value) || 0;
+        const height = parseFloat(document.getElementById('height').value) || 0;
+
+        // Calculate volumetric weight (example formula: L x W x H / 5000)
+        const volumetricWeight = (length * width * height) / 5000;
+        // MCW is the greater of actual and volumetric weight
+        const mcw = Math.max(weight, volumetricWeight).toFixed(2);
+
+        // Example: Show MCW in modal table (replace with your actual rate logic)
+        const tbody = document.querySelector('#ratePopupTable tbody');
+        tbody.innerHTML = `
+            <tr>
+                <td>CourierX</td>
+                <td>Standard</td>
+                <td>Air</td>
+                <td>Zone 1</td>
+                <td>${volumetricWeight.toFixed(2)}</td>
+                <td>${mcw}</td>
+                <td>₹100</td>
+                <td>₹20</td>
+                <td>₹10</td>
+                <td>₹18</td>
+                <td>₹148</td>
+            </tr>
+        `;
+        document.getElementById('ratesModal').style.display = 'block';
+    }
+
+    function closeModal() {
+        document.getElementById('ratesModal').style.display = 'none';
+    }
+</script>
+<script src="script.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+    // Function to open Razorpay modal
+    function initiateRazorpayPayment() {
+        const rechargeAmount = prompt("Enter the amount you want to recharge (₹):", "500");
+
+        if (!rechargeAmount || rechargeAmount <= 0) {
+            alert("Please enter a valid amount.");
+            return;
+        }
+
+        const options = {
+            key: "rzp_test_MrhgAPahKBLYCW",
+            amount: rechargeAmount * 100,
+            currency: "INR",
+            name: "Rocketry Box",
+            description: "Wallet Recharge",
+            image: "images/Logo.png",
+            handler: function (response) {
+                alert(`Payment successful! Payment ID: ${response.razorpay_payment_id}`);
+                fetch("/verify-payment", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        paymentId: response.razorpay_payment_id,
+                        amount: rechargeAmount,
+                    }),
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (data.success) {
+                            alert("Payment verified and wallet recharged!");
+                            updateWalletBalance(rechargeAmount);
+                        } else {
+                            alert("Payment verification failed. Please contact support.");
+                        }
+                    })
+                    .catch((err) => {
+                        console.error("Error verifying payment:", err);
+                        alert("Error occurred while verifying payment.");
+                    });
+            },
+            prefill: {
+                name: "Customer Name",
+                email: "customer@example.com",
+                contact: "9999999999",
+            },
+            theme: {
+                color: "#F37254",
+            },
+        };
+
+        const razorpay = new Razorpay(options);
+        razorpay.open();
+    }
+
+    // Function to dynamically update wallet balance (placeholder logic)
+    function updateWalletBalance(amount) {
+        const walletSpan = document.querySelector(".wallet span b");
+        if (walletSpan) {
+            const currentBalance = parseInt(walletSpan.innerText, 10);
+            const newBalance = currentBalance + parseInt(amount, 10);
+            walletSpan.innerText = newBalance.toString();
+        }
+    }
+
+    // Add click event to wallet
+    document.querySelector(".wallet").addEventListener("click", initiateRazorpayPayment);
+</script>
+</html>

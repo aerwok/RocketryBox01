@@ -31,7 +31,7 @@ const PaymentPage = () => {
         navigate('/customer/create-order', { 
             state: { 
                 editMode: 'address',
-                awbNumber: orderData.awbNumber 
+                orderId: orderData._id 
             } 
         });
     };
@@ -40,7 +40,7 @@ const PaymentPage = () => {
         navigate('/customer/create-order', { 
             state: { 
                 editMode: 'order',
-                awbNumber: orderData.awbNumber 
+                orderId: orderData._id 
             } 
         });
     };

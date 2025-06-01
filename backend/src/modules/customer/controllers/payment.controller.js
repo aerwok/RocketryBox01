@@ -6,7 +6,6 @@ import Payment from '../models/payment.model.js';
 import { logger } from '../../../utils/logger.js';
 import { bookShipment } from '../../../utils/shipping.js';
 import { razorpayService } from '../../../services/razorpay.service.js';
-import Order from '../models/order.model.js';
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -16,7 +15,7 @@ const razorpay = new Razorpay({
 
 /**
  * Payment Controller
- * Handles all payment-related operations
+ * Handles all payment-related operations for customer orders
  */
 
 class PaymentController {
@@ -26,34 +25,48 @@ class PaymentController {
    */
   static async createPaymentOrder(req, res, next) {
     try {
-      const { orderId, amount, currency = 'INR' } = req.body;
-      const customerId = req.user.id; // Assuming user authentication middleware
+      const { amount, currency = 'INR', orderData } = req.body;
+      const customerId = req.user.id;
 
-      // Validate order exists and belongs to customer
-      const order = await Order.findOne({ _id: orderId, customerId });
-      if (!order) {
-        return next(new AppError('Order not found', 404));
+      // Validate that we have order data for creating the order
+      if (!orderData) {
+        return next(new AppError('Order data is required to create payment', 400));
       }
 
-      // Create Razorpay order
+      // Validate essential order data fields
+      if (!orderData.pickupAddress || !orderData.deliveryAddress || !orderData.package) {
+        return next(new AppError('Incomplete order data provided', 400));
+      }
+
+      // Generate temporary receipt for payment
+      const tempReceipt = `temp_${Date.now().toString().slice(-8)}_${Math.floor(Math.random() * 1000)}`;
+
+      // Create Razorpay order with temporary data
       const razorpayResult = await razorpayService.createOrder({
-        amount,
+        amount: amount,
         currency,
-        receipt: `order_${orderId}_${Date.now()}`,
+        receipt: tempReceipt,
         notes: {
-          orderId: orderId.toString(),
           customerId: customerId.toString(),
-          customerEmail: req.user.email
+          customerEmail: req.user.email,
+          pickupPincode: orderData.pickupAddress.pincode,
+          deliveryPincode: orderData.deliveryAddress.pincode,
+          weight: orderData.package.weight,
+          temporaryOrder: 'true'
         }
       });
 
       if (!razorpayResult.success) {
-        return next(new AppError('Failed to create payment order', 500));
+        console.error('❌ Razorpay order creation failed:', {
+          error: razorpayResult.error,
+          details: razorpayResult.details,
+          amount
+        });
+        return next(new AppError(`Failed to create payment order: ${razorpayResult.error}`, 500));
       }
 
-      // Create payment record in database
+      // Create payment record in database (without order reference initially)
       const payment = new Payment({
-        orderId,
         customerId,
         razorpayOrderId: razorpayResult.order.id,
         amount,
@@ -61,17 +74,18 @@ class PaymentController {
         status: 'created',
         metadata: {
           createdAt: new Date(),
+          temporaryOrderData: orderData, // Store order data in payment metadata
           razorpayOrderData: razorpayResult.order
         }
       });
 
       await payment.save();
 
-      console.log('💳 Payment order created:', {
+      console.log('💳 Payment order created for temporary order:', {
         paymentId: payment._id,
         razorpayOrderId: razorpayResult.order.id,
         amount,
-        orderId
+        customerId
       });
 
       res.status(201).json({
@@ -79,13 +93,14 @@ class PaymentController {
         data: {
           paymentId: payment._id,
           razorpayOrder: razorpayResult.order,
-          keyId: razorpayResult.keyId,
+          orderId: razorpayResult.order.id, // This is the Razorpay order ID
+          keyId: process.env.RAZORPAY_KEY_ID, // Send key ID for frontend
           amount,
           currency,
           prefill: {
             name: req.user.name,
             email: req.user.email,
-            contact: req.user.phone
+            contact: req.user.phone || req.user.mobile
           }
         }
       });
@@ -118,43 +133,166 @@ class PaymentController {
         return next(new AppError('Payment record not found', 404));
       }
 
-      // Process payment verification
-      const verificationResult = await razorpayService.processPaymentVerification({
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature
+      // Verify payment signature
+      const generated_signature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(razorpay_order_id + '|' + razorpay_payment_id)
+        .digest('hex');
+
+      if (generated_signature !== razorpay_signature) {
+        return next(new AppError('Invalid payment signature', 400));
+      }
+
+      // Extract order data from payment metadata
+      const orderData = payment.metadata?.temporaryOrderData;
+      if (!orderData) {
+        return next(new AppError('Order data not found in payment record', 500));
+      }
+
+      console.log('📦 Creating order from payment verification with data:', {
+        customerId,
+        pickupPincode: orderData.pickupAddress?.pincode,
+        deliveryPincode: orderData.deliveryAddress?.pincode,
+        amount: payment.amount
       });
 
-      if (!verificationResult.success) {
-        return next(new AppError(verificationResult.error, 400));
-      }
-
-      // Update order status if payment is successful
-      if (verificationResult.payment.status === 'completed') {
-        await Order.findByIdAndUpdate(payment.orderId, {
+      // Create the actual order in database now that payment is verified
+      const newOrder = await CustomerOrder.create({
+        customerId: customerId,
+        packageDetails: {
+          weight: orderData.package.weight,
+          dimensions: orderData.package.dimensions || { length: 10, width: 10, height: 10 },
+          declaredValue: orderData.package.declaredValue || 100
+        },
+        pickupAddress: {
+          name: orderData.pickupAddress.name,
+          phone: orderData.pickupAddress.phone,
+          email: orderData.pickupAddress.email,
+          address: {
+            line1: orderData.pickupAddress.address1 || orderData.pickupAddress.line1,
+            line2: orderData.pickupAddress.address2 || orderData.pickupAddress.line2,
+            city: orderData.pickupAddress.city,
+            state: orderData.pickupAddress.state,
+            pincode: orderData.pickupAddress.pincode,
+            country: orderData.pickupAddress.country || 'India'
+          }
+        },
+        deliveryAddress: {
+          name: orderData.deliveryAddress.name,
+          phone: orderData.deliveryAddress.phone,
+          email: orderData.deliveryAddress.email,
+          address: {
+            line1: orderData.deliveryAddress.address1 || orderData.deliveryAddress.line1,
+            line2: orderData.deliveryAddress.address2 || orderData.deliveryAddress.line2,
+            city: orderData.deliveryAddress.city,
+            state: orderData.deliveryAddress.state,
+            pincode: orderData.deliveryAddress.pincode,
+            country: orderData.deliveryAddress.country || 'India'
+          }
+        },
+        selectedProvider: orderData.selectedProvider || {
+          id: 'generic',
+          name: 'RocketryBox Logistics',
+          serviceType: orderData.serviceType || 'standard',
+          totalRate: orderData.shippingRate || payment.amount,
+          estimatedDays: orderData.estimatedDelivery || '3-5'
+        },
+        shippingRate: orderData.shippingRate || payment.amount,
+        totalAmount: payment.amount,
+        instructions: orderData.instructions || '',
+        status: 'confirmed',
           paymentStatus: 'paid',
-          status: 'confirmed',
           paidAt: new Date()
         });
-      }
 
-      console.log('✅ Payment verified successfully:', {
+      // Generate AWB number (format: RB + timestamp + random)
+      const generateAWB = () => {
+        const timestamp = Date.now().toString().slice(-6);
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        return `RB${timestamp}${random}`;
+      };
+
+      // Calculate estimated delivery date (5 working days from payment)
+      const calculateEstimatedDelivery = () => {
+        const today = new Date();
+        const estimatedDays = 5;
+        const estimatedDelivery = new Date(today);
+        estimatedDelivery.setDate(today.getDate() + estimatedDays);
+        return estimatedDelivery;
+      };
+
+      // Generate tracking URL
+      const awbNumber = generateAWB();
+      const trackingUrl = `${process.env.FRONTEND_URL || 'https://rocketrybox.com'}/track/${awbNumber}`;
+
+      // Update order with tracking details
+      const updatedOrder = await CustomerOrder.findByIdAndUpdate(
+        newOrder._id,
+        {
+          awb: awbNumber,
+          trackingUrl: trackingUrl,
+          estimatedDelivery: calculateEstimatedDelivery(),
+          courierPartner: orderData.selectedProvider?.name || 'RocketryBox Logistics',
+          bookingType: 'API_AUTOMATED',
+          metadata: {
+            paymentCompletedAt: new Date(),
+            razorpayPaymentId: razorpay_payment_id,
+            razorpayOrderId: razorpay_order_id,
+            awbGeneratedAt: new Date(),
+            lastUpdated: new Date(),
+            createdFromPayment: true
+          }
+        },
+        { new: true }
+      );
+
+      // Update payment record with order reference
+      payment.orderId = updatedOrder._id;
+      payment.razorpayPaymentId = razorpay_payment_id;
+      payment.status = 'completed';
+      payment.paidAt = new Date();
+      await payment.save();
+
+      console.log('✅ Order created and payment verified successfully:', {
         paymentId: payment._id,
         razorpayPaymentId: razorpay_payment_id,
-        status: verificationResult.payment.status
+        orderId: updatedOrder._id,
+        orderNumber: updatedOrder.orderNumber,
+        awb: updatedOrder.awb,
+        trackingUrl: updatedOrder.trackingUrl,
+        estimatedDelivery: updatedOrder.estimatedDelivery,
+        courierPartner: updatedOrder.courierPartner
       });
 
       res.json({
         success: true,
         data: {
-          payment: verificationResult.payment,
-          razorpayPayment: verificationResult.razorpayPayment,
-          verified: true
+          payment: {
+            id: payment._id,
+            status: payment.status,
+            amount: payment.amount,
+            paidAt: payment.paidAt,
+            razorpayPaymentId: payment.razorpayPaymentId
+          },
+          order: {
+            id: updatedOrder._id,
+            orderNumber: updatedOrder.orderNumber,
+            awb: updatedOrder.awb,
+            trackingUrl: updatedOrder.trackingUrl,
+            status: updatedOrder.status,
+            paymentStatus: updatedOrder.paymentStatus,
+            estimatedDelivery: updatedOrder.estimatedDelivery,
+            courierPartner: updatedOrder.courierPartner,
+            bookingType: updatedOrder.bookingType,
+            paidAt: updatedOrder.paidAt
+          },
+          verified: true,
+          message: 'Payment verified successfully and order created'
         }
       });
 
     } catch (error) {
-      console.error('❌ Error verifying payment:', error);
+      console.error('❌ Error verifying payment and creating order:', error);
       next(new AppError(error.message, 500));
     }
   }

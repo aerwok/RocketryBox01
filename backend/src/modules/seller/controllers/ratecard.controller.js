@@ -1,176 +1,239 @@
-import RateCard from '../models/ratecard.model.js';
+import RateCard from '../../../models/ratecard.model.js';
+import rateCardService from '../../../services/ratecard.service.js';
 import { AppError } from '../../../middleware/errorHandler.js';
+import { logger } from '../../../utils/logger.js';
 
-// Get seller's current rate card
+// Get available rate cards for seller
 export const getSellerRateCard = async (req, res, next) => {
   try {
-    const rateCard = await RateCard.findOne({ seller: req.user.id })
-      .populate('defaultCard', 'name description')
-      .lean();
-
-    if (!rateCard) {
-      throw new AppError('Rate card not found', 404);
+    // Get all active rate cards (available to all sellers)
+    const result = await rateCardService.getAllRateCards({ isActive: true });
+    
+    if (!result.success) {
+      throw new AppError('Failed to fetch rate cards', 500);
     }
+
+    // Group rate cards by courier for easier frontend consumption
+    const rateCardsByCourier = {};
+    result.rateCards.forEach(card => {
+      if (!rateCardsByCourier[card.courier]) {
+        rateCardsByCourier[card.courier] = [];
+      }
+      rateCardsByCourier[card.courier].push(card);
+    });
 
     res.status(200).json({
       success: true,
-      data: rateCard
+      data: {
+        rateCards: result.rateCards,
+        rateCardsByCourier,
+        totalCount: result.rateCards.length
+      }
     });
   } catch (error) {
+    logger.error(`Error in getSellerRateCard: ${error.message}`);
     next(error);
   }
 };
 
-// Calculate shipping rate based on rate card
+// Calculate shipping rate for seller using unified rate card system
 export const calculateShippingRate = async (req, res, next) => {
   try {
-    const { fromPincode, toPincode, weight, length, width, height, mode, cod } = req.body;
-    
-    // Get seller's rate card
-    const rateCard = await RateCard.findOne({ seller: req.user.id });
-    if (!rateCard) {
-      throw new AppError('Rate card not found', 404);
+    const {
+      fromPincode,
+      toPincode,
+      weight,
+      length,
+      width,
+      height,
+      mode = 'Surface',
+      courier,
+      isCOD = false,
+      declaredValue = 0
+    } = req.body;
+
+    // Validate required parameters
+    if (!fromPincode || !toPincode || !weight) {
+      throw new AppError('fromPincode, toPincode, and weight are required', 400);
     }
 
-    // Calculate volumetric weight if dimensions provided
-    let volumetricWeight = 0;
-    if (length && width && height) {
-      volumetricWeight = (length * width * height) / 5000; // Standard volumetric divisor
+    // Use the unified rate card service for calculation
+    const result = await rateCardService.calculateShippingRate({
+      fromPincode,
+      toPincode,
+      weight,
+      dimensions: length && width && height ? { length, width, height } : null,
+      mode,
+      courier,
+      orderType: isCOD ? 'cod' : 'prepaid',
+      codCollectableAmount: declaredValue || 0,
+      includeRTO: false
+    });
+
+    if (!result.success) {
+      throw new AppError(result.error, 400);
     }
 
-    // Use higher of actual vs volumetric weight
-    const chargeableWeight = Math.max(weight, volumetricWeight);
-
-    // Get zone based on pincodes
-    const zone = await getZoneFromPincodes(fromPincode, toPincode);
-
-    // Get base rate from rate card
-    const baseRate = rateCard.rates[mode.toLowerCase()][zone];
-    if (!baseRate) {
-      throw new AppError('Rate not found for given parameters', 400);
-    }
-
-    // Calculate additional weight charges
-    const additionalWeight = Math.max(0, chargeableWeight - baseRate.uptoWeight);
-    const additionalCharges = Math.ceil(additionalWeight / baseRate.perKg) * baseRate.perKgRate;
-
-    // Calculate total rate
-    let totalRate = baseRate.baseRate + additionalCharges;
-
-    // Add COD charges if applicable
-    if (cod && rateCard.codCharges) {
-      totalRate += rateCard.codCharges;
-    }
-
-    // Add fuel surcharge if applicable
-    if (rateCard.fuelSurcharge) {
-      totalRate += (totalRate * rateCard.fuelSurcharge) / 100;
-    }
-
-    res.status(200).json({
+    // Transform response for seller API compatibility
+    const response = {
       success: true,
       data: {
-        baseRate: baseRate.baseRate,
-        additionalCharges,
-        codCharges: cod ? rateCard.codCharges : 0,
-        fuelSurcharge: rateCard.fuelSurcharge ? (totalRate * rateCard.fuelSurcharge) / 100 : 0,
-        totalRate: Math.round(totalRate),
-        zone,
-        chargeableWeight,
-        mode
+        calculations: result.calculations,
+        bestOptions: result.bestOptions,
+        requestId: result.requestId,
+        zone: result.zone,
+        billedWeight: result.billedWeight,
+        deliveryEstimate: result.deliveryEstimate
       }
-    });
+    };
+
+    res.status(200).json(response);
   } catch (error) {
+    logger.error(`Error in calculateShippingRate: ${error.message}`);
     next(error);
   }
 };
 
-// Get rate card change history
-export const getRateCardHistory = async (req, res, next) => {
+// Get rate comparison across multiple couriers
+export const getRateComparison = async (req, res, next) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const {
+      fromPincode,
+      toPincode,
+      weight,
+      dimensions,
+      isCOD = false,
+      declaredValue = 0
+    } = req.body;
 
-    const history = await RateCard.findOne({ seller: req.user.id })
-      .select('history')
-      .slice('history', [skip, parseInt(limit)])
-      .lean();
-
-    if (!history) {
-      throw new AppError('Rate card history not found', 404);
+    // Validate required parameters
+    if (!fromPincode || !toPincode || !weight) {
+      throw new AppError('fromPincode, toPincode, and weight are required', 400);
     }
 
-    const total = history.history ? history.history.length : 0;
+    // Get active couriers
+    const couriersResult = await rateCardService.getActiveCouriers();
+    if (!couriersResult.success) {
+      throw new AppError('Failed to fetch active couriers', 500);
+    }
+
+    const comparisons = [];
+    const errors = [];
+
+    // Calculate rates for each courier
+    for (const courier of couriersResult.couriers) {
+      try {
+        const result = await rateCardService.calculateShippingRate({
+          fromPincode,
+          toPincode,
+          weight,
+          dimensions,
+          courier,
+          isCOD,
+          declaredValue
+        });
+
+        if (result.success && result.calculations.length > 0) {
+          // Get the best option for this courier
+          const bestOption = result.calculations.reduce((best, current) => 
+            current.totalAmount < best.totalAmount ? current : best
+          );
+
+          comparisons.push({
+            courier,
+            ...bestOption,
+            zone: result.zone,
+            deliveryEstimate: result.deliveryEstimate
+          });
+        }
+      } catch (courierError) {
+        errors.push(`${courier}: ${courierError.message}`);
+      }
+    }
+
+    // Sort by total amount (cheapest first)
+    comparisons.sort((a, b) => a.totalAmount - b.totalAmount);
 
     res.status(200).json({
       success: true,
       data: {
-        history: history.history || [],
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+        comparisons,
+        cheapest: comparisons[0] || null,
+        errors: errors.length > 0 ? errors : undefined,
+        requestDetails: {
+          fromPincode,
+          toPincode,
+          weight,
+          dimensions,
+          isCOD,
+          declaredValue
+        }
       }
     });
   } catch (error) {
+    logger.error(`Error in getRateComparison: ${error.message}`);
     next(error);
   }
 };
 
-// Get zone mapping for pincodes
+// Get zone mapping for pincodes (updated to use unified system)
 export const getZoneMapping = async (req, res, next) => {
   try {
-    const { pincodes } = req.query;
+    const { pincodes, fromPincode } = req.query;
     
-    if (!pincodes) {
-      throw new AppError('Please provide pincodes', 400);
+    if (!pincodes || !fromPincode) {
+      throw new AppError('Please provide fromPincode and pincodes', 400);
     }
 
     const pincodeList = pincodes.split(',').map(p => p.trim());
-    const zones = await Promise.all(
-      pincodeList.map(async pincode => {
-        const zone = await getZoneFromPincode(pincode);
-        return { pincode, zone };
-      })
-    );
+    const zones = [];
+
+    for (const pincode of pincodeList) {
+      try {
+        const zone = await rateCardService.determineZone(fromPincode, pincode);
+        zones.push({ 
+          pincode, 
+          zone,
+          fromPincode 
+        });
+      } catch (error) {
+        zones.push({ 
+          pincode, 
+          zone: 'Unknown',
+          fromPincode,
+          error: error.message 
+        });
+      }
+    }
 
     res.status(200).json({
       success: true,
-      data: zones
+      data: {
+        zones,
+        fromPincode
+      }
     });
   } catch (error) {
+    logger.error(`Error in getZoneMapping: ${error.message}`);
     next(error);
   }
 };
 
-// Helper function to get zone from pincode pair
-async function getZoneFromPincodes(fromPincode, toPincode) {
-  // This would typically query a pincode database to determine the zone
-  // For now, using a simple logic based on first 2 digits
-  const fromZone = fromPincode.substring(0, 2);
-  const toZone = toPincode.substring(0, 2);
-  
-  if (fromZone === toZone) return 'A';
-  if (Math.abs(parseInt(fromZone) - parseInt(toZone)) <= 5) return 'B';
-  if (Math.abs(parseInt(fromZone) - parseInt(toZone)) <= 10) return 'C';
-  return 'D';
-}
+// Get rate card statistics for seller dashboard
+export const getRateCardStatistics = async (req, res, next) => {
+  try {
+    const result = await rateCardService.getStatistics();
+    
+    if (!result.success) {
+      throw new AppError('Failed to fetch statistics', 500);
+    }
 
-// Helper function to get zone from single pincode
-async function getZoneFromPincode(pincode) {
-  // This would typically query a pincode database
-  // For now, using a simple mapping based on first digit
-  const zoneMap = {
-    '1': 'North',
-    '2': 'North',
-    '3': 'East',
-    '4': 'East',
-    '5': 'South',
-    '6': 'South',
-    '7': 'West',
-    '8': 'West',
-    '9': 'Central',
-    '0': 'Central'
-  };
-  return zoneMap[pincode[0]] || 'Unknown';
-} 
+    res.status(200).json({
+      success: true,
+      data: result.statistics
+    });
+  } catch (error) {
+    logger.error(`Error in getRateCardStatistics: ${error.message}`);
+    next(error);
+  }
+}; 

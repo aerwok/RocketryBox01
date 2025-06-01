@@ -70,7 +70,8 @@ export const paymentLimiter = async (req, res, next) => {
     try {
         const key = `paymentlimit:${req.ip}`;
         const windowMs = 60 * 60 * 1000; // 1 hour
-        const maxRequests = 10; // 10 requests per hour
+        // More reasonable limits: higher for development, moderate for production
+        const maxRequests = process.env.NODE_ENV === 'development' ? 100 : 30; // 100 dev, 30 prod per hour
         
         const result = await checkRateLimit(
             key,

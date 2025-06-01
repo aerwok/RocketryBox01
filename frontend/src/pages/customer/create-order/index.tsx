@@ -224,8 +224,12 @@ export default function CustomerCreateOrderPage() {
     };
 
     const handleConfirmOrder = async () => {
+        try {
+            console.log('🚀 Starting order creation process...');
+            
+            // Validate required fields
         if (!selectedRate) {
-            toast.error("Please select a courier partner first");
+                toast.error("Please select a shipping rate first");
             return;
         }
         
@@ -236,25 +240,19 @@ export default function CustomerCreateOrderPage() {
             return;
         }
         
-        try {
             const formData = form.getValues();
+            const mappedServiceType = selectedRate.service === 'surface' ? 'standard' : 'express';
             
-            // Debug log to see what serviceType we're sending
-            console.log('Selected rate:', selectedRate);
-            console.log('Service type being sent:', selectedRate.service);
+            console.log('📦 Order data being prepared:', {
+                pickupPincode: formData.senderPincode,
+                deliveryPincode: formData.receiverPincode,
+                weight: formData.weight,
+                selectedRate,
+                serviceType: mappedServiceType
+            });
             
-            // Map service type to allowed values
-            let mappedServiceType = 'standard';
-            if (selectedRate.service === 'air' || selectedRate.service === 'express' || selectedRate.mode === 'express') {
-                mappedServiceType = 'express';
-            } else if (selectedRate.service === 'surface' || selectedRate.service === 'standard' || selectedRate.mode === 'standard') {
-                mappedServiceType = 'standard';
-            }
-            
-            console.log('Mapped service type:', mappedServiceType);
-            
-            // Create order using the real API
-            const response = await customerApiService.createOrder({
+            // Instead of creating order, store order data temporarily for payment
+            const temporaryOrderData = {
                 pickupAddress: {
                     name: formData.senderName,
                     phone: formData.senderMobile,
@@ -282,6 +280,7 @@ export default function CustomerCreateOrderPage() {
                         width: formData.width,
                         height: formData.height,
                     },
+                    declaredValue: formData.packageValue,
                     items: [{
                         name: formData.packageContent,
                         quantity: formData.itemQuantity,
@@ -298,19 +297,30 @@ export default function CustomerCreateOrderPage() {
                 serviceType: mappedServiceType,
                 paymentMethod: 'online',
                 pickupDate: formData.pickupDate.toISOString(),
+                // Additional data for payment page
+                shippingRate: selectedRate.rate,
+                estimatedDelivery: selectedRate.estimatedDelivery
+            };
+
+            console.log('💾 Storing temporary order data:', temporaryOrderData);
+            
+            // Store in session storage (survives page refresh, cleared on browser close)
+            sessionStorage.setItem('pendingOrderData', JSON.stringify(temporaryOrderData));
+            
+            toast.success("Order data prepared! Redirecting to payment...");
+            
+            // Navigate directly to payment page with stored data
+            navigate('/customer/payment', { 
+                state: { 
+                    orderData: temporaryOrderData 
+                } 
             });
 
-            if (response.success) {
-                toast.success("Order created successfully!");
-                // Navigate to order details page for payment
-                navigate(`/customer/orders/${response.data.order.id}`);
-            } else {
-                throw new Error('Order creation failed');
-            }
         } catch (error) {
             const errorMessage = error instanceof Error 
                 ? error.message 
-                : "Failed to create order. Please try again.";
+                : "Failed to prepare order. Please try again.";
+            console.error('❌ Order preparation error:', error);
             toast.error(errorMessage);
         }
     };

@@ -172,7 +172,84 @@ export const validateUpdateInvoiceStatus = [
   validate
 ];
 
-// Rate Card Validators
+// Rate Card Validators (Updated for unified model)
+export const validateCreateRateCards = [
+  body('rateCards')
+    .notEmpty()
+    .withMessage('Rate cards are required')
+    .isArray()
+    .withMessage('Rate cards must be an array'),
+  
+  body('rateCards.*.courier')
+    .notEmpty()
+    .withMessage('Courier name is required')
+    .isString()
+    .withMessage('Courier name must be a string'),
+  
+  body('rateCards.*.productName')
+    .notEmpty()
+    .withMessage('Product name is required')
+    .isString()
+    .withMessage('Product name must be a string'),
+  
+  body('rateCards.*.mode')
+    .notEmpty()
+    .withMessage('Mode is required')
+    .isIn(['Surface', 'Air'])
+    .withMessage('Mode must be either Surface or Air'),
+  
+  body('rateCards.*.zone')
+    .notEmpty()
+    .withMessage('Zone is required')
+    .isIn(['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone'])
+    .withMessage('Zone must be a valid zone type'),
+  
+  body('rateCards.*.baseRate')
+    .notEmpty()
+    .withMessage('Base rate is required')
+    .isFloat({ min: 0 })
+    .withMessage('Base rate must be a positive number'),
+  
+  body('rateCards.*.addlRate')
+    .notEmpty()
+    .withMessage('Additional rate is required')
+    .isFloat({ min: 0 })
+    .withMessage('Additional rate must be a positive number'),
+  
+  body('rateCards.*.codAmount')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('COD amount must be a positive number'),
+  
+  body('rateCards.*.codPercent')
+    .optional()
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('COD percent must be between 0 and 100'),
+  
+  body('rateCards.*.rtoCharges')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('RTO charges must be a positive number'),
+  
+  body('rateCards.*.minimumBillableWeight')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Minimum billable weight must be a positive number'),
+  
+  body('rateCards.*.isActive')
+    .optional()
+    .isBoolean()
+    .withMessage('isActive must be a boolean'),
+  
+  validate
+];
+
+export const validateUpdateRateCards = [
+  ...validateCreateRateCards,
+  validate
+];
+
+// Legacy validators (kept for backward compatibility)
 export const validateCreateRateCard = [
   body('rateBand')
     .notEmpty()

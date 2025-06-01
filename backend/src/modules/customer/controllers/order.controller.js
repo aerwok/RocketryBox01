@@ -3,16 +3,16 @@ import Customer from '../models/customer.model.js';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
-import { calculateShippingRates } from '../../../utils/shipping.js';
 import { createPaymentOrder, verifyPayment, getPaymentStatus } from '../../../utils/payment.js';
-import { calculateCourierRates } from '../../../utils/courierRates.js';
-import { calculateRate as calculateDelhiveryRate } from '../../../utils/delhivery.js';
-import { calculateRate as calculateBluedartRate } from '../../../utils/bluedart.js';
-import { calculateRate as calculateDTDCRate } from '../../../utils/dtdc.js';
-import { calculateRate as calculateEkartRate } from '../../../utils/ekart.js';
-import { calculateRate as calculateXpressbeesRate } from '../../../utils/xpressbees.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 import { logger } from '../../../utils/logger.js';
+import rateCardService from '../../../services/ratecard.service.js';
+import mongoose from 'mongoose';
+
+// Utility function to format monetary values to 2 decimal places
+const formatMoney = (amount) => {
+  return Math.round(amount * 100) / 100;
+};
 
 // Create new order
 /**
@@ -32,9 +32,110 @@ export const getOrderById = async (req, res, next) => {
       return next(new AppError('Order not found', 404));
     }
 
+    // Transform order data to match frontend expectations
+    const transformedOrder = {
+      _id: order._id,
+      orderNumber: order.orderNumber || 'N/A',
+      
+      // Flattened structure for payment page compatibility
+      receiverName: order.deliveryAddress?.name || 'N/A',
+      receiverAddress1: order.deliveryAddress?.address?.line1 || 'N/A',
+      receiverAddress2: order.deliveryAddress?.address?.line2 || '',
+      receiverCity: order.deliveryAddress?.address?.city || 'N/A',
+      receiverState: order.deliveryAddress?.address?.state || 'N/A',
+      receiverPincode: order.deliveryAddress?.address?.pincode || 'N/A',
+      receiverMobile: order.deliveryAddress?.phone || 'N/A',
+      weight: order.packageDetails?.weight || 0,
+      length: order.packageDetails?.dimensions?.length || 10,
+      width: order.packageDetails?.dimensions?.width || 10,
+      height: order.packageDetails?.dimensions?.height || 10,
+      packageType: order.selectedProvider?.serviceType || 'standard',
+      pickupDate: order.createdAt,
+      
+      // Nested structure for OrderDetails page
+      packageDetails: {
+        weight: order.packageDetails?.weight || 0,
+        dimensions: {
+          length: order.packageDetails?.dimensions?.length || 10,
+          width: order.packageDetails?.dimensions?.width || 10,
+          height: order.packageDetails?.dimensions?.height || 10
+        },
+        declaredValue: order.packageDetails?.declaredValue || 0
+      },
+      pickupAddress: {
+        name: order.pickupAddress?.name || 'N/A',
+        phone: order.pickupAddress?.phone || 'N/A',
+        address: {
+          line1: order.pickupAddress?.address?.line1 || 'N/A',
+          line2: order.pickupAddress?.address?.line2 || '',
+          city: order.pickupAddress?.address?.city || 'N/A',
+          state: order.pickupAddress?.address?.state || 'N/A',
+          pincode: order.pickupAddress?.address?.pincode || 'N/A',
+          country: order.pickupAddress?.address?.country || 'India'
+        }
+      },
+      deliveryAddress: {
+        name: order.deliveryAddress?.name || 'N/A',
+        phone: order.deliveryAddress?.phone || 'N/A',
+        address: {
+          line1: order.deliveryAddress?.address?.line1 || 'N/A',
+          line2: order.deliveryAddress?.address?.line2 || '',
+          city: order.deliveryAddress?.address?.city || 'N/A',
+          state: order.deliveryAddress?.address?.state || 'N/A',
+          pincode: order.deliveryAddress?.address?.pincode || 'N/A',
+          country: order.deliveryAddress?.address?.country || 'India'
+        }
+      },
+      selectedProvider: {
+        name: order.selectedProvider?.name || 'Generic Courier',
+        serviceType: order.selectedProvider?.serviceType || 'standard',
+        estimatedDays: order.selectedProvider?.estimatedDays || '3-5',
+        totalRate: parseFloat(order.selectedProvider?.totalRate) || 0
+      },
+      
+      // Payment and shipping info
+      shippingPartner: {
+        name: order.selectedProvider?.name || 'Generic Courier',
+        rate: parseFloat(order.shippingRate) || 0
+      },
+      shippingRate: parseFloat(order.shippingRate) || 0,
+      status: order.status || 'pending',
+      paymentStatus: order.paymentStatus || 'pending',
+      totalAmount: parseFloat(order.totalAmount) || 0,
+      awb: order.awb || null,
+      trackingUrl: order.trackingUrl || null,
+      createdAt: order.createdAt
+    };
+
+    console.log('Transformed order data:', {
+      orderId: order._id,
+      orderNumber: transformedOrder.orderNumber,
+      shippingPartner: transformedOrder.shippingPartner,
+      totalAmount: transformedOrder.totalAmount,
+      packageDetails: {
+        weight: transformedOrder.weight,
+        dimensions: {
+          length: transformedOrder.length,
+          width: transformedOrder.width,
+          height: transformedOrder.height
+        },
+        declaredValue: transformedOrder.declaredValue
+      },
+      addresses: {
+        pickup: !!order.pickupAddress,
+        delivery: !!order.deliveryAddress
+      },
+      rawData: {
+        hasPackageDetails: !!order.packageDetails,
+        hasSelectedProvider: !!order.selectedProvider,
+        shippingRateRaw: order.shippingRate,
+        totalAmountRaw: order.totalAmount
+      }
+    });
+
     res.status(200).json({
       success: true,
-      data: order
+      data: transformedOrder
     });
   } catch (error) {
     logger.error('Error fetching order:', error);
@@ -50,27 +151,88 @@ export const getOrderHistory = async (req, res, next) => {
     const customerId = req.user.id;
     const { page = 1, limit = 10, status } = req.query;
 
-    const filter = { customerId };
-    if (status) {
-      filter.status = status;
+    // Debug logging
+    console.log('🔍 getOrderHistory called with:', {
+      customerId: customerId,
+      customerIdType: typeof customerId,
+      userObject: {
+        id: req.user.id,
+        email: req.user.email,
+        name: req.user.name
+      },
+      queryParams: { page, limit, status }
+    });
+
+    // Convert string customerId to ObjectId for proper matching
+    const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+    const filter = { customerId: customerObjectId };
+    if (status && status !== 'All' && status !== 'undefined' && status !== 'null') {
+      // Map frontend status to backend status
+      const statusMapping = {
+        'Booked': 'confirmed',
+        'Processing': 'pending',
+        'In Transit': 'shipped',
+        'Out for Delivery': 'shipped', // Map to shipped for now
+        'Delivered': 'delivered',
+        'Returned': 'cancelled'
+      };
+      filter.status = statusMapping[status] || status.toLowerCase();
     }
 
+    console.log('🔍 MongoDB filter:', filter);
+
     const orders = await CustomerOrder.find(filter)
-      .populate('paymentId', 'status amount paidAt')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
     const total = await CustomerOrder.countDocuments(filter);
 
+    console.log('🔍 Query results:', {
+      ordersFound: orders.length,
+      totalCount: total
+    });
+
+    // Transform orders to match frontend expected format
+    const transformedOrders = orders.map(order => {
+      // Map backend status to frontend status
+      const statusMapping = {
+        'pending': 'Processing',
+        'confirmed': 'Booked',
+        'shipped': 'In Transit',
+        'delivered': 'Delivered',
+        'cancelled': 'Returned'
+      };
+
+      return {
+        date: order.createdAt.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        awb: order.awb || order.orderNumber,
+        consigne: order.deliveryAddress?.name || 'N/A',
+        product: order.packageDetails?.weight ? `${order.packageDetails.weight}kg Package` : 'Package',
+        courier: order.courierPartner || order.selectedProvider?.name || 'RocketryBox',
+        amount: order.totalAmount || 0,
+        label: order.trackingUrl || '#',
+        status: statusMapping[order.status] || order.status,
+        edd: order.estimatedDelivery 
+          ? order.estimatedDelivery.toISOString().split('T')[0] 
+          : 'TBD',
+        pdfUrl: order.trackingUrl || '#',
+        // Include original order data for details page
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        paymentStatus: order.paymentStatus
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: orders,
-      pagination: {
+      data: {
+        orders: transformedOrders,
+        total,
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
@@ -127,23 +289,36 @@ export const createOrder = async (req, res, next) => {
       totalRate = selectedProvider.totalRate;
       console.log('Using user-selected provider:', selectedProvider.name);
     } else {
-      // Calculate shipping rates if no provider selected
-      const rates = await calculateShippingRates({
+      // Calculate shipping rates if no provider selected using unified service
+      const rateResult = await rateCardService.calculateShippingRate({
+        fromPincode: pickupAddress.pincode,
+        toPincode: deliveryAddress.pincode,
         weight: packageDetails.weight,
-        dimensions: packageDetails.dimensions,
-        pickupPincode: pickupAddress.pincode,
-        deliveryPincode: deliveryAddress.pincode,
-        serviceType
+        dimensions: packageDetails.dimensions || { length: 10, width: 10, height: 10 },
+        mode: serviceType === 'express' ? 'Air' : 'Surface',
+        orderType: serviceType === 'cod' ? 'cod' : 'prepaid',
+        codCollectableAmount: packageDetails.declaredValue || 0,
+        includeRTO: false
       });
 
-      if (!rates || rates.length === 0) {
+      if (!rateResult.success || !rateResult.calculations.length) {
         return next(new AppError('No shipping rates available for the given parameters', 400));
       }
 
-      // Use the first (cheapest) rate for order creation
-      selectedRate = rates[0];
-      totalRate = selectedRate.totalRate || selectedRate.total || 0;
-      console.log('Using calculated rate:', selectedRate);
+      // Use the cheapest rate for order creation
+      const cheapestRate = rateResult.calculations[0];
+      selectedRate = {
+        id: cheapestRate.rateCardId,
+        courier: cheapestRate.courier,
+        provider: { 
+          name: cheapestRate.courier, 
+          estimatedDays: rateResult.deliveryEstimate 
+        },
+        totalRate: cheapestRate.total,
+        estimatedDelivery: rateResult.deliveryEstimate
+      };
+      totalRate = cheapestRate.total;
+      console.log('Using calculated rate from unified service:', selectedRate);
     }
     
     // Calculate estimated delivery date (add 3-5 days to current date)
@@ -201,11 +376,11 @@ export const createOrder = async (req, res, next) => {
         id: selectedRate.id || 'generic',
         name: selectedRate.provider?.name || selectedRate.courier || 'Generic Courier',
         serviceType: serviceType,
-        totalRate: totalRate,
+        totalRate: formatMoney(totalRate),
         estimatedDays: selectedRate.provider?.estimatedDays || selectedRate.estimatedDelivery || '3-5'
       },
-      shippingRate: totalRate,
-      totalAmount: totalRate + (totalRate * 0.18), // Add 18% service charges
+      shippingRate: formatMoney(totalRate),
+      totalAmount: formatMoney(totalRate), // Store just the shipping rate, let frontend calculate full total
       instructions: instructions || ''
     };
 
@@ -272,8 +447,8 @@ export const createOrder = async (req, res, next) => {
           orderNumber: order.orderNumber,
           status: order.status,
           paymentStatus: order.paymentStatus,
-          totalAmount: order.totalAmount,
-          shippingRate: order.shippingRate,
+          totalAmount: formatMoney(order.totalAmount),
+          shippingRate: formatMoney(order.shippingRate),
           awb: order.awb,
           createdAt: order.createdAt
         }
@@ -666,62 +841,189 @@ export const calculateRates = async (req, res, next) => {
     }
 
     // Validate service type (only standard and express allowed for customers)
-    if (!['standard', 'express'].includes(serviceType)) {
-      throw new AppError('Invalid service type. Must be either standard or express', 400);
+    if (!['standard', 'express', 'cod'].includes(serviceType)) {
+      throw new AppError('Invalid service type. Must be standard, express, or cod', 400);
     }
 
-    // Prepare package and delivery details
-    const packageDetails = {
-      weight,
-      dimensions: { length: 10, width: 10, height: 10 }, // Default dimensions if not provided
-      serviceType
-    };
-    
-    const deliveryDetails = {
-      pickupPincode,
-      deliveryPincode
-    };
+    // Get rates for BOTH Surface and Air modes to give customers all options
+    const [surfaceResult, airResult] = await Promise.all([
+      // Surface/Standard rates
+      rateCardService.calculateShippingRate({
+        fromPincode: pickupPincode,
+        toPincode: deliveryPincode,
+        weight,
+        dimensions: { length: 10, width: 10, height: 10 }, // Default dimensions
+        mode: 'Surface',
+        orderType: serviceType === 'cod' ? 'cod' : 'prepaid',
+        codCollectableAmount: 0,
+        includeRTO: false
+      }),
+      // Air/Express rates  
+      rateCardService.calculateShippingRate({
+        fromPincode: pickupPincode,
+        toPincode: deliveryPincode,
+        weight,
+        dimensions: { length: 10, width: 10, height: 10 }, // Default dimensions
+        mode: 'Air',
+        orderType: serviceType === 'cod' ? 'cod' : 'prepaid',
+        codCollectableAmount: 0,
+        includeRTO: false
+      })
+    ]);
 
-    // Calculate rates using the shipping utility
-    const rates = await calculateShippingRates(packageDetails, deliveryDetails);
+    // Combine all calculations from both modes
+    let allCalculations = [];
+    let zone = 'Rest of India';
+    let billedWeight = weight;
+    let deliveryEstimate = '4-6 days';
 
-    if (!rates || rates.length === 0) {
+    if (surfaceResult.success) {
+      allCalculations.push(...surfaceResult.calculations.map(calc => ({
+        ...calc,
+        serviceMode: 'Surface',
+        serviceLabel: 'Standard'
+      })));
+      zone = surfaceResult.zone;
+      billedWeight = surfaceResult.billedWeight;
+      deliveryEstimate = surfaceResult.deliveryEstimate;
+    }
+
+    if (airResult.success) {
+      allCalculations.push(...airResult.calculations.map(calc => ({
+        ...calc,
+        serviceMode: 'Air',
+        serviceLabel: 'Express'
+      })));
+      // Use faster delivery estimate for air if available
+      if (airResult.deliveryEstimate && airResult.deliveryEstimate !== '4-6 days') {
+        deliveryEstimate = airResult.deliveryEstimate;
+      }
+    }
+
+    if (allCalculations.length === 0) {
       throw new AppError('No shipping rates available for the given parameters', 404);
     }
 
-    // Format the responses to a consistent structure
-    const formattedRates = rates.map(rate => ({
-      courier: rate.provider?.name || rate.courier || 'Unknown',
-      mode: rate.provider?.expressDelivery ? 'express' : (rate.serviceType || 'standard'),
-      service: rate.provider?.expressDelivery ? 'express' : (rate.serviceType || 'standard'),
-      rate: rate.totalRate || rate.total || 0,
-      estimatedDelivery: rate.provider?.estimatedDays || rate.estimatedDelivery || '3-5 days',
-      codCharge: rate.breakdown?.codCharge || rate.breakdown?.cod || 0,
-      available: true
+    // Format the responses to show all available options
+    const formattedRates = allCalculations.map(calc => ({
+      courier: calc.courier,
+      mode: calc.serviceLabel.toLowerCase(), // 'standard' or 'express'
+      service: calc.serviceLabel.toLowerCase(), // 'standard' or 'express'
+      serviceType: calc.serviceMode, // 'Surface' or 'Air'
+      productName: calc.productName, // Show the actual product name
+      rate: formatMoney(calc.total),
+      estimatedDelivery: calc.serviceMode === 'Air' ? 
+        rateCardService.getDeliveryEstimate(zone, 'Air') : 
+        rateCardService.getDeliveryEstimate(zone, 'Surface'),
+      codCharge: formatMoney(calc.codCharges || 0),
+      available: true,
+      breakdown: {
+        baseRate: formatMoney(calc.baseRate || 0),
+        additionalCharges: formatMoney((calc.addlRate * (calc.weightMultiplier - 1)) || 0),
+        shippingCost: formatMoney(calc.shippingCost || 0),
+        gst: formatMoney(calc.gst || 0),
+        total: formatMoney(calc.total)
+      }
     }));
 
     // Sort rates by price (lowest first)
     formattedRates.sort((a, b) => a.rate - b.rate);
 
+    // Group rates by service type for better organization
+    const standardRates = formattedRates.filter(rate => rate.serviceType === 'Surface');
+    const expressRates = formattedRates.filter(rate => rate.serviceType === 'Air');
+
     const response = {
       success: true,
       data: {
         rates: formattedRates,
+        ratesByType: {
+          standard: standardRates,
+          express: expressRates
+        },
+        zone: zone,
+        chargeableWeight: formatMoney(billedWeight || 0),
         summary: {
-          totalCouriers: formattedRates.length,
-          cheapestRate: formattedRates[0]?.rate || 0,
-          fastestDelivery: formattedRates.reduce((fastest, current) => {
-            // Parse days from estimatedDelivery string
-            const currentDays = parseInt((current.estimatedDelivery || '').split('-')[0]);
-            const fastestDays = parseInt((fastest.estimatedDelivery || '').split('-')[0]);
-            return currentDays < fastestDays ? current : fastest;
-          }, formattedRates[0])?.estimatedDelivery || 'N/A'
+          totalOptions: formattedRates.length,
+          standardOptions: standardRates.length,
+          expressOptions: expressRates.length,
+          cheapestRate: formatMoney(formattedRates[0]?.rate || 0),
+          cheapestStandard: formatMoney(standardRates[0]?.rate || 0),
+          cheapestExpress: formatMoney(expressRates[0]?.rate || 0),
+          fastestDelivery: deliveryEstimate
         }
       }
     };
 
+    logger.info(`Customer rate calculation successful for ${pickupPincode} → ${deliveryPincode}`, {
+      zone: zone,
+      totalRates: formattedRates.length,
+      standardRates: standardRates.length,
+      expressRates: expressRates.length,
+      cheapestRate: formattedRates[0]?.rate
+    });
+
     res.status(200).json(response);
   } catch (error) {
+    logger.error(`Customer rate calculation failed: ${error.message}`);
     next(new AppError(error.message, error.statusCode || 400));
+  }
+};
+
+/**
+ * Get order status counts for customer
+ */
+export const getOrderStatusCounts = async (req, res, next) => {
+  try {
+    const customerId = req.user.id;
+
+    // Convert string customerId to ObjectId for proper matching
+    const customerObjectId = new mongoose.Types.ObjectId(customerId);
+
+    // Get all status counts
+    const statusCounts = await CustomerOrder.aggregate([
+      { $match: { customerId: customerObjectId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    // Map backend statuses to frontend expected statuses
+    const statusMapping = {
+      'pending': 'Processing',
+      'confirmed': 'Booked',
+      'shipped': 'In Transit',
+      'delivered': 'Delivered',
+      'cancelled': 'Returned'
+    };
+
+    // Format the response with frontend expected status names
+    const counts = {
+      'All': 0,
+      'Booked': 0,
+      'Processing': 0,
+      'In Transit': 0,
+      'Out for Delivery': 0,
+      'Delivered': 0,
+      'Returned': 0
+    };
+
+    // Calculate total and individual counts
+    statusCounts.forEach(item => {
+      const mappedStatus = statusMapping[item._id] || item._id;
+      if (counts.hasOwnProperty(mappedStatus)) {
+        counts[mappedStatus] = item.count;
+      } else {
+        // Handle any unmapped statuses by adding them to a generic category
+        console.log(`Warning: Unmapped status "${item._id}" found`);
+      }
+      counts['All'] += item.count;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: counts
+    });
+  } catch (error) {
+    logger.error('Error fetching order status counts:', error);
+    next(new AppError('Failed to fetch order status counts', 500));
   }
 }; 

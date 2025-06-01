@@ -58,6 +58,7 @@ export interface CreateOrderRequest {
       width: number;
       height: number;
     };
+    declaredValue?: number;
     items: Array<{
       name: string;
       quantity: number;

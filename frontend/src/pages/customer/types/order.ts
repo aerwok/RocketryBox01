@@ -1,5 +1,6 @@
 export interface OrderResponse {
-    awbNumber: string;
+    _id: string;
+    orderNumber: string;
     receiverName: string;
     receiverAddress1: string;
     receiverAddress2?: string;
@@ -17,6 +18,10 @@ export interface OrderResponse {
         name: string;
         rate: number;
     };
+    status: string;
+    paymentStatus: string;
+    totalAmount: number;
+    awb?: string; // AWB is generated only after payment
 }
 
 export interface OrderData extends Omit<OrderResponse, 'pickupDate'> {

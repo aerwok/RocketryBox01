@@ -130,6 +130,7 @@ const RateCard = () => {
             // Use the greater of actual or volumetric weight
             const chargableWeight = Math.max(parseFloat(data.packageWeight), volWeight);
             
+            // Use seller billing API that properly handles pincodes and script.js logic
             const response = await ServiceFactory.seller.billing.calculateRates({
                 pickupPincode: data.pickupPincode,
                 deliveryPincode: data.deliveryPincode,
@@ -145,6 +146,7 @@ const RateCard = () => {
                     rates: response.data.rates
                 });
                 setShowConfirmation(true);
+                toast.success(`Found ${response.data.rates.length} rates!`);
             } else {
                 throw new Error(response.message || 'Failed to calculate rates');
             }

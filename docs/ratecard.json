@@ -1,0 +1,44 @@
+[
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Within City", "baseRate": 22, "addlRate": 22, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 22, "minimumBillableWeight": 1},
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Within State", "baseRate": 27, "addlRate": 27, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 27, "minimumBillableWeight": 1 },
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Within Region", "baseRate": 27, "addlRate": 27, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 27, "minimumBillableWeight": 1 },
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Metro to Metro", "baseRate": 28, "addlRate": 28, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 28, "minimumBillableWeight": 1 },
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Rest of India", "baseRate": 30, "addlRate": 30, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 30, "minimumBillableWeight": 1 },
+    { "courier": "Bluedart", "productName": "Bharat Dart", "mode": "Surface", "zone": "Special Zone", "baseRate": 41, "addlRate": 41, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 41, "minimumBillableWeight": 1 },
+  
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Within City", "baseRate": 42, "addlRate": 41, "codAmount": "35", "codPercent": 1.5, "rtoCharges": 42, "minimumBillableWeight": 0.5 },
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Within State", "baseRate": 26, "addlRate": 26, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 26, "minimumBillableWeight": 0.5 },
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Within Region", "baseRate": 26, "addlRate": 26, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 26, "minimumBillableWeight": 0.5 },
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Metro to Metro", "baseRate": 28, "addlRate": 28, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 28, "minimumBillableWeight": 0.5 },
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Rest of India", "baseRate": 28, "addlRate": 28, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 28, "minimumBillableWeight": 0.5 },
+    { "courier": "Bluedart", "productName": "Bluedart Air", "mode": "Air", "zone": "Special Zone", "baseRate": 42, "addlRate": 42, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 42, "minimumBillableWeight": 0.5 },
+  
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Within City", "baseRate": 4, "addlRate": 4, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 4, "minimumBillableWeight": 20 },
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Within State", "baseRate": 4, "addlRate": 4, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 4, "minimumBillableWeight": 20  },
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Within Region", "baseRate": 4.5, "addlRate": 4.5, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 4.5, "minimumBillableWeight": 20  },
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Metro to Metro", "baseRate": 5.5, "addlRate": 5.5, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 5.5, "minimumBillableWeight": 20  },
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Rest of India", "baseRate": 6.5, "addlRate": 6.5, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 6.5, "minimumBillableWeight": 20  },
+    { "courier": "Bluedart", "productName": "Ecom Surface", "mode": "Surface", "zone": "Special Zone", "baseRate": 10, "addlRate": 10, "codAmount": "30", "codPercent": 1.5, "rtoCharges": 10, "minimumBillableWeight": 20  },
+  
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Within City", "baseRate": 22, "addlRate": 7, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 22, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Within State", "baseRate": 27, "addlRate": 11, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 27, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Within Region", "baseRate": 27, "addlRate": 11, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 27, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Metro to Metro", "baseRate": 31, "addlRate": 16, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 31, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Rest of India", "baseRate": 34, "addlRate": 18, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 34, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS", "mode": "Surface", "zone": "Special Zone", "baseRate": 40, "addlRate": 25, "codAmount": "25", "codPercent": 1.3, "rtoCharges": 40, "minimumBillableWeight": 0.5  },
+  
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Within City", "baseRate": 22, "addlRate": 20, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 22, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Within State", "baseRate": 25, "addlRate": 24, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 25, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Within Region", "baseRate": 25, "addlRate": 24, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 25, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Metro to Metro", "baseRate": 40, "addlRate": 36, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 40, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Rest of India", "baseRate": 44, "addlRate": 40, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 44, "minimumBillableWeight": 0.5  },
+    { "courier": "Ecom Express", "productName": "EXS PLUS", "mode": "Air", "zone": "Special Zone", "baseRate": 50, "addlRate": 45, "codAmount": "27", "codPercent": 1.25, "rtoCharges": 50, "minimumBillableWeight": 0.5  },
+  
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Within City", "baseRate": 11, "addlRate": 10, "codAmount": "30", "codPercent": 1, "rtoCharges": 11, "minimumBillableWeight": 3  },
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Within State", "baseRate": 12, "addlRate": 11, "codAmount": "30", "codPercent": 1, "rtoCharges": 12, "minimumBillableWeight": 3   },
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Within Region", "baseRate": 12, "addlRate": 11, "codAmount": "30", "codPercent": 1, "rtoCharges": 12, "minimumBillableWeight": 3   },
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Metro to Metro", "baseRate": 14, "addlRate": 13, "codAmount": "30", "codPercent": 1, "rtoCharges": 14, "minimumBillableWeight": 3   },
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Rest of India", "baseRate": 16, "addlRate": 15, "codAmount": "30", "codPercent": 1, "rtoCharges": 16, "minimumBillableWeight": 3   },
+    { "courier": "Ecom Express", "productName": "EGS", "mode": "Surface", "zone": "Special Zone", "baseRate": 18, "addlRate": 16, "codAmount": "30", "codPercent": 1, "rtoCharges": 18, "minimumBillableWeight": 3   }
+  ]
+  

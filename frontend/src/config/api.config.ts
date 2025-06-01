@@ -4,7 +4,7 @@ import { secureStorage } from '../utils/secureStorage';
 
 // API Configuration
 export const API_CONFIG = {
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v2',
     timeout: 10000,
     retries: 3,
     retryDelay: 1000,

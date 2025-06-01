@@ -2,6 +2,7 @@ import express from 'express';
 import { validationHandler as validate } from '../../../middleware/validator.js';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as userController from '../controllers/user.controller.js';
+import { validateCreateRateCards } from '../validators/billing.validator.js';
 import multer from 'multer';
 
 const router = express.Router();
@@ -41,7 +42,7 @@ router.get('/sellers/:id', userController.getSellerDetails);
 router.patch('/sellers/:id/status', userController.updateSellerStatus);
 router.patch('/sellers/:id/kyc', userController.updateSellerKYC);
 router.post('/sellers/:id/agreement', upload.single('document'), userController.createSellerAgreement);
-router.post('/sellers/:id/ratecard', userController.manageSellerRateCard);
+router.post('/sellers/:id/ratecard', validateCreateRateCards, userController.manageSellerRateCard);
 
 // Customer routes
 router.get('/customers', userController.getAllCustomers);
