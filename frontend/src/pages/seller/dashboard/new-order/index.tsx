@@ -556,10 +556,83 @@ const SellerNewOrderPage = () => {
                         Create New Order
                     </h1>
                 </div>
-                <Button variant="primary" onClick={() => navigate('/seller/dashboard/bulk-orders')}>
-                    <BoxesIcon className="w-4 h-4 mr-2" />
-                    Bulk Order
-                </Button>
+                <div className="flex items-center gap-3">
+                    <Button variant="outline" onClick={() => navigate('/seller/dashboard/bulk-orders')}>
+                        <BoxesIcon className="w-4 h-4 mr-2" />
+                        Bulk Orders Page
+                    </Button>
+                </div>
+            </div>
+
+            {/* Bulk Upload Section */}
+            <div className="bg-white border rounded-lg shadow-sm">
+                <div className="p-4 border-b">
+                    <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                        <BoxesIcon className="w-5 h-5" />
+                        Quick Bulk Upload
+                    </h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                        Upload an Excel file to create multiple orders at once. 
+                        <span 
+                            className="text-purple-600 hover:text-purple-700 cursor-pointer ml-1"
+                            onClick={() => navigate('/seller/dashboard/bulk-orders')}
+                        >
+                            View full bulk orders page →
+                        </span>
+                    </p>
+                </div>
+                <div className="p-4">
+                    <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                        <Input
+                            type="file"
+                            accept=".xlsx,.xls"
+                            className="flex-1"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    // Show toast and redirect to bulk orders page for processing
+                                    toast.success('File selected! Redirecting to bulk orders page for processing...');
+                                    setTimeout(() => {
+                                        navigate('/seller/dashboard/bulk-orders');
+                                    }, 1000);
+                                }
+                            }}
+                        />
+                        <div className="flex gap-2">
+                            <Button 
+                                variant="outline"
+                                onClick={() => {
+                                    // Download template functionality
+                                    import('@/services/bulkOrder.service').then(({ bulkOrderService }) => {
+                                        bulkOrderService.downloadBulkOrderTemplate()
+                                            .then(blob => {
+                                                const url = window.URL.createObjectURL(blob);
+                                                const link = document.createElement("a");
+                                                link.href = url;
+                                                link.download = 'bulk_order_template.xlsx';
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                                window.URL.revokeObjectURL(url);
+                                                toast.success('Template downloaded successfully');
+                                            })
+                                            .catch(error => {
+                                                console.error('Download error:', error);
+                                                toast.error('Failed to download template');
+                                            });
+                                    });
+                                }}
+                            >
+                                Download Template
+                            </Button>
+                        </div>
+                    </div>
+                    <div className="mt-3 text-xs text-gray-500">
+                        <p>• Upload .xlsx or .xls files (max 5MB)</p>
+                        <p>• Download the template to see the required format</p>
+                        <p>• For processing and tracking, use the full bulk orders page</p>
+                    </div>
+                </div>
             </div>
 
             <Form {...form}>
