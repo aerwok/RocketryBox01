@@ -156,19 +156,28 @@ const northEastStates = [
 
 // Make determineZone async to use DB
 export async function determineZone(pickupPincode, deliveryPincode) {
-  const pickup = await getPincodeDetails(pickupPincode);
-  const delivery = await getPincodeDetails(deliveryPincode);
-  if (!pickup || !delivery) return 'REST_OF_INDIA';
+  try {
+    const pickup = await getPincodeDetails(pickupPincode);
+    const delivery = await getPincodeDetails(deliveryPincode);
+    
+    if (!pickup || !delivery) {
+      console.log('Pincode details not found, using fallback zone determination');
+      return 'REST_OF_INDIA';
+    }
 
-  // North East/J&K logic
-  if (northEastStates.includes(delivery.state)) return 'NORTH_EAST';
+    // North East/J&K logic
+    if (northEastStates.includes(delivery.state)) return 'NORTH_EAST';
 
-  if (pickup.district === delivery.district && pickup.state === delivery.state) return 'WITHIN_CITY';
-  if (pickup.state === delivery.state) return 'WITHIN_STATE';
+    if (pickup.district === delivery.district && pickup.state === delivery.state) return 'WITHIN_CITY';
+    if (pickup.state === delivery.state) return 'WITHIN_STATE';
 
-  if (metroCities.includes(pickup.district) && metroCities.includes(delivery.district)) return 'METRO_TO_METRO';
+    if (metroCities.includes(pickup.district) && metroCities.includes(delivery.district)) return 'METRO_TO_METRO';
 
-  return 'REST_OF_INDIA';
+    return 'REST_OF_INDIA';
+  } catch (error) {
+    console.error('Error in determineZone:', error);
+    return 'REST_OF_INDIA'; // Safe fallback
+  }
 }
 
 // Find the correct slab index for a given weight
@@ -211,10 +220,55 @@ function calculateRateForCourier(courier, weight, zone, isCOD) {
 
 // Main function: calculate rates for all couriers (now async)
 export async function calculateCourierRates({ weight, pickupPincode, deliveryPincode, isCOD }) {
-  const zone = await determineZone(pickupPincode, deliveryPincode);
-  return Object.keys(rateCard).map(courier => {
-    return calculateRateForCourier(courier, weight, zone, isCOD);
-  });
+  try {
+    console.log('Calculating courier rates:', { weight, pickupPincode, deliveryPincode, isCOD });
+    
+    const zone = await determineZone(pickupPincode, deliveryPincode);
+    console.log('Determined zone:', zone);
+    
+    const rates = Object.keys(rateCard).map(courier => {
+      try {
+        return calculateRateForCourier(courier, weight, zone, isCOD);
+      } catch (error) {
+        console.error(`Error calculating rate for ${courier}:`, error);
+        // Return fallback rate for this courier
+        return {
+          courier,
+          zone,
+          weight,
+          base: 50,
+          addl: 20,
+          addlCharge: Math.ceil((weight - 0.5) / 0.5) * 20,
+          cod: isCOD ? 35 : 0,
+          codPct: isCOD ? 1.5 : 0,
+          total: Math.round(50 + Math.ceil((weight - 0.5) / 0.5) * 20 + (isCOD ? 35 : 0)),
+          _fallback: true
+        };
+      }
+    });
+    
+    console.log('Calculated rates:', rates.length, 'couriers');
+    return rates;
+  } catch (error) {
+    console.error('Error in calculateCourierRates:', error);
+    
+    // Return basic fallback rates
+    return [
+      {
+        courier: 'Fallback Express',
+        zone: 'REST_OF_INDIA',
+        weight,
+        base: 50,
+        addl: 20,
+        addlCharge: Math.ceil((weight - 0.5) / 0.5) * 20,
+        cod: isCOD ? 35 : 0,
+        codPct: isCOD ? 1.5 : 0,
+        total: Math.round(50 + Math.ceil((weight - 0.5) / 0.5) * 20 + (isCOD ? 35 : 0)),
+        _fallback: true,
+        _error: error.message
+      }
+    ];
+  }
 }
 
 // Calculate rate for a package using the rate card

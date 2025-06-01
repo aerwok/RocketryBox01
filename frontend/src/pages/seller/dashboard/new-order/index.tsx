@@ -188,24 +188,66 @@ const SellerNewOrderPage = () => {
                 return;
             }
 
-            const response = await ServiceFactory.shipping.calculateRates({
-                pickupPincode: data.pincode,
-                deliveryPincode: data.pincode,
-                paymentType: data.paymentType,
-                purchaseAmount: data.items.reduce((sum, item) => sum + (item.itemPrice * item.quantity), 0),
-                weight: data.weight || 0
-            });
+            // Transform frontend form data to backend expected structure
+            // For now, take the first item (can be extended for multiple items later)
+            const firstItem = data.items[0];
+            const totalItemPrice = data.items.reduce((sum, item) => sum + (item.itemPrice * item.quantity), 0);
+            
+            // Prepare order data in backend expected format
+            const orderData = {
+                orderId: data.orderNumber,
+                customer: {
+                    name: data.fullName,
+                    phone: data.contactNumber,
+                    email: data.email || '', // Provide default if empty
+                    address: {
+                        street: data.addressLine2 ? `${data.addressLine1}, ${data.addressLine2}` : data.addressLine1,
+                        city: data.city,
+                        state: data.state,
+                        pincode: data.pincode,
+                        country: 'India'
+                    }
+                },
+                product: {
+                    name: firstItem.itemName,
+                    sku: firstItem.sku || '',
+                    quantity: firstItem.quantity,
+                    price: firstItem.itemPrice,
+                    weight: firstItem.itemWeight.toString(),
+                    dimensions: {
+                        length: data.length || 10,
+                        width: data.width || 10,
+                        height: data.height || 10
+                    }
+                },
+                payment: {
+                    method: data.paymentType === 'COD' ? 'COD' as const : 'Prepaid' as const,
+                    amount: totalItemPrice.toString(),
+                    codCharge: data.paymentType === 'COD' ? (data.codCharge || 0).toString() : '0',
+                    shippingCharge: (data.shippingCharge || 0).toString(),
+                    gst: (data.taxAmount || 0).toString(),
+                    total: (data.totalAmount || totalItemPrice).toString()
+                },
+                channel: 'MANUAL'
+            };
+
+            console.log('Creating order with data:', orderData);
+            
+            const response = await ServiceFactory.seller.order.createOrder(orderData);
 
             if (!response.success) {
                 throw new Error(response.message || 'Failed to create order');
             }
 
-            const orderId = response.data.orderId;
-            setOrderId(orderId);
-            toast.success(`Order saved successfully with ID: ${orderId}`);
+            const createdOrder = response.data.order;
+            setOrderId(createdOrder._id);
+            toast.success(`Order created successfully with ID: ${createdOrder.orderId}`);
+            
+            // Optionally navigate to orders page after successful creation
+            // navigate('/seller/dashboard/orders');
         } catch (error) {
-            console.error("Error submitting form:", error);
-            toast.error("Failed to save order");
+            console.error("Error creating order:", error);
+            toast.error(error instanceof Error ? error.message : "Failed to create order");
         }
     };
 
@@ -356,16 +398,44 @@ const SellerNewOrderPage = () => {
             return;
         }
 
-        // Ensure item price is set
-        const itemPrice = form.getValues('itemPrice');
-        if (!itemPrice || itemPrice <= 0) {
+        // Validate items - check the items array first, then fall back to current form fields
+        let hasValidItems = false;
+        let totalItemPrice = 0;
+        
+        if (items.length > 0) {
+            // Check added items
+            const invalidItems = items.filter(item => !item.itemPrice || item.itemPrice <= 0);
+            if (invalidItems.length > 0) {
+                toast.error("Please ensure all added items have valid prices");
+                return;
+            }
+            hasValidItems = true;
+            totalItemPrice = items.reduce((sum, item) => sum + (item.itemPrice * item.quantity), 0);
+        } else {
+            // Check current form fields as fallback
+            const itemPrice = form.getValues('itemPrice');
+            if (!itemPrice || itemPrice <= 0) {
+                toast.error("Please add items to the list or set a valid item price");
+                return;
+            }
+            hasValidItems = true;
+            totalItemPrice = itemPrice * (form.getValues('quantity') || 1);
+        }
+
+        if (!hasValidItems || totalItemPrice <= 0) {
             toast.error("Please set a valid item price");
             return;
         }
 
+        // Check if order was saved first
+        if (!orderId) {
+            toast.error("Please save the order first before shipping");
+            return;
+        }
+
         try {
-            const formData = form.getValues();
-            const response = await ServiceFactory.shipping.bookShipment(formData.orderNumber);
+            // Use the saved order ID for shipping
+            const response = await ServiceFactory.shipping.bookShipment(orderId);
 
             if (!response.success) {
                 throw new Error(response.message || 'Failed to create shipment');
