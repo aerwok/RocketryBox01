@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Box, IndianRupee, Package, TrendingUp, Truck, Download } from "lucide-react";
+import { AlertTriangle, Box, IndianRupee, Package, TrendingUp, Truck, Download, Shield, Info } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import DateRangePicker from "@/components/admin/date-range-picker";
 import { DateRange } from "react-day-picker";
 import useDashboardData from "@/hooks/useDashboardData";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const chartConfig = {
     current: {
@@ -44,6 +45,9 @@ const lineChartConfig = {
 } satisfies ChartConfig;
 
 const SellerDashboardPage = () => {
+    const { hasPermission } = usePermissions();
+    const hasDashboardAccess = hasPermission('Dashboard access');
+    
     const {
         loading,
         error,
@@ -128,6 +132,18 @@ const SellerDashboardPage = () => {
 
     return (
         <div className="space-y-8">
+            {/* Access Restriction Notice for Team Members */}
+            {!hasDashboardAccess && (
+                <div className="border border-yellow-200 bg-yellow-50 p-4 rounded-md">
+                    <div className="flex items-center gap-2">
+                        <Shield className="h-4 w-4 text-yellow-600" />
+                        <span className="text-yellow-800">
+                            <strong>Limited Dashboard Access:</strong> You have restricted access to dashboard data based on your role permissions. Contact your administrator for full access.
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {/* Column 1 */}

@@ -19,6 +19,7 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/components/ui/accordion";
+import { sellerAuthService } from '@/services/seller-auth.service';
 
 const SellerDashboardNavbar = () => {
     const location = useLocation();
@@ -30,13 +31,32 @@ const SellerDashboardNavbar = () => {
     const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        // Check if user is authenticated
-        const isAuthenticated = localStorage.getItem('seller_token');
+        // Check if user is authenticated using seller auth service
+        const checkAuthentication = async () => {
+            try {
+                console.log('🔐 Dashboard navbar: Checking authentication...');
+                
+                // First try to validate and restore session
+                const sessionValid = await sellerAuthService.validateAndRestoreSession();
+                
+                if (!sessionValid) {
+                    // If session validation fails, check basic authentication
+                    const isAuthenticated = await sellerAuthService.isAuthenticated();
+                    
+                    if (!isAuthenticated) {
+                        console.log('🔐 User not authenticated, redirecting to login');
+                        navigate('/seller/login');
+                    }
+                } else {
+                    console.log('🔐 User session validated successfully');
+                }
+            } catch (error) {
+                console.error('🔐 Authentication check failed:', error);
+                navigate('/seller/login');
+            }
+        };
         
-        // Redirect to login if not authenticated
-        if (!isAuthenticated) {
-            navigate('/seller/login');
-        }
+        checkAuthentication();
     }, [navigate]);
 
     // Initialize search from URL parameters

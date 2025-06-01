@@ -86,25 +86,46 @@ export class ApiService {
         
         if (error.response) {
           if (error.response.status === 401) {
-            // Clear secure storage on unauthorized
-            await secureStorage.removeItem('auth_token');
-            await secureStorage.removeItem('user');
-            
-            // Redirect to appropriate login page based on current URL
-            const currentPath = window.location.pathname;
-            let redirectPath = '/seller/login';
-            
-            if (currentPath.includes('/admin')) {
-              redirectPath = '/admin/login';
-            } else if (currentPath.includes('/customer')) {
-              redirectPath = '/customer/login';
-            }
-            
-            // Use React Router navigation if available, fallback to window.location
-            if (this.navigate) {
-              this.navigate(redirectPath);
-            } else {
-              window.location.href = redirectPath;
+            // Check if this is a team member with mock token before clearing auth
+            try {
+              const userType = await secureStorage.getItem('user_type');
+              const authToken = await secureStorage.getItem('auth_token');
+              
+              // For team members, don't clear tokens on 401 errors since they use mock tokens
+              // Only clear tokens for real authentication failures (main sellers)
+              if (userType === 'team_member' && authToken) {
+                console.log('🔐 Team member API call failed (expected for mock tokens), preserving auth tokens');
+                // Don't clear tokens for team members - they have limited API access by design
+              } else {
+                // Clear tokens only for main sellers with real authentication failures
+                console.log('🔐 Main seller authentication failed, clearing tokens');
+                await secureStorage.removeItem('auth_token');
+                await secureStorage.removeItem('refresh_token');
+                await secureStorage.removeItem('user_type');
+                await secureStorage.removeItem('user_permissions');
+                await secureStorage.removeItem('user_context');
+                localStorage.removeItem('seller_token');
+                
+                // Redirect to appropriate login page based on current URL
+                const currentPath = window.location.pathname;
+                let redirectPath = '/seller/login';
+                
+                if (currentPath.includes('/admin')) {
+                  redirectPath = '/admin/login';
+                } else if (currentPath.includes('/customer')) {
+                  redirectPath = '/customer/login';
+                }
+                
+                // Use React Router navigation if available, fallback to window.location
+                if (this.navigate) {
+                  this.navigate(redirectPath);
+                } else {
+                  window.location.href = redirectPath;
+                }
+              }
+            } catch (storageError) {
+              console.error('Error checking user type during 401 handling:', storageError);
+              // If we can't check user type, don't clear tokens to be safe
             }
           }
 

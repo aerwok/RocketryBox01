@@ -18,6 +18,8 @@ interface Ticket {
     message: string;
     status: "New" | "In Progress" | "Resolved";
     createdAt: string;
+    subject?: string;
+    category?: string;
 }
 
 type SortConfig = {
@@ -68,6 +70,18 @@ const TicketsTable = ({ searchQuery }: { searchQuery: string }) => {
         fetchTickets();
     }, [page, pageSize]);
 
+    // Helper function to format date
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
     // Filter and sort tickets
     useEffect(() => {
         let result = tickets;
@@ -77,6 +91,8 @@ const TicketsTable = ({ searchQuery }: { searchQuery: string }) => {
             result = result.filter(ticket => 
                 ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
                 ticket.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                ticket.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                ticket.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 ticket.message.toLowerCase().includes(searchQuery.toLowerCase())
             );
         }
@@ -237,20 +253,23 @@ const TicketsTable = ({ searchQuery }: { searchQuery: string }) => {
                             displayedTickets.map((ticket) => (
                                 <TableRow key={ticket.id}>
                                     <TableCell className="font-medium">
-                                        {ticket.id}
+                                        {ticket.id.substring(0, 12)}...
                                     </TableCell>
                                     <TableCell>
                                         {ticket.email}
                                     </TableCell>
                                     <TableCell>
-                                        {ticket.message}
+                                        <div className="max-w-xs">
+                                            <div className="font-medium text-sm">{ticket.subject}</div>
+                                            <div className="text-xs text-gray-500 truncate">{ticket.message}</div>
+                                        </div>
                                     </TableCell>
                                     <TableCell>
                                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusStyle(ticket.status)}`}>
                                             {ticket.status}
                                         </span>
                                     </TableCell>
-                                    <TableCell>{ticket.createdAt}</TableCell>
+                                    <TableCell>{formatDate(ticket.createdAt)}</TableCell>
                                     <TableCell>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>

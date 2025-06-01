@@ -2,6 +2,7 @@ import { ApiService } from './api.service';
 import { ApiResponse } from '@/types/api';
 import { DashboardStats, DashboardChartData, CourierData, ProductData } from './types/dashboard';
 import { secureStorage } from '@/utils/secureStorage';
+import { sellerAuthService } from './seller-auth.service';
 
 class SellerDashboardService extends ApiService {
     private static instance: SellerDashboardService;
@@ -20,6 +21,48 @@ class SellerDashboardService extends ApiService {
             SellerDashboardService.instance = new SellerDashboardService();
         }
         return SellerDashboardService.instance;
+    }
+
+    // Check if current user has dashboard access permission
+    private async hasDashboardAccess(): Promise<boolean> {
+        try {
+            return await sellerAuthService.hasPermission('Dashboard access');
+        } catch (error) {
+            console.error('Error checking dashboard permission:', error);
+            return false;
+        }
+    }
+
+    // Get mock dashboard data for team members without permission
+    private getMockDashboardStats(): DashboardStats {
+        return {
+            orders: { total: 0, todayCount: 0, pending: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0 },
+            shipments: { total: 0, todayCount: 0 },
+            delivery: { total: 0, todayCount: 0 },
+            cod: { expected: 0, totalDue: 0 },
+            revenue: { total: 0, dailyGrowth: 0 },
+            ndr: { pending: 0, actionRequired: 0 }
+        };
+    }
+
+    private getMockChartData(): DashboardChartData {
+        return {
+            shipmentTrends: [],
+            revenueTrends: [],
+            orderStatusDistribution: { delivered: 0, inTransit: 0, pending: 0 },
+            topProducts: [],
+            deliveryPerformance: [],
+            courierData: [],
+            productData: []
+        };
+    }
+
+    private getMockCourierData(): CourierData[] {
+        return [];
+    }
+
+    private getMockProductData(): ProductData[] {
+        return [];
     }
 
     private async getCachedData<T>(cacheKey: string): Promise<T | null> {
@@ -54,6 +97,18 @@ class SellerDashboardService extends ApiService {
 
     async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
         try {
+            // Check if user has dashboard access permission
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                console.log('User does not have dashboard access permission, returning mock data');
+                return {
+                    data: this.getMockDashboardStats(),
+                    status: 200,
+                    message: 'Access restricted - Mock data returned',
+                    success: true
+                };
+            }
+
             // Check cache first
             const cached = await this.getCachedData<DashboardStats>(this.CACHE_KEY_STATS);
             if (cached) {
@@ -74,12 +129,34 @@ class SellerDashboardService extends ApiService {
             return response;
         } catch (error) {
             console.error('Error fetching dashboard stats:', error);
+            // Return mock data on error for team members
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                return {
+                    data: this.getMockDashboardStats(),
+                    status: 200,
+                    message: 'Error occurred - Mock data returned',
+                    success: true
+                };
+            }
             throw error;
         }
     }
 
     async getChartData(timeframe: string): Promise<ApiResponse<DashboardChartData>> {
         try {
+            // Check if user has dashboard access permission
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                console.log('User does not have dashboard access permission, returning mock chart data');
+                return {
+                    data: this.getMockChartData(),
+                    status: 200,
+                    message: 'Access restricted - Mock data returned',
+                    success: true
+                };
+            }
+
             const cacheKey = `${this.CACHE_KEY_CHARTS}_${timeframe}`;
             
             // Check cache first
@@ -104,12 +181,34 @@ class SellerDashboardService extends ApiService {
             return response;
         } catch (error) {
             console.error('Error fetching chart data:', error);
+            // Return mock data on error for team members
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                return {
+                    data: this.getMockChartData(),
+                    status: 200,
+                    message: 'Error occurred - Mock data returned',
+                    success: true
+                };
+            }
             throw error;
         }
     }
 
     async getCourierPerformance(): Promise<ApiResponse<CourierData[]>> {
         try {
+            // Check if user has dashboard access permission
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                console.log('User does not have dashboard access permission, returning mock courier data');
+                return {
+                    data: this.getMockCourierData(),
+                    status: 200,
+                    message: 'Access restricted - Mock data returned',
+                    success: true
+                };
+            }
+
             // Check cache first
             const cached = await this.getCachedData<CourierData[]>(this.CACHE_KEY_COURIERS);
             if (cached) {
@@ -130,12 +229,34 @@ class SellerDashboardService extends ApiService {
             return response;
         } catch (error) {
             console.error('Error fetching courier performance:', error);
+            // Return mock data on error for team members
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                return {
+                    data: this.getMockCourierData(),
+                    status: 200,
+                    message: 'Error occurred - Mock data returned',
+                    success: true
+                };
+            }
             throw error;
         }
     }
 
     async getProductPerformance(): Promise<ApiResponse<ProductData[]>> {
         try {
+            // Check if user has dashboard access permission
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                console.log('User does not have dashboard access permission, returning mock product data');
+                return {
+                    data: this.getMockProductData(),
+                    status: 200,
+                    message: 'Access restricted - Mock data returned',
+                    success: true
+                };
+            }
+
             // Check cache first
             const cached = await this.getCachedData<ProductData[]>(this.CACHE_KEY_PRODUCTS);
             if (cached) {
@@ -156,6 +277,16 @@ class SellerDashboardService extends ApiService {
             return response;
         } catch (error) {
             console.error('Error fetching product performance:', error);
+            // Return mock data on error for team members
+            const hasAccess = await this.hasDashboardAccess();
+            if (!hasAccess) {
+                return {
+                    data: this.getMockProductData(),
+                    status: 200,
+                    message: 'Error occurred - Mock data returned',
+                    success: true
+                };
+            }
             throw error;
         }
     }

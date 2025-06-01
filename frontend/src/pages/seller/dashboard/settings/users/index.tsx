@@ -12,11 +12,16 @@ import {
     deleteTeamMember, 
     resetTeamMemberPassword, 
     updateTeamMember,
-    SellerTeamMember
+    SellerTeamMember,
+    JobRole,
+    getRolePermissions,
+    getAvailableJobRoles
 } from "@/lib/api/seller-users";
 import { Loader2, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { usePermissions } from "@/hooks/usePermissions";
 
 // Permission categories and their options
 const PERMISSIONS = [
@@ -58,6 +63,7 @@ const PERMISSIONS = [
 ];
 
 const ManageUsersPage = () => {
+    const { hasPermission, canAccess } = usePermissions();
     const [showAddUser, setShowAddUser] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -72,6 +78,7 @@ const ManageUsersPage = () => {
         email: "",
         contactNumber: "",
         password: "",
+        jobRole: "" as JobRole | "",
         permissions: {} as Record<string, boolean>
     });
 
@@ -94,10 +101,34 @@ const ManageUsersPage = () => {
         loadUsers();
     }, []);
 
+    // Handle job role change and apply role-based permissions
+    const handleJobRoleChange = (role: JobRole) => {
+        const rolePermissions = getRolePermissions(role);
+        const permissionsMap: Record<string, boolean> = {};
+        
+        // Set all permissions to false first
+        PERMISSIONS.forEach(section => {
+            section.options.forEach(option => {
+                permissionsMap[option] = false;
+            });
+        });
+        
+        // Set role-based permissions to true
+        rolePermissions.forEach(permission => {
+            permissionsMap[permission] = true;
+        });
+        
+        setNewUser(prev => ({
+            ...prev,
+            jobRole: role,
+            permissions: permissionsMap
+        }));
+    };
+
     const handleAddUser = async () => {
         try {
-            if (!newUser.name || !newUser.email || !newUser.contactNumber || !newUser.password) {
-                toast.error("Please fill in all required fields");
+            if (!newUser.name || !newUser.email || !newUser.contactNumber || !newUser.password || !newUser.jobRole) {
+                toast.error("Please fill in all required fields including job role");
                 return;
             }
             
@@ -113,6 +144,7 @@ const ManageUsersPage = () => {
                 email: newUser.email,
                 contactNumber: newUser.contactNumber,
                 password: newUser.password,
+                jobRole: newUser.jobRole as JobRole,
                 permissions: permissionsList,
                 status: "active"
             });
@@ -127,6 +159,7 @@ const ManageUsersPage = () => {
                 email: "",
                 contactNumber: "",
                 password: "",
+                jobRole: "",
                 permissions: {}
             });
         } catch (err) {
@@ -138,6 +171,11 @@ const ManageUsersPage = () => {
     };
 
     const handleResetPassword = async (userId: string) => {
+        if (!hasPermission("Manage Users")) {
+            toast.error("You don't have permission to reset passwords");
+            return;
+        }
+        
         try {
             setLoading(true);
             await resetTeamMemberPassword(userId);
@@ -151,6 +189,11 @@ const ManageUsersPage = () => {
     };
 
     const handleDeleteUser = async (userId: string) => {
+        if (!hasPermission("Manage Users")) {
+            toast.error("You don't have permission to delete users");
+            return;
+        }
+        
         try {
             setLoading(true);
             await deleteTeamMember(userId);
@@ -164,20 +207,25 @@ const ManageUsersPage = () => {
         }
     };
 
-    const handleUpdatePermissions = async (userId: string, permissions: string[]) => {
+    const handleUpdateUser = async (userId: string, updates: Partial<SellerTeamMember>) => {
+        if (!hasPermission("Manage Users")) {
+            toast.error("You don't have permission to update users");
+            return;
+        }
+        
         try {
             setLoading(true);
-            await updateTeamMember(userId, { permissions });
+            await updateTeamMember(userId, updates);
             setUsers(prev => prev.map(user => 
                 user.id === userId 
-                    ? { ...user, permissions } 
+                    ? { ...user, ...updates } 
                     : user
             ));
-            toast.success("User permissions updated successfully");
+            toast.success("User updated successfully");
             setEditingUser(null);
         } catch (err) {
-            toast.error("Failed to update user permissions. Please try again.");
-            console.error("Error updating user permissions:", err);
+            toast.error("Failed to update user. Please try again.");
+            console.error("Error updating user:", err);
         } finally {
             setLoading(false);
         }
@@ -211,7 +259,8 @@ const ManageUsersPage = () => {
         const query = searchQuery.toLowerCase();
         return (
             user.name.toLowerCase().includes(query) ||
-            user.email.toLowerCase().includes(query)
+            user.email.toLowerCase().includes(query) ||
+            user.jobRole.toLowerCase().includes(query)
         );
     });
 
@@ -222,6 +271,11 @@ const ManageUsersPage = () => {
 
     // Open permissions dialog for editing
     const openPermissionsDialog = (user: SellerTeamMember) => {
+        if (!hasPermission("Manage Users")) {
+            toast.error("You don't have permission to edit user permissions");
+            return;
+        }
+        
         const permissionsMap: Record<string, boolean> = {};
         PERMISSIONS.forEach(section => {
             section.options.forEach(option => {
@@ -232,7 +286,30 @@ const ManageUsersPage = () => {
         setEditingUser(user);
     };
 
-    // Save updated permissions
+    // Handle role change for editing user
+    const handleEditUserRoleChange = (role: JobRole) => {
+        if (!editingUser) return;
+        
+        const rolePermissions = getRolePermissions(role);
+        const permissionsMap: Record<string, boolean> = {};
+        
+        // Set all permissions to false first
+        PERMISSIONS.forEach(section => {
+            section.options.forEach(option => {
+                permissionsMap[option] = false;
+            });
+        });
+        
+        // Set role-based permissions to true
+        rolePermissions.forEach(permission => {
+            permissionsMap[permission] = true;
+        });
+        
+        setUserPermissions(permissionsMap);
+        setEditingUser(prev => prev ? { ...prev, jobRole: role } : null);
+    };
+
+    // Save updated permissions and role
     const savePermissions = () => {
         if (!editingUser) return;
         
@@ -240,8 +317,14 @@ const ManageUsersPage = () => {
             .filter(([_, isSelected]) => isSelected)
             .map(([permission]) => permission);
             
-        handleUpdatePermissions(editingUser.id, permissionsList);
+        handleUpdateUser(editingUser.id, {
+            jobRole: editingUser.jobRole,
+            permissions: permissionsList
+        });
     };
+
+    // Check if current user can manage users
+    const canManageUsers = canAccess('users');
 
     return (
         <div className="space-y-8">
@@ -254,9 +337,11 @@ const ManageUsersPage = () => {
                         Add and manage users for your account
                     </p>
                 </div>
-                <Button onClick={() => setShowAddUser(true)} disabled={loading}>
-                    Add New User
-                </Button>
+                {canManageUsers && (
+                    <Button onClick={() => setShowAddUser(true)} disabled={loading}>
+                        Add New User
+                    </Button>
+                )}
             </div>
 
             <div className="grid gap-6">
@@ -283,29 +368,36 @@ const ManageUsersPage = () => {
                                     <TableRow>
                                         <TableHead>Name</TableHead>
                                         <TableHead>Email</TableHead>
+                                        <TableHead>Job Role</TableHead>
                                         <TableHead>Permissions</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Created On</TableHead>
-                                        <TableHead>Actions</TableHead>
+                                        {canManageUsers && <TableHead>Actions</TableHead>}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {filteredUsers.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                                                {searchQuery ? "No matching users found" : "No users found"}
+                                            <TableCell colSpan={canManageUsers ? 7 : 6} className="text-center py-8 text-gray-500">
+                                                {searchQuery ? "No matching users found" : "No sub-users found. Add your first team member to get started."}
                                             </TableCell>
                                         </TableRow>
                                     ) : (
                                         filteredUsers.map((user) => (
                                             <TableRow key={user.id}>
-                                                <TableCell>{user.name}</TableCell>
+                                                <TableCell className="font-medium">{user.name}</TableCell>
                                                 <TableCell>{user.email}</TableCell>
+                                                <TableCell>
+                                                    <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                                                        {user.jobRole}
+                                                    </span>
+                                                </TableCell>
                                                 <TableCell>
                                                     <Button 
                                                         variant="outline" 
                                                         size="sm"
                                                         onClick={() => openPermissionsDialog(user)}
+                                                        disabled={!canManageUsers}
                                                     >
                                                         {countPermissions(user)} permissions
                                                     </Button>
@@ -322,26 +414,28 @@ const ManageUsersPage = () => {
                                                 <TableCell>
                                                     {formatDate(user.createdAt)}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="flex gap-2">
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="sm"
-                                                            onClick={() => handleResetPassword(user.id)}
-                                                            disabled={loading}
-                                                        >
-                                                            Reset Password
-                                                        </Button>
-                                                        <Button 
-                                                            variant="destructive" 
-                                                            size="sm"
-                                                            onClick={() => handleDeleteUser(user.id)}
-                                                            disabled={loading}
-                                                        >
-                                                            Delete
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
+                                                {canManageUsers && (
+                                                    <TableCell>
+                                                        <div className="flex gap-2">
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="sm"
+                                                                onClick={() => handleResetPassword(user.id)}
+                                                                disabled={loading}
+                                                            >
+                                                                Reset Password
+                                                            </Button>
+                                                            <Button 
+                                                                variant="destructive" 
+                                                                size="sm"
+                                                                onClick={() => handleDeleteUser(user.id)}
+                                                                disabled={loading}
+                                                            >
+                                                                Delete
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))
                                     )}
@@ -416,11 +510,36 @@ const ManageUsersPage = () => {
                             </div>
                         </div>
 
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="jobRole">Job Role*</Label>
+                                <Select
+                                    value={newUser.jobRole}
+                                    onValueChange={handleJobRoleChange}
+                                    disabled={loading}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select job role" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {getAvailableJobRoles().map((role) => (
+                                            <SelectItem key={role} value={role}>
+                                                {role}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-gray-500">
+                                    Selecting a job role will automatically assign appropriate permissions
+                                </p>
+                            </div>
+                        </div>
+
                         <div className="space-y-4 mt-2">
                             <div className="bg-gray-50 rounded-md p-4">
                                 <h3 className="text-lg font-semibold text-center mb-2">
                                     Permissions
-                                    <span className="text-sm font-normal text-gray-500 ml-2">( Select the permission you wish to grant the user )</span>
+                                    <span className="text-sm font-normal text-gray-500 ml-2">( Customize permissions as needed )</span>
                                 </h3>
                                 
                                 <div className="space-y-4 mt-4">
@@ -472,7 +591,7 @@ const ManageUsersPage = () => {
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                             Adding...
                                         </>
-                                    ) : "Save Changes"}
+                                    ) : "Add User"}
                                 </Button>
                             </div>
                         </div>
@@ -495,9 +614,34 @@ const ManageUsersPage = () => {
                                 </Button>
                             </div>
                             <DialogDescription>
-                                {editingUser && `Manage permissions for ${editingUser.name}`}
+                                {editingUser && `Manage role and permissions for ${editingUser.name}`}
                             </DialogDescription>
                         </DialogHeader>
+                        
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="editJobRole">Job Role</Label>
+                                <Select
+                                    value={editingUser?.jobRole || ""}
+                                    onValueChange={handleEditUserRoleChange}
+                                    disabled={loading}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select job role" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {getAvailableJobRoles().map((role) => (
+                                            <SelectItem key={role} value={role}>
+                                                {role}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-gray-500">
+                                    Changing the job role will reset permissions to role defaults
+                                </p>
+                            </div>
+                        </div>
                         
                         <div className="space-y-4 mt-2">
                             <div className="bg-gray-50 rounded-md p-4">
@@ -557,7 +701,7 @@ const ManageUsersPage = () => {
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                             Saving...
                                         </>
-                                    ) : "Save Permissions"}
+                                    ) : "Save Changes"}
                                 </Button>
                             </div>
                         </div>

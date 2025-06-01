@@ -607,13 +607,37 @@ export class ServiceFactory {
 
   static tickets = {
     async getTickets(page: number, pageSize: number): Promise<ApiResponse<any>> {
-      const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/admin/tickets', { params: { page, pageSize } });
+      // Import the tickets API
+      const { getAllTickets } = await import('@/lib/api/support-tickets');
+      
+      try {
+        const result = await getAllTickets(page, pageSize);
+        return {
+          success: true,
+          data: result,
+          message: "Tickets fetched successfully",
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        throw new Error('Failed to fetch tickets');
+      }
     },
 
     async updateTicketStatus(id: string, status: string): Promise<ApiResponse<any>> {
-      const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.patch(`/admin/tickets/${id}/status`, { status });
+      // Import the tickets API
+      const { updateTicketStatus } = await import('@/lib/api/support-tickets');
+      
+      try {
+        const updatedTicket = await updateTicketStatus(id, status as any);
+        return {
+          success: true,
+          data: updatedTicket,
+          message: "Ticket status updated successfully",
+          timestamp: new Date().toISOString()
+        };
+      } catch (error) {
+        throw new Error('Failed to update ticket status');
+      }
     }
   };
 
