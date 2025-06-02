@@ -4,12 +4,10 @@
  */
 
 import { toast } from "sonner";
-import { ApiService } from '@/services/api.service';
+import { apiService } from '@/services/api.service';
 import { ApiResponse } from '@/types/api';
 import { User, UserFilters } from '@/types/user';
 import { sellerAuthService } from '@/services/seller-auth.service';
-
-const apiService = new ApiService();
 
 // Job role definitions
 export type JobRole = 'Manager' | 'Support' | 'Finance';
