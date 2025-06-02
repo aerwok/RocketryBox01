@@ -77,6 +77,24 @@ export class ApiService {
             config.headers.Authorization = `Bearer ${token}`;
           }
 
+          // For team members accessing dashboard data, use main seller context
+          if (config.url?.includes('/seller/dashboard/')) {
+            try {
+              const { sellerAuthService } = await import('@/services/seller-auth.service');
+              const currentUser = await sellerAuthService.getCurrentUser();
+              
+              if (currentUser?.userType === 'team_member') {
+                // For team members, use a shared seller context for dashboard data
+                const sellerData = JSON.parse(localStorage.getItem('current_seller_data') || '{}');
+                if (sellerData.sellerId) {
+                  config.headers['X-Seller-Context'] = sellerData.sellerId;
+                }
+              }
+            } catch (error) {
+              console.warn('Failed to get user context for dashboard request:', error);
+            }
+          }
+
           // Reduced logging - only log important requests in development
           if (process.env.NODE_ENV === 'development' && config.url && !config.url.includes('/health')) {
             console.log(`📡 ${config.method?.toUpperCase()} ${config.url}`, {

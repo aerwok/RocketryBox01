@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { walletService, WalletBalance, WalletTransaction } from '@/services/wallet.service';
 import { toast } from 'sonner';
 import { ERROR_MESSAGES } from '@/utils/validation';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface UseWalletReturn {
     walletBalance: WalletBalance | null;
@@ -12,6 +13,7 @@ interface UseWalletReturn {
     hasMoreTransactions: boolean;
     currentPage: number;
     totalPages: number;
+    hasWalletAccess: boolean;
     getWalletBalance: () => Promise<void>;
     rechargeWallet: (params: { amount: number; paymentMethod: string }) => Promise<void>;
     loadMoreTransactions: () => Promise<void>;
@@ -27,21 +29,40 @@ export const useWallet = (): UseWalletReturn => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+    
+    const { hasPermission } = usePermissions();
+    const hasWalletAccess = hasPermission('Wallet');
 
     const getWalletBalance = useCallback(async () => {
+        // Don't fetch wallet data if user doesn't have wallet permission
+        if (!hasWalletAccess) {
+            console.log('User does not have wallet access, skipping wallet balance fetch');
+            setWalletBalance({ walletBalance: 0, lastRecharge: 0, remittanceBalance: 0, lastUpdated: new Date().toISOString() });
+            return;
+        }
+
         try {
             setIsLoadingBalance(true);
             const response = await walletService.getWalletBalance();
             setWalletBalance(response.data);
         } catch (error) {
             console.error('Error fetching wallet balance:', error);
-            toast.error(error instanceof Error ? error.message : ERROR_MESSAGES.SERVER_ERROR);
+            // Don't show error toast for users without wallet access
+            if (hasWalletAccess) {
+                toast.error(error instanceof Error ? error.message : ERROR_MESSAGES.SERVER_ERROR);
+            }
         } finally {
             setIsLoadingBalance(false);
         }
-    }, []);
+    }, [hasWalletAccess]);
 
     const rechargeWallet = useCallback(async (params: { amount: number; paymentMethod: string }) => {
+        // Don't allow recharge if user doesn't have wallet permission
+        if (!hasWalletAccess) {
+            toast.error('You do not have permission to recharge wallet');
+            return;
+        }
+
         // Prevent multiple concurrent recharge attempts
         if (isRecharging) {
             return;
@@ -106,9 +127,19 @@ export const useWallet = (): UseWalletReturn => {
         } finally {
             setIsRecharging(false);
         }
-    }, [isRecharging, getWalletBalance]);
+    }, [isRecharging, getWalletBalance, hasWalletAccess]);
 
     const loadTransactions = useCallback(async (page: number = 1, isRefresh: boolean = false) => {
+        // Don't fetch transactions if user doesn't have wallet permission
+        if (!hasWalletAccess) {
+            console.log('User does not have wallet access, skipping transaction fetch');
+            setTransactions([]);
+            setCurrentPage(1);
+            setTotalPages(1);
+            setHasMoreTransactions(false);
+            return;
+        }
+
         try {
             setIsLoadingTransactions(true);
             
@@ -140,32 +171,45 @@ export const useWallet = (): UseWalletReturn => {
                 setHasMoreTransactions(false);
             }
             
-            // Show user-friendly error message
-            const errorMessage = error instanceof Error 
-                ? error.message 
-                : 'Failed to load wallet transactions. Please try again.';
-            
-            toast.error(errorMessage);
+            // Show user-friendly error message only for users with wallet access
+            if (hasWalletAccess) {
+                const errorMessage = error instanceof Error 
+                    ? error.message 
+                    : 'Failed to load wallet transactions. Please try again.';
+                
+                toast.error(errorMessage);
+            }
         } finally {
             setIsLoadingTransactions(false);
         }
-    }, []);
+    }, [hasWalletAccess]);
 
     const loadMoreTransactions = useCallback(async () => {
-        if (!isLoadingTransactions && hasMoreTransactions) {
+        if (!isLoadingTransactions && hasMoreTransactions && hasWalletAccess) {
             await loadTransactions(currentPage + 1);
         }
-    }, [currentPage, hasMoreTransactions, isLoadingTransactions, loadTransactions]);
+    }, [currentPage, hasMoreTransactions, isLoadingTransactions, loadTransactions, hasWalletAccess]);
 
     const refreshTransactions = useCallback(async () => {
-        await loadTransactions(1, true);
-    }, [loadTransactions]);
+        if (hasWalletAccess) {
+            await loadTransactions(1, true);
+        }
+    }, [loadTransactions, hasWalletAccess]);
 
-    // Initial load
+    // Initial load - only if user has wallet access
     useEffect(() => {
-        getWalletBalance();
-        loadTransactions(1, true);
-    }, [getWalletBalance, loadTransactions]);
+        if (hasWalletAccess) {
+            getWalletBalance();
+            loadTransactions(1, true);
+        } else {
+            // Set default values for users without wallet access
+            setWalletBalance({ walletBalance: 0, lastRecharge: 0, remittanceBalance: 0, lastUpdated: new Date().toISOString() });
+            setTransactions([]);
+            setCurrentPage(1);
+            setTotalPages(1);
+            setHasMoreTransactions(false);
+        }
+    }, [getWalletBalance, loadTransactions, hasWalletAccess]);
 
     return {
         walletBalance,
@@ -176,6 +220,7 @@ export const useWallet = (): UseWalletReturn => {
         hasMoreTransactions,
         currentPage,
         totalPages,
+        hasWalletAccess,
         getWalletBalance,
         rechargeWallet,
         loadMoreTransactions,

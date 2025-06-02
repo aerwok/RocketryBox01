@@ -617,8 +617,7 @@ export class ServiceFactory {
         return {
           success: true,
           data: result,
-          message: "Tickets fetched successfully",
-          timestamp: new Date().toISOString()
+          message: "Tickets fetched successfully"
         };
       } catch (error) {
         throw new Error('Failed to fetch tickets');
@@ -634,8 +633,7 @@ export class ServiceFactory {
         return {
           success: true,
           data: updatedTicket,
-          message: "Ticket status updated successfully",
-          timestamp: new Date().toISOString()
+          message: "Ticket status updated successfully"
         };
       } catch (error) {
         throw new Error('Failed to update ticket status');
@@ -1002,6 +1000,26 @@ export class ServiceFactory {
 
   private static async callApi<T>(endpoint: string, method: string = 'GET', data?: any, responseType?: 'json' | 'blob'): Promise<ApiResponse<T>> {
     try {
+      // Check if current user is a team member and if they have permission for this endpoint
+      const permissionRequired = ServiceFactory.getRequiredPermission(endpoint);
+      if (permissionRequired) {
+        try {
+          const { sellerAuthService } = await import('@/services/seller-auth.service');
+          const currentUser = await sellerAuthService.getCurrentUser();
+          
+          if (currentUser?.userType === 'team_member') {
+            const hasPermission = await sellerAuthService.hasPermission(permissionRequired);
+            if (!hasPermission) {
+              console.log(`Team member doesn't have permission "${permissionRequired}" for ${endpoint}, returning empty response`);
+              return ServiceFactory.getEmptyResponse<T>(endpoint);
+            }
+          }
+        } catch (permError) {
+          console.warn('Permission check failed, proceeding with API call:', permError);
+          // Continue with API call if permission check fails
+        }
+      }
+
       const apiService = ServiceFactory.getInstance().getApiService();
       let response: ApiResponse<T>;
 
@@ -1111,6 +1129,89 @@ export class ServiceFactory {
         status: error.status || 500
       };
     }
+  }
+
+  // Helper method to get required permission for an endpoint
+  private static getRequiredPermission(endpoint: string): string | null {
+    // Map endpoints to required permissions
+    const permissionMap: Record<string, string> = {
+      '/seller/orders': 'Order',
+      '/seller/ndr': 'NDR List',
+      '/seller/disputes': 'Weight Dispute',
+      '/seller/manifests': 'Manifest',
+      '/seller/cod': 'COD Remittance',
+      '/seller/products': 'Items & SKU',
+      '/seller/billing': 'Fright',
+      '/seller/wallet': 'Wallet',
+      '/seller/bulk-orders': 'New Order',
+      '/seller/shipments': 'Shipments',
+    };
+
+    // Check if endpoint starts with any of the mapped paths
+    for (const [path, permission] of Object.entries(permissionMap)) {
+      if (endpoint.startsWith(path)) {
+        return permission;
+      }
+    }
+
+    return null; // No permission required (e.g., profile endpoints)
+  }
+
+  // Helper method to return appropriate empty responses
+  private static getEmptyResponse<T>(endpoint: string): ApiResponse<T> {
+    let emptyData: any = [];
+
+    // Provide appropriate empty data based on endpoint
+    if (endpoint.includes('/orders')) {
+      emptyData = [];
+    } else if (endpoint.includes('/ndr')) {
+      emptyData = [];
+    } else if (endpoint.includes('/disputes')) {
+      emptyData = [];
+    } else if (endpoint.includes('/manifests')) {
+      emptyData = [];
+    } else if (endpoint.includes('/cod/summary')) {
+      emptyData = {
+        totalCOD: '0',
+        remittedTillDate: '0',
+        lastRemittance: '0',
+        totalRemittanceDue: '0',
+        nextRemittance: 'N/A'
+      };
+    } else if (endpoint.includes('/cod')) {
+      emptyData = { remittances: [] };
+    } else if (endpoint.includes('/products')) {
+      emptyData = [];
+    } else if (endpoint.includes('/billing/invoices/summary')) {
+      emptyData = {
+        summary: {
+          totalInvoices: 0,
+          pendingAmount: '0',
+          overdueAmount: '0',
+          totalPaid: '0',
+          totalOutstanding: '0'
+        }
+      };
+    } else if (endpoint.includes('/billing/invoices')) {
+      emptyData = { invoices: [] };
+    } else if (endpoint.includes('/wallet/transactions')) {
+      emptyData = { transactions: [], total: 0 };
+    } else if (endpoint.includes('/wallet/summary')) {
+      emptyData = {
+        totalRecharge: 0,
+        totalUsed: 0,
+        lastRecharge: '0',
+        codToWallet: 0,
+        closingBalance: '0'
+      };
+    }
+
+    return {
+      success: true,
+      data: emptyData as T,
+      message: 'Access restricted - Empty data returned',
+      status: 200
+    };
   }
 }
 

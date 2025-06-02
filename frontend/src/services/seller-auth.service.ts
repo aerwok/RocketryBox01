@@ -185,6 +185,14 @@ export class SellerAuthService {
           userType: 'seller'
         }));
         
+        // Store seller data in localStorage so team members can access it
+        localStorage.setItem('current_seller_data', JSON.stringify({
+          sellerId: response.data.seller.id,
+          name: response.data.seller.name,
+          email: response.data.seller.email,
+          businessName: response.data.seller.businessName
+        }));
+        
         // Also store seller_token for navbar compatibility
         localStorage.setItem('seller_token', response.data.accessToken);
         
@@ -266,8 +274,9 @@ export class SellerAuthService {
       await secureStorage.removeItem('user_permissions');
       await secureStorage.removeItem('user_context');
       
-      // Also remove localStorage tokens
+      // Also remove localStorage tokens and seller data
       localStorage.removeItem('seller_token');
+      localStorage.removeItem('current_seller_data');
     }
   }
 
@@ -387,6 +396,7 @@ export class SellerAuthService {
       await secureStorage.removeItem('user_permissions');
       await secureStorage.removeItem('user_context');
       localStorage.removeItem('seller_token');
+      localStorage.removeItem('current_seller_data');
     } catch (error) {
       console.error('Error clearing auth data:', error);
     }

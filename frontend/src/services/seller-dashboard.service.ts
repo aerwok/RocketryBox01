@@ -1,10 +1,9 @@
-import { ApiService } from './api.service';
+import { apiService } from './api.service';
 import { ApiResponse } from '@/types/api';
 import { DashboardStats, DashboardChartData, CourierData, ProductData } from './types/dashboard';
 import { secureStorage } from '@/utils/secureStorage';
-import { sellerAuthService } from './seller-auth.service';
 
-class SellerDashboardService extends ApiService {
+class SellerDashboardService {
     private static instance: SellerDashboardService;
     private readonly CACHE_KEY_STATS = 'dashboard_stats';
     private readonly CACHE_KEY_CHARTS = 'dashboard_charts';
@@ -13,7 +12,7 @@ class SellerDashboardService extends ApiService {
     private readonly CACHE_DURATION = 60000; // 60 seconds
 
     private constructor() {
-        super();
+        // Private constructor for singleton
     }
 
     static getInstance(): SellerDashboardService {
@@ -23,60 +22,35 @@ class SellerDashboardService extends ApiService {
         return SellerDashboardService.instance;
     }
 
-    // Check if current user has dashboard access permission
-    private async hasDashboardAccess(): Promise<boolean> {
-        try {
-            return await sellerAuthService.hasPermission('Dashboard access');
-        } catch (error) {
-            console.error('Error checking dashboard permission:', error);
-            return false;
-        }
-    }
-
-    // Get mock dashboard data for team members without permission
-    private getMockDashboardStats(): DashboardStats {
-        return {
-            orders: { total: 0, todayCount: 0, pending: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0 },
-            shipments: { total: 0, todayCount: 0 },
-            delivery: { total: 0, todayCount: 0 },
-            cod: { expected: 0, totalDue: 0 },
-            revenue: { total: 0, dailyGrowth: 0 },
-            ndr: { pending: 0, actionRequired: 0 }
-        };
-    }
-
-    private getMockChartData(): DashboardChartData {
-        return {
-            shipmentTrends: [],
-            revenueTrends: [],
-            orderStatusDistribution: { delivered: 0, inTransit: 0, pending: 0 },
-            topProducts: [],
-            deliveryPerformance: [],
-            courierData: [],
-            productData: []
-        };
-    }
-
-    private getMockCourierData(): CourierData[] {
-        return [];
-    }
-
-    private getMockProductData(): ProductData[] {
-        return [];
-    }
-
     private async getCachedData<T>(cacheKey: string): Promise<T | null> {
         try {
+            // First try to get from secure storage (main seller data)
             const cached = await secureStorage.getItem(cacheKey);
-            if (!cached) return null;
-
-            const { data, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp > this.CACHE_DURATION) {
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp <= this.CACHE_DURATION) {
+                    return data;
+                }
                 await secureStorage.removeItem(cacheKey);
-                return null;
             }
 
-            return data;
+            // For team members, also check shared localStorage cache
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
+            
+            if (currentUser?.userType === 'team_member') {
+                const sharedCacheKey = `shared_${cacheKey}`;
+                const sharedCached = localStorage.getItem(sharedCacheKey);
+                if (sharedCached) {
+                    const { data, timestamp } = JSON.parse(sharedCached);
+                    if (Date.now() - timestamp <= this.CACHE_DURATION) {
+                        return data;
+                    }
+                    localStorage.removeItem(sharedCacheKey);
+                }
+            }
+
+            return null;
         } catch (error) {
             console.error(`Cache read error for ${cacheKey}:`, error);
             return null;
@@ -89,7 +63,13 @@ class SellerDashboardService extends ApiService {
                 data,
                 timestamp: Date.now()
             };
+            
+            // Always store in secure storage for main seller
             secureStorage.setItem(cacheKey, JSON.stringify(cacheData));
+            
+            // Also store in shared localStorage so team members can access it
+            const sharedCacheKey = `shared_${cacheKey}`;
+            localStorage.setItem(sharedCacheKey, JSON.stringify(cacheData));
         } catch (error) {
             console.error(`Cache write error for ${cacheKey}:`, error);
         }
@@ -97,19 +77,7 @@ class SellerDashboardService extends ApiService {
 
     async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
         try {
-            // Check if user has dashboard access permission
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                console.log('User does not have dashboard access permission, returning mock data');
-                return {
-                    data: this.getMockDashboardStats(),
-                    status: 200,
-                    message: 'Access restricted - Mock data returned',
-                    success: true
-                };
-            }
-
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<DashboardStats>(this.CACHE_KEY_STATS);
             if (cached) {
                 return {
@@ -120,46 +88,33 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<DashboardStats>('/seller/dashboard/stats');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                // Team members can't fetch fresh data, return error to let main seller fetch it
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<DashboardStats>('/seller/dashboard/stats');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_STATS, response.data);
             
             return response;
         } catch (error) {
             console.error('Error fetching dashboard stats:', error);
-            // Return mock data on error for team members
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                return {
-                    data: this.getMockDashboardStats(),
-                    status: 200,
-                    message: 'Error occurred - Mock data returned',
-                    success: true
-                };
-            }
             throw error;
         }
     }
 
     async getChartData(timeframe: string): Promise<ApiResponse<DashboardChartData>> {
         try {
-            // Check if user has dashboard access permission
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                console.log('User does not have dashboard access permission, returning mock chart data');
-                return {
-                    data: this.getMockChartData(),
-                    status: 200,
-                    message: 'Access restricted - Mock data returned',
-                    success: true
-                };
-            }
-
             const cacheKey = `${this.CACHE_KEY_CHARTS}_${timeframe}`;
             
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<DashboardChartData>(cacheKey);
             if (cached) {
                 return {
@@ -170,46 +125,32 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<DashboardChartData>('/seller/dashboard/charts', {
-                timeframe // Pass directly without nesting
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
+            
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<DashboardChartData>('/seller/dashboard/charts', {
+                timeframe
             });
             
-            // Cache the response
+            // Cache the response (will be shared with team members)
             this.setCachedData(cacheKey, response.data);
             
             return response;
         } catch (error) {
             console.error('Error fetching chart data:', error);
-            // Return mock data on error for team members
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                return {
-                    data: this.getMockChartData(),
-                    status: 200,
-                    message: 'Error occurred - Mock data returned',
-                    success: true
-                };
-            }
             throw error;
         }
     }
 
     async getCourierPerformance(): Promise<ApiResponse<CourierData[]>> {
         try {
-            // Check if user has dashboard access permission
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                console.log('User does not have dashboard access permission, returning mock courier data');
-                return {
-                    data: this.getMockCourierData(),
-                    status: 200,
-                    message: 'Access restricted - Mock data returned',
-                    success: true
-                };
-            }
-
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<CourierData[]>(this.CACHE_KEY_COURIERS);
             if (cached) {
                 return {
@@ -220,44 +161,30 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<CourierData[]>('/seller/dashboard/couriers');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<CourierData[]>('/seller/dashboard/couriers');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_COURIERS, response.data);
             
             return response;
         } catch (error) {
             console.error('Error fetching courier performance:', error);
-            // Return mock data on error for team members
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                return {
-                    data: this.getMockCourierData(),
-                    status: 200,
-                    message: 'Error occurred - Mock data returned',
-                    success: true
-                };
-            }
             throw error;
         }
     }
 
     async getProductPerformance(): Promise<ApiResponse<ProductData[]>> {
         try {
-            // Check if user has dashboard access permission
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                console.log('User does not have dashboard access permission, returning mock product data');
-                return {
-                    data: this.getMockProductData(),
-                    status: 200,
-                    message: 'Access restricted - Mock data returned',
-                    success: true
-                };
-            }
-
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<ProductData[]>(this.CACHE_KEY_PRODUCTS);
             if (cached) {
                 return {
@@ -268,25 +195,23 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<ProductData[]>('/seller/dashboard/products');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<ProductData[]>('/seller/dashboard/products');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_PRODUCTS, response.data);
             
             return response;
         } catch (error) {
             console.error('Error fetching product performance:', error);
-            // Return mock data on error for team members
-            const hasAccess = await this.hasDashboardAccess();
-            if (!hasAccess) {
-                return {
-                    data: this.getMockProductData(),
-                    status: 200,
-                    message: 'Error occurred - Mock data returned',
-                    success: true
-                };
-            }
             throw error;
         }
     }
@@ -297,7 +222,7 @@ class SellerDashboardService extends ApiService {
     }
 
     async downloadReport(format: 'csv' | 'pdf'): Promise<Blob> {
-        const response = await this.get<Blob>('/seller/dashboard/report', {
+        const response = await apiService.get<Blob>('/seller/dashboard/report', {
             format, // Pass directly without nesting
             responseType: 'blob'
         });
