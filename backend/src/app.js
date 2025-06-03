@@ -186,7 +186,7 @@ app.use(cookieParser());
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'development' ? 1000 : 100, // Higher limit in development
+  max: process.env.NODE_ENV === 'development' ? Infinity : 100, // Unlimited in development
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false // Disable the `X-RateLimit-*` headers

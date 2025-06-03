@@ -34,6 +34,7 @@ export interface Customer extends BaseUser {
 
 export interface Seller extends BaseUser {
     companyName: string;
+    businessName?: string;
     companyCategory: string;
     brandName?: string;
     website?: string;
