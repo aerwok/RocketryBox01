@@ -36,6 +36,61 @@ export const getWalletBalance = async (req, res, next) => {
   }
 };
 
+// Get wallet summary statistics
+export const getWalletSummary = async (req, res, next) => {
+  try {
+    const sellerId = req.user.id;
+    const seller = await Seller.findById(sellerId);
+    
+    if (!seller) {
+      throw new AppError('Seller not found', 404);
+    }
+    
+    // Get total recharge amount
+    const rechargeAggregation = await WalletTransaction.aggregate([
+      { $match: { seller: sellerId, type: { $in: ['Recharge', 'Manual Credit'] } } },
+      { $group: { _id: null, totalRecharge: { $sum: { $toDouble: "$amount" } } } }
+    ]);
+    const totalRecharge = rechargeAggregation.length > 0 ? rechargeAggregation[0].totalRecharge : 0;
+    
+    // Get total used (debit) amount
+    const debitAggregation = await WalletTransaction.aggregate([
+      { $match: { seller: sellerId, type: 'Debit' } },
+      { $group: { _id: null, totalUsed: { $sum: { $toDouble: "$amount" } } } }
+    ]);
+    const totalUsed = debitAggregation.length > 0 ? debitAggregation[0].totalUsed : 0;
+    
+    // Get last recharge transaction
+    const lastRechargeTransaction = await WalletTransaction.findOne({ 
+      seller: sellerId, 
+      type: { $in: ['Recharge', 'Manual Credit'] }
+    }).sort({ createdAt: -1 });
+    
+    // Get COD to wallet credits
+    const codToWalletAggregation = await WalletTransaction.aggregate([
+      { $match: { seller: sellerId, type: 'COD Credit' } },
+      { $group: { _id: null, codToWallet: { $sum: { $toDouble: "$amount" } } } }
+    ]);
+    const codToWallet = codToWalletAggregation.length > 0 ? codToWalletAggregation[0].codToWallet : 0;
+    
+    const summaryData = {
+      totalRecharge: Math.round(totalRecharge * 100) / 100, // Round to 2 decimal places
+      totalUsed: Math.round(totalUsed * 100) / 100,
+      lastRecharge: lastRechargeTransaction ? `₹${lastRechargeTransaction.amount}` : '₹0',
+      codToWallet: Math.round(codToWallet * 100) / 100,
+      closingBalance: seller.walletBalance || '₹0'
+    };
+    
+    res.status(200).json({
+      success: true,
+      data: summaryData
+    });
+  } catch (error) {
+    console.error(`[ERROR] Error fetching wallet summary:`, error);
+    next(error);
+  }
+};
+
 // List wallet transactions with filters and pagination
 export const listWalletTransactions = async (req, res, next) => {
   try {
@@ -68,7 +123,10 @@ export const listWalletTransactions = async (req, res, next) => {
     
     const responseData = {
       success: true,
-      data: transactions,
+      data: {
+        transactions: transactions,
+        total: total
+      },
       pagination: {
         total,
         page: parseInt(page),

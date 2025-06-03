@@ -1,5 +1,5 @@
 import express from 'express';
-import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet, getWalletBalance } from '../controllers/wallet.controller.js';
+import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet, getWalletBalance, getWalletSummary } from '../controllers/wallet.controller.js';
 import { protect } from '../../../middleware/auth.js';
 
 const router = express.Router();
@@ -9,8 +9,14 @@ router.use(protect);
 // Get wallet balance
 router.get('/balance', getWalletBalance);
 
+// Get wallet summary
+router.get('/summary', getWalletSummary);
+
 // List wallet transactions
 router.get('/history', listWalletTransactions);
+
+// List wallet transactions (alternative endpoint for frontend compatibility)
+router.get('/transactions', listWalletTransactions);
 
 // Get wallet transaction details
 router.get('/:id', getWalletTransaction);

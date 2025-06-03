@@ -9,22 +9,6 @@ import { PoliciesService } from "./policies.service";
 import { ProfileService, DocumentType as ProfileDocumentType, CompanyDetails as ProfileCompanyDetails } from './profile.service';
 import { Seller } from '@/types/api';
 
-interface Invoice {
-    id: string;
-    invoiceNumber: string;
-    period: string;
-    shipments: number;
-    amount: string;
-}
-
-interface InvoiceSummary {
-    totalInvoices: number;
-    pendingAmount: string;
-    overdueAmount: string;
-    totalPaid: string;
-    totalOutstanding: string;
-}
-
 interface WalletTransaction {
     id: number;
     date: string;
@@ -617,7 +601,8 @@ export class ServiceFactory {
         return {
           success: true,
           data: result,
-          message: "Tickets fetched successfully"
+          message: "Tickets fetched successfully",
+          status: 200
         };
       } catch (error) {
         throw new Error('Failed to fetch tickets');
@@ -633,7 +618,8 @@ export class ServiceFactory {
         return {
           success: true,
           data: updatedTicket,
-          message: "Ticket status updated successfully"
+          message: "Ticket status updated successfully",
+          status: 200
         };
       } catch (error) {
         throw new Error('Failed to update ticket status');
@@ -770,23 +756,55 @@ export class ServiceFactory {
   static seller = {
     billing: {
       getInvoices: async (params: { from: string; to: string }) => {
-        return await ServiceFactory.callApi<{ invoices: Invoice[] }>(
-          `/seller/billing/invoices?from=${params.from}&to=${params.to}`
+        const queryParams = new URLSearchParams();
+        if (params.from) queryParams.append('startDate', params.from);
+        if (params.to) queryParams.append('endDate', params.to);
+        
+        const response = await ServiceFactory.callApi<any[]>(
+          `/seller/invoices?${queryParams.toString()}`
         );
+        
+        // Transform response to match expected format
+        if (response.success) {
+          return {
+            ...response,
+            data: { invoices: response.data }
+          };
+        }
+        return response;
       },
       getInvoiceSummary: async (params: { from: string; to: string }) => {
-        return await ServiceFactory.callApi<{ summary: InvoiceSummary }>(
-          `/seller/billing/invoices/summary?from=${params.from}&to=${params.to}`
-        );
+        // Since summary endpoint doesn't exist, we'll calculate from invoices
+        const invoicesResponse = await ServiceFactory.seller.billing.getInvoices(params);
+        
+        if (invoicesResponse.success) {
+          const invoices = (invoicesResponse.data as { invoices: any[] }).invoices;
+          const summary = {
+            totalInvoices: invoices.length,
+            pendingAmount: `₹${invoices.filter((inv: any) => inv.status === 'pending').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            overdueAmount: `₹${invoices.filter((inv: any) => inv.status === 'overdue').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            totalPaid: `₹${invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            totalOutstanding: `₹${invoices.filter((inv: any) => inv.status !== 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`
+          };
+          
+          return {
+            success: true,
+            data: { summary },
+            message: 'Summary calculated successfully',
+            status: 200
+          };
+        }
+        
+        return invoicesResponse;
       },
       downloadInvoice: async (invoiceId: string) => {
         return await ServiceFactory.callApi<{ pdfUrl: string }>(
-          `/seller/billing/invoices/${invoiceId}/download`
+          `/seller/invoices/${invoiceId}/pdf`
         );
       },
       downloadShipments: async (invoiceId: string) => {
         return await ServiceFactory.callApi<Blob>(
-          `/seller/billing/invoices/${invoiceId}/shipments?format=csv`,
+          `/seller/invoices/${invoiceId}/shipments?format=csv`,
           'GET',
           undefined,
           'blob'
@@ -830,10 +848,10 @@ export class ServiceFactory {
         }>('/seller/rate-card/calculate', 'POST', data);
       },
       getWalletTransactions: async (params: WalletTransactionParams): Promise<ApiResponse<{ transactions: WalletTransaction[]; total: number }>> => {
-        return ServiceFactory.callApi('GET', '/seller/wallet/transactions', params);
+        return ServiceFactory.callApi('/seller/wallet/transactions', 'GET', params);
       },
       getWalletSummary: async (): Promise<ApiResponse<WalletSummary>> => {
-        return ServiceFactory.callApi('GET', '/seller/wallet/summary');
+        return ServiceFactory.callApi('/seller/wallet/summary', 'GET');
       }
     },
     product: {
@@ -1141,7 +1159,7 @@ export class ServiceFactory {
       '/seller/manifests': 'Manifest',
       '/seller/cod': 'COD Remittance',
       '/seller/products': 'Items & SKU',
-      '/seller/billing': 'Fright',
+      '/seller/invoices': 'Fright',
       '/seller/wallet': 'Wallet',
       '/seller/bulk-orders': 'New Order',
       '/seller/shipments': 'Shipments',
@@ -1182,7 +1200,7 @@ export class ServiceFactory {
       emptyData = { remittances: [] };
     } else if (endpoint.includes('/products')) {
       emptyData = [];
-    } else if (endpoint.includes('/billing/invoices/summary')) {
+    } else if (endpoint.includes('/invoices/summary')) {
       emptyData = {
         summary: {
           totalInvoices: 0,
@@ -1192,7 +1210,7 @@ export class ServiceFactory {
           totalOutstanding: '0'
         }
       };
-    } else if (endpoint.includes('/billing/invoices')) {
+    } else if (endpoint.includes('/invoices')) {
       emptyData = { invoices: [] };
     } else if (endpoint.includes('/wallet/transactions')) {
       emptyData = { transactions: [], total: 0 };
