@@ -66,109 +66,53 @@ const SellerShipmentDetailsPage = () => {
 
     const { id } = useParams();
     const [isLoadingTracking, setIsLoadingTracking] = useState(false);
+    const [isLoadingOrder, setIsLoadingOrder] = useState(false);
     const [trackingInfo, setTrackingInfo] = useState<TrackingInfo | null>(null);
     const [trackingError, setTrackingError] = useState<string | null>(null);
+    const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+    const [orderError, setOrderError] = useState<string | null>(null);
     const [showFullTracking, setShowFullTracking] = useState(false);
 
-    // Mock order details data
-    const orderDetails: OrderDetails = {
-        orderNo: id || "1740047589959",
-        orderPlaced: "20-02-2025",
-        paymentType: "COD",
-        status: "IN TRANSIT",
-        estimatedDelivery: "Tuesday, February 25",
-        awbNumber: "1234567890",
-        currentLocation: {
-            lat: 19.0760,
-            lng: 72.8777
-        },
-        trackingEvents: [
-            {
-                date: "22 FEB",
-                time: "09:39 AM",
-                activity: "SHIPMENT OUTSCANNED TO NETWORK",
-                location: "BIAL HUB",
-                status: "completed"
-            },
-            {
-                date: "21 FEB",
-                time: "02:00 AM",
-                activity: "COMM FLIGHT,VEH/TRAIN; DELAYED/CANCELLED",
-                location: "BIAL HUB",
-                status: "completed"
-            },
-            {
-                date: "20 FEB",
-                time: "11:30 PM",
-                activity: "SHIPMENT RECEIVED AT FACILITY",
-                location: "MUMBAI HUB",
-                status: "completed"
-            },
-            {
-                date: "20 FEB",
-                time: "09:15 PM",
-                activity: "SHIPMENT PICKED UP",
-                location: "PUNE WAREHOUSE",
-                status: "completed"
-            },
-            {
-                date: "20 FEB",
-                time: "03:45 PM",
-                activity: "SHIPMENT CREATED",
-                location: "PUNE WAREHOUSE",
-                status: "completed"
+    // Fetch order details from API
+    const fetchOrderDetails = async (orderId: string) => {
+        try {
+            setIsLoadingOrder(true);
+            setOrderError(null);
+            
+            const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+            const response = await fetch(`${baseUrl}/api/v2/seller/shipments/${orderId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('seller_token')}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch shipment details: ${response.status}`);
             }
-        ],
-        weight: "324.00 Kg",
-        dimensions: {
-            length: 50,
-            width: 43,
-            height: 34
-        },
-        volumetricWeight: "0 Kg",
-        chargedWeight: "0 Kg",
-        customerDetails: {
-            name: "John Doe",
-            address1: "123 Main Street",
-            address2: "Apartment 4B",
-            city: "PUNE",
-            state: "MAHARASHTRA",
-            pincode: "412105",
-            country: "India",
-            phone: "9348543598"
-        },
-        warehouseDetails: {
-            name: "Main Warehouse",
-            address1: "456 Storage Lane",
-            city: "Noida",
-            state: "UTTAR PRADESH",
-            pincode: "201307",
-            country: "India",
-            phone: "9000000000"
-        },
-        products: [
-            {
-                name: "Premium Laptop",
-                sku: "LAP001",
-                quantity: 1,
-                price: 50.00,
-                image: "/product-image.jpg"
-            },
-            {
-                name: "Wireless Mouse",
-                sku: "MOU001",
-                quantity: 1,
-                price: 15.00,
-                image: "/mouse-image.jpg"
-            }
-        ]
+
+            const data = await response.json();
+            setOrderDetails(data);
+        } catch (error) {
+            console.error("Error fetching order details:", error);
+            setOrderError("Unable to fetch shipment details. Please try again later.");
+            toast.error("Failed to load shipment details");
+        } finally {
+            setIsLoadingOrder(false);
+        }
     };
 
     useEffect(() => {
-        if (orderDetails.awbNumber) {
+        if (id) {
+            fetchOrderDetails(id);
+        }
+    }, [id]);
+
+    useEffect(() => {
+        if (orderDetails?.awbNumber) {
             fetchShipmentTracking(orderDetails.awbNumber);
         }
-    }, [orderDetails.awbNumber]);
+    }, [orderDetails?.awbNumber]);
 
     const fetchShipmentTracking = async (awbNumber: string) => {
         try {
@@ -188,6 +132,45 @@ const SellerShipmentDetailsPage = () => {
         navigator.clipboard.writeText(text);
         toast.success("The text has been copied to your clipboard.");
     };
+
+    if (isLoadingOrder) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin h-8 w-8 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                    <p className="text-gray-600">Loading shipment details...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (orderError || !orderDetails) {
+        return (
+            <div className="space-y-6">
+                <Link 
+                    to="/seller/dashboard/shipments" 
+                    className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-600 transition-colors"
+                >
+                    <ArrowLeftIcon className="h-4 w-4" />
+                    <span>Back to Shipments</span>
+                </Link>
+                
+                <div className="flex items-center justify-center min-h-[400px]">
+                    <div className="text-center">
+                        <p className="text-red-600 text-lg font-medium">Failed to load shipment details</p>
+                        <p className="text-gray-600 mt-2">{orderError}</p>
+                        <Button 
+                            onClick={() => id && fetchOrderDetails(id)} 
+                            className="mt-4"
+                            variant="outline"
+                        >
+                            Try Again
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
@@ -369,12 +352,113 @@ const SellerShipmentDetailsPage = () => {
                                 </div>
                             </div>
 
-                            {/* Modified existing sections continue below... */}
+                            {/* Customer Details */}
+                            <div className="mt-6 border-t pt-4">
+                                <h3 className="font-medium text-lg mb-4">Customer Details</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-sm text-gray-500 block">Name</span>
+                                            <span className="font-medium">{orderDetails.customerDetails.name}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-sm text-gray-500 block">Phone</span>
+                                            <span className="font-medium">{orderDetails.customerDetails.phone}</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <div>
+                                            <span className="text-sm text-gray-500 block">Address</span>
+                                            <div className="font-medium">
+                                                <div>{orderDetails.customerDetails.address1}</div>
+                                                {orderDetails.customerDetails.address2 && (
+                                                    <div>{orderDetails.customerDetails.address2}</div>
+                                                )}
+                                                <div>
+                                                    {orderDetails.customerDetails.city}, {orderDetails.customerDetails.state} - {orderDetails.customerDetails.pincode}
+                                                </div>
+                                                <div>{orderDetails.customerDetails.country}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Products */}
+                            <div className="mt-6 border-t pt-4">
+                                <h3 className="font-medium text-lg mb-4">Products</h3>
+                                <div className="space-y-3">
+                                    {orderDetails.products.map((product, index) => (
+                                        <div key={index} className="flex items-center gap-4 p-3 border rounded-lg">
+                                            <img 
+                                                src={product.image} 
+                                                alt={product.name}
+                                                className="w-16 h-16 object-cover rounded-md"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = '/placeholder-product.png';
+                                                }}
+                                            />
+                                            <div className="flex-1">
+                                                <div className="font-medium">{product.name}</div>
+                                                <div className="text-sm text-gray-500">SKU: {product.sku}</div>
+                                                <div className="text-sm text-gray-500">Quantity: {product.quantity}</div>
+                                            </div>
+                                            <div className="font-medium">₹{product.price.toFixed(2)}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Sidebar with warehouse details and other info */}
+                <div className="space-y-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-lg">Warehouse Details</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div>
+                                <span className="text-sm text-gray-500 block">Name</span>
+                                <span className="font-medium">{orderDetails.warehouseDetails.name}</span>
+                            </div>
+                            <div>
+                                <span className="text-sm text-gray-500 block">Address</span>
+                                <div className="font-medium">
+                                    <div>{orderDetails.warehouseDetails.address1}</div>
+                                    <div>
+                                        {orderDetails.warehouseDetails.city}, {orderDetails.warehouseDetails.state} - {orderDetails.warehouseDetails.pincode}
+                                    </div>
+                                    <div>{orderDetails.warehouseDetails.country}</div>
+                                </div>
+                            </div>
+                            <div>
+                                <span className="text-sm text-gray-500 block">Phone</span>
+                                <span className="font-medium">{orderDetails.warehouseDetails.phone}</span>
+                            </div>
                         </CardContent>
                     </Card>
                     
-                    {/* Rest of the existing components... */}
-                    
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-lg">Weight Information</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div>
+                                <span className="text-sm text-gray-500 block">Actual Weight</span>
+                                <span className="font-medium">{orderDetails.weight}</span>
+                            </div>
+                            <div>
+                                <span className="text-sm text-gray-500 block">Volumetric Weight</span>
+                                <span className="font-medium">{orderDetails.volumetricWeight}</span>
+                            </div>
+                            <div>
+                                <span className="text-sm text-gray-500 block">Charged Weight</span>
+                                <span className="font-medium">{orderDetails.chargedWeight}</span>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         </div>
