@@ -1,6 +1,6 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { auth } from '../../../middleware/auth.js';
+import { protect } from '../../../middleware/auth.js';
 import {
   handleBlueDartWebhook,
   handleDelhiveryWebhook,
@@ -101,7 +101,7 @@ router.post('/tracking', webhookLimiter, handleGenericTrackingWebhook);
  * @desc Manual tracking update (admin/internal use)
  * @access Private (admin/internal only)
  */
-router.post('/manual-update', auth, manualUpdateLimiter, handleManualTrackingUpdate);
+router.post('/manual-update', protect, manualUpdateLimiter, handleManualTrackingUpdate);
 
 /**
  * @route GET /api/v2/webhooks/health
