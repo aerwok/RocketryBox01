@@ -236,7 +236,7 @@ export const getOrders = async (req, res, next) => {
 export const getOrder = async (req, res, next) => {
   try {
     const order = await SellerOrder.findOne({
-      _id: req.params.id,
+      orderId: req.params.id,
       seller: req.user.id
     });
 
@@ -244,9 +244,66 @@ export const getOrder = async (req, res, next) => {
       throw new AppError('Order not found', 404);
     }
 
+    // Transform the order data to match frontend expectations
+    const transformedOrder = {
+      orderId: order.orderId,
+      date: order.orderDate,
+      totalAmount: order.payment?.total || '0',
+      payment: order.payment?.method || 'COD',
+      channel: order.channel || 'MANUAL',
+      shipmentType: 'Forward', // Default value since not in model
+      weight: order.product?.weight || '0',
+      category: 'General', // Default value since not in model  
+      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' : 
+             order.status?.toLowerCase() === 'processing' ? 'processing' :
+             order.status?.toLowerCase() === 'shipped' ? 'booked' :
+             order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
+             'not-booked',
+      customerDetails: {
+        name: order.customer?.name || '',
+        address: order.customer?.address ? 
+          `${order.customer.address.street || ''}\n${order.customer.address.city || ''}, ${order.customer.address.state || ''} ${order.customer.address.pincode || ''}\n${order.customer.address.country || 'India'}`.trim() :
+          '',
+        phone: order.customer?.phone || ''
+      },
+      warehouseDetails: {
+        name: 'Default Warehouse', // Since warehouseDetails is not in the model
+        address: 'Warehouse Address\nCity, State 000000\nIndia', // Default warehouse address
+        phone: '1234567890' // Default warehouse phone
+      },
+      products: [{
+        name: order.product?.name || '',
+        sku: order.product?.sku || '',
+        quantity: order.product?.quantity || 1,
+        price: parseFloat(order.product?.price || '0'),
+        total: parseFloat(order.product?.price || '0') * (order.product?.quantity || 1),
+        image: '' // No image field in model
+      }],
+      tracking: {
+        awb: order.awb || null,
+        courier: order.courier || null,
+        expectedDelivery: order.awb ? 
+          new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString() : // 3 days from now if AWB exists
+          null
+      },
+      timeline: order.orderTimeline && order.orderTimeline.length > 0 ? 
+        order.orderTimeline.map(event => ({
+          status: event.status,
+          timestamp: event.timestamp,
+          comment: event.comment || '',
+          location: event.location || null
+        })) : 
+        [{
+          status: 'Order Created',
+          timestamp: order.orderDate || order.createdAt,
+          comment: `Order ${order.orderId} has been successfully placed and is being processed.`,
+          location: null
+        }]
+    };
+
     res.status(200).json({
       success: true,
-      data: order
+      data: transformedOrder
     });
   } catch (error) {
     next(error);
@@ -271,7 +328,7 @@ export const updateOrderStatus = async (req, res, next) => {
 
     const backendStatus = statusMapping[status] || status;
 
-    const order = await SellerOrder.findOne({ _id: req.params.id, seller: req.user.id });
+    const order = await SellerOrder.findOne({ orderId: req.params.id, seller: req.user.id });
     if (!order) throw new AppError('Order not found', 404);
 
     order.status = backendStatus;
@@ -300,7 +357,7 @@ export const updateOrderStatus = async (req, res, next) => {
 export const cancelOrder = async (req, res, next) => {
   try {
     const order = await SellerOrder.findOne({
-      _id: req.params.id,
+      orderId: req.params.id,
       seller: req.user.id
     });
 
@@ -736,7 +793,7 @@ export const addOrderNote = async (req, res, next) => {
   try {
     const { note } = req.body;
     if (!note) throw new AppError('Note is required', 400);
-    const order = await SellerOrder.findOne({ _id: req.params.id, seller: req.user.id });
+    const order = await SellerOrder.findOne({ orderId: req.params.id, seller: req.user.id });
     if (!order) throw new AppError('Order not found', 404);
     order.notes.push({ note, createdBy: req.user.id });
     await order.save();
@@ -749,7 +806,7 @@ export const addOrderNote = async (req, res, next) => {
 // Get order timeline
 export const getOrderTimeline = async (req, res, next) => {
   try {
-    const order = await SellerOrder.findOne({ _id: req.params.id, seller: req.user.id });
+    const order = await SellerOrder.findOne({ orderId: req.params.id, seller: req.user.id });
     if (!order) throw new AppError('Order not found', 404);
     res.status(200).json({ success: true, data: order.orderTimeline });
   } catch (error) {
@@ -760,9 +817,69 @@ export const getOrderTimeline = async (req, res, next) => {
 // Get order notes
 export const getOrderNotes = async (req, res, next) => {
   try {
-    const order = await SellerOrder.findOne({ _id: req.params.id, seller: req.user.id }).populate('notes.createdBy', 'name email');
+    const order = await SellerOrder.findOne({ orderId: req.params.id, seller: req.user.id }).populate('notes.createdBy', 'name email');
     if (!order) throw new AppError('Order not found', 404);
     res.status(200).json({ success: true, data: order.notes });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update tracking information
+export const updateTracking = async (req, res, next) => {
+  try {
+    const { trackingNumber, courier } = req.body;
+    if (!trackingNumber) throw new AppError('Tracking number is required', 400);
+
+    const order = await SellerOrder.findOne({ orderId: req.params.id, seller: req.user.id });
+    if (!order) throw new AppError('Order not found', 404);
+
+    // Update tracking information
+    order.awb = trackingNumber;
+    if (courier) order.courier = courier;
+    order.updatedAt = new Date();
+
+    // Add timeline entry
+    order.orderTimeline.push({
+      status: 'Tracking Updated',
+      timestamp: new Date(),
+      comment: `Tracking number ${trackingNumber} assigned${courier ? ` via ${courier}` : ''}`
+    });
+
+    // If order status is still pending, update to shipped
+    if (order.status === 'Pending') {
+      order.status = 'Shipped';
+      order.orderTimeline.push({
+        status: 'Shipped',
+        timestamp: new Date(),
+        comment: `Order shipped with tracking number ${trackingNumber}`
+      });
+    }
+
+    await order.save();
+
+    // Transform the updated order for response
+    const transformedOrder = {
+      orderId: order.orderId,
+      awb: order.awb,
+      courier: order.courier,
+      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' : 
+             order.status?.toLowerCase() === 'processing' ? 'processing' :
+             order.status?.toLowerCase() === 'shipped' ? 'booked' :
+             order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
+             'not-booked',
+      tracking: {
+        awb: order.awb,
+        courier: order.courier,
+        expectedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString()
+      }
+    };
+
+    res.status(200).json({
+      success: true,
+      message: 'Tracking information updated successfully',
+      data: transformedOrder
+    });
   } catch (error) {
     next(error);
   }

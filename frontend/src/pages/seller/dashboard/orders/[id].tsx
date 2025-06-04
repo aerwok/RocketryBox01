@@ -8,7 +8,10 @@ import {
     Printer,
     X,
     RefreshCw,
-    Truck
+    Truck,
+    Package,
+    Clock,
+    CheckCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,6 +50,17 @@ interface OrderDetails {
         price: number;
         total: number;
         image: string;
+    }[];
+    tracking?: {
+        awb: string;
+        courier: string;
+        expectedDelivery: string;
+    };
+    timeline?: {
+        status: string;
+        timestamp: string;
+        comment?: string;
+        location?: string;
     }[];
 }
 
@@ -430,6 +444,185 @@ const SellerOrderDetailsPage = () => {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Tracking System */}
+            <Card>
+                <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold mb-6">Order Tracking</h3>
+                    
+                    {/* Tracking Information */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                            <Label className="text-sm text-gray-500">AWB Number</Label>
+                            <div className="flex items-center gap-2 mt-1">
+                                <p className="font-medium">{orderDetails.tracking?.awb || 'Not assigned'}</p>
+                                {orderDetails.tracking?.awb && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleCopy(orderDetails.tracking.awb)}
+                                    >
+                                        <Copy className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                            <Label className="text-sm text-gray-500">Courier Partner</Label>
+                            <p className="font-medium mt-1">{orderDetails.tracking?.courier || 'Not assigned'}</p>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-lg">
+                            <Label className="text-sm text-gray-500">Expected Delivery</Label>
+                            <p className="font-medium mt-1">{orderDetails.tracking?.expectedDelivery || 'TBD'}</p>
+                        </div>
+                    </div>
+
+                    {/* Tracking Timeline */}
+                    <div className="space-y-6">
+                        <h4 className="font-semibold text-gray-800">Order Timeline</h4>
+                        
+                        {/* Visual Timeline */}
+                        <div className="relative">
+                            <div className="flex items-center justify-between mb-8">
+                                {/* Order Placed */}
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                        orderDetails.status !== 'cancelled' ? 'bg-green-500 border-green-500 text-white' : 'bg-gray-300 border-gray-300 text-gray-600'
+                                    }`}>
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <p className="text-sm font-medium mt-2">Order Placed</p>
+                                    <p className="text-xs text-gray-500">{new Date(orderDetails.date).toLocaleDateString()}</p>
+                                </div>
+
+                                {/* Processing */}
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                        ['processing', 'booked'].includes(orderDetails.status) ? 'bg-blue-500 border-blue-500 text-white' :
+                                        orderDetails.status === 'cancelled' ? 'bg-gray-300 border-gray-300 text-gray-600' :
+                                        'bg-gray-100 border-gray-300 text-gray-600'
+                                    }`}>
+                                        <Clock className="w-5 h-5" />
+                                    </div>
+                                    <p className="text-sm font-medium mt-2">Processing</p>
+                                    <p className="text-xs text-gray-500">
+                                        {orderDetails.status === 'processing' ? 'In Progress' : 
+                                         orderDetails.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                                    </p>
+                                </div>
+
+                                {/* Shipped */}
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                        orderDetails.status === 'booked' ? 'bg-blue-500 border-blue-500 text-white' :
+                                        orderDetails.status === 'cancelled' ? 'bg-gray-300 border-gray-300 text-gray-600' :
+                                        'bg-gray-100 border-gray-300 text-gray-600'
+                                    }`}>
+                                        <Truck className="w-5 h-5" />
+                                    </div>
+                                    <p className="text-sm font-medium mt-2">Shipped</p>
+                                    <p className="text-xs text-gray-500">
+                                        {orderDetails.status === 'booked' ? 'In Transit' : 
+                                         orderDetails.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                                    </p>
+                                </div>
+
+                                {/* Delivered */}
+                                <div className="flex flex-col items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                        orderDetails.status === 'delivered' ? 'bg-green-500 border-green-500 text-white' :
+                                        orderDetails.status === 'cancelled' ? 'bg-gray-300 border-gray-300 text-gray-600' :
+                                        'bg-gray-100 border-gray-300 text-gray-600'
+                                    }`}>
+                                        <CheckCircle className="w-5 h-5" />
+                                    </div>
+                                    <p className="text-sm font-medium mt-2">Delivered</p>
+                                    <p className="text-xs text-gray-500">
+                                        {orderDetails.status === 'delivered' ? 'Completed' : 
+                                         orderDetails.status === 'cancelled' ? 'Cancelled' : 'Pending'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Connecting Line */}
+                            <div className="absolute top-5 left-5 right-5 h-0.5 bg-gray-200 -z-10">
+                                <div className={`h-full transition-all duration-500 ${
+                                    orderDetails.status === 'not-booked' ? 'w-0 bg-green-500' :
+                                    orderDetails.status === 'processing' ? 'w-1/3 bg-blue-500' :
+                                    orderDetails.status === 'booked' ? 'w-2/3 bg-blue-500' :
+                                    orderDetails.status === 'delivered' ? 'w-full bg-green-500' :
+                                    'w-1/4 bg-red-500'
+                                }`}></div>
+                            </div>
+                        </div>
+
+                        {/* Detailed Timeline */}
+                        <div className="border-t pt-6">
+                            <h5 className="font-medium text-gray-800 mb-4">Detailed Timeline</h5>
+                            <div className="space-y-4">
+                                {orderDetails.timeline && orderDetails.timeline.length > 0 ? (
+                                    orderDetails.timeline.map((event, index) => (
+                                        <div key={index} className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                                            <div className="w-2 h-2 bg-blue-500 rounded-full mt-2"></div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-medium">{event.status}</p>
+                                                    <p className="text-sm text-gray-500">
+                                                        {new Date(event.timestamp).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                {event.comment && (
+                                                    <p className="text-gray-600 mt-1">{event.comment}</p>
+                                                )}
+                                                {event.location && (
+                                                    <p className="text-sm text-gray-500 mt-1">📍 {event.location}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <p className="font-medium">Order Created</p>
+                                                <p className="text-sm text-gray-500">
+                                                    {new Date(orderDetails.date).toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <p className="text-gray-600 mt-1">Your order has been successfully placed and is being processed.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Current Status Alert */}
+                        {orderDetails.status === 'cancelled' && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                <div className="flex items-center gap-2">
+                                    <X className="w-5 h-5 text-red-600" />
+                                    <p className="font-medium text-red-800">Order Cancelled</p>
+                                </div>
+                                <p className="text-red-700 mt-1">This order has been cancelled and will not be processed.</p>
+                            </div>
+                        )}
+
+                        {orderDetails.status === 'booked' && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div className="flex items-center gap-2">
+                                    <Truck className="w-5 h-5 text-blue-600" />
+                                    <p className="font-medium text-blue-800">Order Shipped</p>
+                                </div>
+                                <p className="text-blue-700 mt-1">Your order is on its way to the customer.</p>
+                                {orderDetails.tracking?.awb && (
+                                    <p className="text-blue-700 mt-1">Track with AWB: <strong>{orderDetails.tracking.awb}</strong></p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Products Table */}
             <Card>

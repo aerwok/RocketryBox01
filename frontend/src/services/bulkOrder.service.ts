@@ -245,7 +245,7 @@ class BulkOrderService {
                 this.getCsrfHeader()
             ]);
             return this.handleRequest<ReceivedOrder[]>(
-                fetch('/api/v2/seller/received-orders', {
+                fetch('/api/v2/seller/orders', {
                     headers: {
                         ...authHeader,
                         ...csrfHeader
