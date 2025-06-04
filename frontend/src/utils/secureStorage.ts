@@ -112,8 +112,14 @@ export const secureStorage = {
             if (!encryptedValue) return null;
             return await decrypt(encryptedValue);
         } catch (error) {
-            console.error('Failed to get item:', error);
-            throw new Error(ERROR_MESSAGES.SERVER_ERROR);
+            console.warn(`Failed to decrypt item "${key}", removing corrupted data:`, error);
+            // Remove corrupted item and return null instead of throwing
+            try {
+                localStorage.removeItem(key);
+            } catch (removeError) {
+                console.error('Failed to remove corrupted item:', removeError);
+            }
+            return null;
         }
     },
 

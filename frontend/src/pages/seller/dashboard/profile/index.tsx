@@ -365,11 +365,11 @@ const SellerProfilePage = () => {
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 <div>
                                                     <h3 className="text-sm font-medium text-gray-500">Company Name</h3>
-                                                    <p className="mt-1">{profile.companyName}</p>
+                                                    <p className="mt-1">{profile.companyName || profile.businessName || "Not provided"}</p>
                                                 </div>
                                                 <div>
                                                     <h3 className="text-sm font-medium text-gray-500">Company Category</h3>
-                                                    <p className="mt-1">{profile.companyCategory}</p>
+                                                    <p className="mt-1">{profile.companyCategory || "Not provided"}</p>
                                                 </div>
                                                 <div>
                                                     <h3 className="text-sm font-medium text-gray-500">Brand Name</h3>
@@ -406,7 +406,7 @@ const SellerProfilePage = () => {
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">Street Address</h3>
-                                                            <p className="mt-1">{profile.address.street}</p>
+                                                            <p className="mt-1">{profile.address.street || `${(profile.address as any)?.address1 || ''} ${(profile.address as any)?.address2 || ''}`.trim() || "Not provided"}</p>
                                                         </div>
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">Landmark</h3>
@@ -414,19 +414,19 @@ const SellerProfilePage = () => {
                                                         </div>
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">City</h3>
-                                                            <p className="mt-1">{profile.address.city}</p>
+                                                            <p className="mt-1">{profile.address.city || "Not provided"}</p>
                                                         </div>
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">State</h3>
-                                                            <p className="mt-1">{profile.address.state}</p>
+                                                            <p className="mt-1">{profile.address.state || "Not provided"}</p>
                                                         </div>
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">Country</h3>
-                                                            <p className="mt-1">{profile.address.country}</p>
+                                                            <p className="mt-1">{profile.address.country || "Not provided"}</p>
                                                         </div>
                                                         <div>
                                                             <h3 className="text-sm font-medium text-gray-500">Postal Code</h3>
-                                                            <p className="mt-1">{profile.address.postalCode}</p>
+                                                            <p className="mt-1">{profile.address.postalCode || (profile.address as any)?.pincode || "Not provided"}</p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -438,134 +438,127 @@ const SellerProfilePage = () => {
 
                                     <TabsContent value="documents">
                                         <div className="bg-white rounded-lg p-6 shadow-sm border">
-                                            {profile.documents ? (
-                                                <div className="space-y-6">
-                                                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                                                        <p className="text-sm text-blue-700">
-                                                            These documents were collected during your registration process. Any updates to these documents require admin approval.
-                                                        </p>
-                                                    </div>
-
-                                                    {/* Registration Numbers */}
-                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                        <div>
-                                                            <h3 className="text-sm font-medium text-gray-500">GSTIN</h3>
-                                                            <p className="mt-1">{profile.documents.gstin}</p>
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-sm font-medium text-gray-500">PAN</h3>
-                                                            <p className="mt-1">{profile.documents.pan}</p>
-                                                        </div>
-                                                        <div>
-                                                            <h3 className="text-sm font-medium text-gray-500">Aadhaar</h3>
-                                                            <p className="mt-1">{profile.documents.aadhaar}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Document List */}
-                                                    <div>
-                                                        <h3 className="text-lg font-semibold mb-4">Required Documents</h3>
-                                                        <div className="space-y-4">
-                                                            {profile.documents.documents && Array.isArray(profile.documents.documents) && profile.documents.documents.length > 0 ? (
-                                                                profile.documents.documents.map((doc, index) => (
-                                                                    <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <FileText className="w-5 h-5 text-gray-400" />
-                                                                            <div>
-                                                                                <p className="font-medium">{doc.name}</p>
-                                                                                <p className="text-sm text-gray-500">{doc.type}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className={`px-2 py-1 rounded-full text-xs ${
-                                                                                doc.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                                                                doc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                                                                'bg-red-100 text-red-800'
-                                                                            }`}>
-                                                                                {doc.status.charAt(0).toUpperCase() + doc.status.slice(1)}
-                                                                            </span>
-                                                                            <Button variant="ghost" size="sm" onClick={() => window.open(doc.url, '_blank')}>
-                                                                                View
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <p className="text-gray-500">No documents uploaded yet</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div>
+                                                    <h3 className="text-sm font-medium text-gray-500">GSTIN</h3>
+                                                    <p className="mt-1">{profile.documents?.gstin || "Not provided"}</p>
                                                 </div>
-                                            ) : (
-                                                <p className="text-gray-500">No document information available</p>
-                                            )}
+                                                <div>
+                                                    <h3 className="text-sm font-medium text-gray-500">PAN</h3>
+                                                    <p className="mt-1">{profile.documents?.pan || "Not provided"}</p>
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-sm font-medium text-gray-500">Aadhaar</h3>
+                                                    <p className="mt-1">{profile.documents?.aadhaar || "Not provided"}</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Document List */}
+                                            <div className="mt-6">
+                                                <h3 className="text-lg font-semibold mb-4">Required Documents</h3>
+                                                <div className="space-y-4">
+                                                    {profile.documents?.documents && Array.isArray(profile.documents.documents) && profile.documents.documents.length > 0 ? (
+                                                        profile.documents.documents.map((doc, index) => (
+                                                            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                                                <div className="flex items-center gap-3">
+                                                                    <FileText className="w-5 h-5 text-gray-400" />
+                                                                    <div>
+                                                                        <p className="font-medium">{doc.name}</p>
+                                                                        <p className="text-sm text-gray-500">{doc.type}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`px-2 py-1 rounded-md text-xs ${
+                                                                        doc.status === 'verified' ? 'bg-green-100 text-green-800' :
+                                                                        doc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                        'bg-red-100 text-red-800'
+                                                                    }`}>
+                                                                        {doc.status}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-gray-500">No documents uploaded yet</p>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     </TabsContent>
 
                                     <TabsContent value="bank-details">
                                         <div className="bg-white rounded-lg p-6 shadow-sm border">
-                                            {profile.bankDetails && profile.bankDetails.length > 0 ? (
-                                                <div className="space-y-6">
-                                                    <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                                                        <p className="text-sm text-blue-700">
-                                                            Bank account details and cancelled cheque were collected during your registration process. Any updates require admin approval.
+                                            {Array.isArray(profile.bankDetails) && profile.bankDetails.length > 0 ? (
+                                                profile.bankDetails.map((bank, index) => (
+                                                    <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">Account Type</h3>
+                                                            <p className="mt-1">{(bank as any)?.accountType || "Not provided"}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">Bank Name</h3>
+                                                            <p className="mt-1">{(bank as any)?.bankName || "Not provided"}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">Account Number</h3>
+                                                            <p className="mt-1">{(bank as any)?.accountNumber || "Not provided"}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">Account Holder Name</h3>
+                                                            <p className="mt-1">{(bank as any)?.accountHolderName || (bank as any)?.accountName || "Not provided"}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">IFSC Code</h3>
+                                                            <p className="mt-1">{(bank as any)?.ifscCode || "Not provided"}</p>
+                                                        </div>
+                                                        <div>
+                                                            <h3 className="text-sm font-medium text-gray-500">Cancelled Cheque Status</h3>
+                                                            <p className="mt-1">
+                                                                <span className={`px-2 py-1 rounded-md text-xs ${
+                                                                    (bank as any)?.cancelledCheque?.status === 'verified' ? 'bg-green-100 text-green-800' :
+                                                                    (bank as any)?.cancelledCheque?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                    'bg-red-100 text-red-800'
+                                                                }`}>
+                                                                    {(bank as any)?.cancelledCheque?.status || "Not provided"}
+                                                                </span>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : profile.bankDetails && typeof profile.bankDetails === 'object' ? (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">Account Type</h3>
+                                                        <p className="mt-1">{(profile.bankDetails as any)?.accountType || "Not provided"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">Bank Name</h3>
+                                                        <p className="mt-1">{(profile.bankDetails as any)?.bankName || "Not provided"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">Account Number</h3>
+                                                        <p className="mt-1">{(profile.bankDetails as any)?.accountNumber || "Not provided"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">Account Holder Name</h3>
+                                                        <p className="mt-1">{(profile.bankDetails as any)?.accountHolderName || (profile.bankDetails as any)?.accountName || "Not provided"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">IFSC Code</h3>
+                                                        <p className="mt-1">{(profile.bankDetails as any)?.ifscCode || "Not provided"}</p>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-500">Cancelled Cheque Status</h3>
+                                                        <p className="mt-1">
+                                                            <span className={`px-2 py-1 rounded-md text-xs ${
+                                                                (profile.bankDetails as any)?.cancelledCheque?.status === 'verified' ? 'bg-green-100 text-green-800' :
+                                                                (profile.bankDetails as any)?.cancelledCheque?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                                                'bg-red-100 text-red-800'
+                                                            }`}>
+                                                                {(profile.bankDetails as any)?.cancelledCheque?.status || "Not provided"}
+                                                            </span>
                                                         </p>
                                                     </div>
-                                                    {profile.bankDetails?.map((bank, index) => (
-                                                        <div key={index} className="p-4 border rounded-lg">
-                                                            <div className="flex items-center justify-between mb-4">
-                                                                <h3 className="text-lg font-semibold">{bank.bankName}</h3>
-                                                            </div>
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                <div>
-                                                                    <h4 className="text-sm font-medium text-gray-500">Account Name</h4>
-                                                                    <p className="mt-1">{bank.accountName}</p>
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="text-sm font-medium text-gray-500">Account Number</h4>
-                                                                    <p className="mt-1">{bank.accountNumber}</p>
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="text-sm font-medium text-gray-500">Branch</h4>
-                                                                    <p className="mt-1">{bank.branch}</p>
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="text-sm font-medium text-gray-500">Account Type</h4>
-                                                                    <p className="mt-1">{bank.accountType}</p>
-                                                                </div>
-                                                                <div>
-                                                                    <h4 className="text-sm font-medium text-gray-500">IFSC Code</h4>
-                                                                    <p className="mt-1">{bank.ifscCode}</p>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Cancelled Cheque Section */}
-                                                            {bank.cancelledCheque && (
-                                                                <div className="mt-4 pt-4 border-t">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <FileText className="w-5 h-5 text-gray-400" />
-                                                                            <div>
-                                                                                <h4 className="font-medium">Cancelled Cheque</h4>
-                                                                                <p className="text-sm text-gray-500">Required for bank verification</p>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <span className={`px-2 py-1 rounded-full text-xs ${
-                                                                                bank.cancelledCheque.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                                                                'bg-yellow-100 text-yellow-800'
-                                                                            }`}>
-                                                                                {bank.cancelledCheque.status.charAt(0).toUpperCase() + bank.cancelledCheque.status.slice(1)}
-                                                                            </span>
-                                                                            <Button variant="ghost" size="sm" onClick={() => window.open(bank.cancelledCheque?.url, '_blank')}>
-                                                                                View
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
                                                 </div>
                                             ) : (
                                                 <p className="text-gray-500">No bank details available</p>
@@ -575,14 +568,7 @@ const SellerProfilePage = () => {
 
                                     <TabsContent value="agreement">
                                         <div className="bg-white rounded-lg p-6 shadow-sm border">
-                                            <div className="space-y-6">
-                                                <div className="bg-blue-50 p-4 rounded-lg">
-                                                    <p className="text-sm text-blue-700">
-                                                        View and manage your agreements with RocketryBox. You can view agreement details, download copies, and respond to new agreement requests.
-                                                    </p>
-                                                </div>
-                                                <Agreement onSave={() => {}} />
-                                            </div>
+                                            <Agreement onSave={() => {}} />
                                         </div>
                                     </TabsContent>
                                 </>
