@@ -1,19 +1,19 @@
-import CustomerOrder from '../models/customerOrder.model.js';
-import Customer from '../models/customer.model.js';
-import { AppError } from '../../../middleware/errorHandler.js';
-import { sendEmail } from '../../../utils/email.js';
-import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
-import { createPaymentOrder, verifyPayment, getPaymentStatus } from '../../../utils/payment.js';
-import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
-import { logger } from '../../../utils/logger.js';
-import rateCardService from '../../../services/ratecard.service.js';
-import mongoose from 'mongoose';
-import PDFDocument from 'pdfkit';
 import bwipjs from 'bwip-js';
 import fs from 'fs';
+import mongoose from 'mongoose';
 import path from 'path';
+import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { fileURLToPath } from 'url';
+import { AppError } from '../../../middleware/errorHandler.js';
+import rateCardService from '../../../services/ratecard.service.js';
+import { sendEmail } from '../../../utils/email.js';
+import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
+import { logger } from '../../../utils/logger.js';
+import { createPaymentOrder, getPaymentStatus, verifyPayment } from '../../../utils/payment.js';
+import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
+import Customer from '../models/customer.model.js';
+import CustomerOrder from '../models/customerOrder.model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,17 +24,17 @@ const getLogoBuffer = async () => {
     // Use the correct path that actually works (tested and confirmed)
     // From controller location: go up 5 levels to project root, then down to logo
     let logoPath = path.join(__dirname, '..', '..', '..', '..', '..', 'frontend', 'public', 'icons', 'logo.svg');
-    
+
     console.log('🎨 Looking for RocketryBox logo at:', logoPath);
     console.log('📂 Controller __dirname:', __dirname);
-    
+
     if (!fs.existsSync(logoPath)) {
       console.log('❌ Logo file not found at primary path:', logoPath);
-      
+
       // Try alternative known working path
       const alternativePath = path.join(__dirname, '..', '..', '..', '..', '..', 'frontend', 'public', 'icons', 'logo.svg');
       console.log('🔍 Trying alternative path:', alternativePath, 'exists:', fs.existsSync(alternativePath));
-      
+
       if (fs.existsSync(alternativePath)) {
         console.log('✅ Using alternative path');
         logoPath = alternativePath;
@@ -43,15 +43,15 @@ const getLogoBuffer = async () => {
         return null;
       }
     }
-    
+
     // Read SVG file
     const svgBuffer = fs.readFileSync(logoPath);
     console.log('📄 RocketryBox SVG loaded successfully, size:', svgBuffer.length, 'bytes');
-    
+
     // Check if SVG content looks valid
     const svgContent = svgBuffer.toString('utf8').substring(0, 100);
     console.log('📄 SVG content preview:', svgContent);
-    
+
     // Convert SVG to PNG using sharp
     console.log('🔄 Converting RocketryBox logo to PNG...');
     const pngBuffer = await sharp(svgBuffer)
@@ -59,14 +59,14 @@ const getLogoBuffer = async () => {
         quality: 95, // High quality for logo
         compressionLevel: 6
       })
-      .resize(140, 50, { 
+      .resize(140, 50, {
         fit: 'contain',
         background: { r: 255, g: 255, b: 255, alpha: 1 } // White background
       })
       .toBuffer();
-    
+
     console.log('✅ RocketryBox logo converted successfully, PNG size:', pngBuffer.length, 'bytes');
-    
+
     // Verify the PNG buffer is valid
     if (pngBuffer && pngBuffer.length > 0) {
       console.log('✅ PNG buffer is ready for PDF insertion');
@@ -75,7 +75,7 @@ const getLogoBuffer = async () => {
       console.log('❌ PNG buffer is invalid');
       return null;
     }
-    
+
   } catch (error) {
     console.error('❌ RocketryBox logo processing failed:', error.message);
     console.error('🔍 Error details:', error.name, error.code);
@@ -85,7 +85,7 @@ const getLogoBuffer = async () => {
 
 // Environment check for development features
 const isDevelopment = true; // Force to true since PDF generation works correctly
-console.log('🔍 DEBUG: isDevelopment result:', isDevelopment);
+// console.log('🔍 DEBUG: isDevelopment result:', isDevelopment);
 
 // Utility function to format monetary values to 2 decimal places
 const formatMoney = (amount) => {
@@ -114,7 +114,7 @@ export const getOrderById = async (req, res, next) => {
     const transformedOrder = {
       _id: order._id,
       orderNumber: order.orderNumber || 'N/A',
-      
+
       // Flattened structure for payment page compatibility
       receiverName: order.deliveryAddress?.name || 'N/A',
       receiverAddress1: order.deliveryAddress?.address?.line1 || 'N/A',
@@ -129,7 +129,7 @@ export const getOrderById = async (req, res, next) => {
       height: order.packageDetails?.dimensions?.height || 10,
       packageType: order.selectedProvider?.serviceType || 'standard',
       pickupDate: order.createdAt,
-      
+
       // Nested structure for OrderDetails page
       packageDetails: {
         weight: order.packageDetails?.weight || 0,
@@ -170,7 +170,7 @@ export const getOrderById = async (req, res, next) => {
         estimatedDays: order.selectedProvider?.estimatedDays || '3-5',
         totalRate: parseFloat(order.selectedProvider?.totalRate) || 0
       },
-      
+
       // Payment and shipping info
       shippingPartner: {
         name: order.selectedProvider?.name || 'Generic Courier',
@@ -292,8 +292,8 @@ export const getOrderHistory = async (req, res, next) => {
         amount: order.totalAmount || 0,
         label: order.trackingUrl || '#',
         status: statusMapping[order.status] || order.status,
-        edd: order.estimatedDelivery 
-          ? order.estimatedDelivery.toISOString().split('T')[0] 
+        edd: order.estimatedDelivery
+          ? order.estimatedDelivery.toISOString().split('T')[0]
           : 'TBD',
         pdfUrl: order.trackingUrl || '#',
         // Include original order data for details page
@@ -323,7 +323,7 @@ export const createOrder = async (req, res, next) => {
   try {
     console.log('CreateOrder - Request body:', JSON.stringify(req.body, null, 2));
     console.log('CreateOrder - User:', req.user);
-    
+
     const {
       pickupAddress,
       deliveryAddress,
@@ -339,11 +339,11 @@ export const createOrder = async (req, res, next) => {
     if (!pickupAddress || !pickupAddress.pincode) {
       return next(new AppError('Pickup address with pincode is required', 400));
     }
-    
+
     if (!deliveryAddress || !deliveryAddress.pincode) {
       return next(new AppError('Delivery address with pincode is required', 400));
     }
-    
+
     if (!packageDetails || !packageDetails.weight) {
       return next(new AppError('Package details with weight is required', 400));
     }
@@ -388,9 +388,9 @@ export const createOrder = async (req, res, next) => {
       selectedRate = {
         id: cheapestRate.rateCardId,
         courier: cheapestRate.courier,
-        provider: { 
-          name: cheapestRate.courier, 
-          estimatedDays: rateResult.deliveryEstimate 
+        provider: {
+          name: cheapestRate.courier,
+          estimatedDays: rateResult.deliveryEstimate
         },
         totalRate: cheapestRate.total,
         estimatedDelivery: rateResult.deliveryEstimate
@@ -398,7 +398,7 @@ export const createOrder = async (req, res, next) => {
       totalRate = cheapestRate.total;
       console.log('Using calculated rate from unified service:', selectedRate);
     }
-    
+
     // Calculate estimated delivery date (add 3-5 days to current date)
     const estimatedDeliveryDays = 3; // Default to 3 days
     const estimatedDeliveryDate = new Date();
@@ -598,7 +598,7 @@ export const getOrderDetails = async (req, res, next) => {
   try {
     const { awb } = req.params;
     const customerId = req.user.id;
-    
+
     console.log('🔍 getOrderDetails called with:');
     console.log('  AWB:', awb);
     console.log('  Customer ID:', customerId);
@@ -614,18 +614,18 @@ export const getOrderDetails = async (req, res, next) => {
 
     if (!order) {
       console.log('❌ Order not found with AWB:', awb, 'and Customer ID:', customerId);
-      
+
       // Let's check if the order exists with a different customer ID or AWB
       const orderByAwb = await CustomerOrder.findOne({ awb });
       const orderByCustomer = await CustomerOrder.findOne({ customerId });
-      
+
       console.log('  Order exists with AWB (any customer):', !!orderByAwb);
       console.log('  Any order exists for customer:', !!orderByCustomer);
-      
+
       if (orderByAwb) {
         console.log('  AWB order customer ID:', orderByAwb.customerId);
       }
-      
+
       return next(new AppError('Order not found', 404));
     }
 
@@ -714,7 +714,7 @@ export const downloadLabel = async (req, res, next) => {
     'user-agent': req.headers['user-agent']
   });
   console.log('Request user:', req.user ? { id: req.user.id, email: req.user.email } : 'No user');
-  
+
   try {
     const { awb } = req.params;
 
@@ -742,7 +742,7 @@ export const downloadLabel = async (req, res, next) => {
         console.log('DownloadLabel - Forcing regeneration of all labels (temporary fix)');
         order.label = null;
         await order.save();
-        
+
         // After clearing, fall through to regeneration
       } catch (error) {
         console.log('DownloadLabel - Cached label invalid, clearing...');
@@ -768,18 +768,18 @@ export const downloadLabel = async (req, res, next) => {
         shippingRate: order.shippingRate,
         status: order.status
       });
-      
+
       try {
         // Create PDF using PDFKit (standard shipping label format)
-        const doc = new PDFDocument({ 
+        const doc = new PDFDocument({
           size: [400, 600], // Standard shipping label size (portrait)
           margin: 15
         });
-        
+
         // Collect PDF data in memory
         const chunks = [];
         doc.on('data', chunk => chunks.push(chunk));
-        
+
         // Create a promise that resolves when PDF is complete
         const pdfPromise = new Promise((resolve, reject) => {
           doc.on('end', () => {
@@ -788,60 +788,60 @@ export const downloadLabel = async (req, res, next) => {
           });
           doc.on('error', reject);
         });
-        
+
         // Build the PDF content - STANDARD SHIPPING LABEL FORMAT
         let currentY = 20;
-        
+
         // Border around entire label
         doc.rect(10, 10, 380, 580).stroke();
-        
+
         // Logo section with enhanced positioning and prominence
         const logoBuffer = await getLogoBuffer();
         if (logoBuffer) {
           // Use actual RocketryBox logo - centered and prominent with better positioning
           console.log('🎨 Inserting RocketryBox logo into PDF');
-          
+
           // Add a subtle border around logo area for professional look
           doc.rect(125, currentY - 5, 150, 60).stroke();
-          
+
           // Insert the logo centered within the border
           doc.image(logoBuffer, 130, currentY, { width: 140, height: 50 });
         } else {
           // Enhanced fallback logo with better styling
           console.log('📝 Using enhanced fallback logo design');
-          
+
           // Create a professional styled text logo
           doc.rect(125, currentY - 5, 150, 60).stroke();
           doc.rect(130, currentY, 140, 50).fill('#1e3a8a'); // Professional blue
-          
+
           doc.fillColor('white').fontSize(16).font('Helvetica-Bold');
           doc.text('ROCKETRY', 135, currentY + 12, { width: 130, align: 'center' });
           doc.fillColor('#f97316').fontSize(16).font('Helvetica-Bold'); // Orange for BOX
           doc.text('BOX', 135, currentY + 28, { width: 130, align: 'center' });
-          
+
           doc.fillColor('black'); // Reset color for rest of PDF
         }
         currentY += 70;
-        
+
         // Service name
         doc.fillColor('black').fontSize(14).font('Helvetica-Bold');
         doc.text('ROCKETRYBOX EXPRESS SERVICE', 20, currentY, { align: 'center', width: 360 });
         currentY += 20;
-        
+
         // Tracking number
         doc.fontSize(12).font('Helvetica');
         doc.text(`Tracking # ${awb}`, 20, currentY, { align: 'center', width: 360 });
         currentY += 25;
-        
+
         // Weight and package info
         const weight = order.packageDetails?.weight || 'N/A';
         doc.fontSize(10).font('Helvetica-Bold');
         doc.text(`${weight} KGS     1 of 1`, 20, currentY, { align: 'center', width: 360 });
         currentY += 30;
-        
+
         // Large barcode section
         doc.rect(20, currentY, 360, 60).stroke();
-        
+
         try {
           // Generate proper Code 128 barcode
           const barcodeBuffer = await bwipjs.toBuffer({
@@ -854,10 +854,10 @@ export const downloadLabel = async (req, res, next) => {
             backgroundcolor: 'ffffff', // White background
             color: '000000'        // Black bars
           });
-          
+
           // Insert barcode image into PDF
           doc.image(barcodeBuffer, 30, currentY + 5, { width: 300, height: 25 });
-          
+
         } catch (barcodeError) {
           console.log('Barcode generation failed, using fallback pattern:', barcodeError);
           // Fallback to text pattern if barcode generation fails
@@ -873,87 +873,87 @@ export const downloadLabel = async (req, res, next) => {
           doc.fontSize(14).font('Courier-Bold');
           doc.text(barcodePattern, 30, currentY + 8, { width: 320 });
         }
-        
+
         // AWB number clearly below barcode with proper spacing
         doc.fontSize(12).font('Helvetica-Bold');
         doc.text(awb, 30, currentY + 35);
-        
+
         // Website in bottom right
         doc.fontSize(8).font('Helvetica');
         doc.text('www.rocketrybox.com', 250, currentY + 48);
         currentY += 80;
-        
+
         // Ship From section
         doc.rect(20, currentY, 360, 90).stroke();
         doc.fontSize(10).font('Helvetica-Bold');
         doc.text('Ship From:', 25, currentY + 5);
-        
+
         doc.fontSize(9).font('Helvetica');
         let fromY = currentY + 20;
-        
+
         // From address - properly formatted
         const fromName = order.pickupAddress?.name || 'Sender Name';
         doc.text(fromName, 25, fromY);
-        
+
         const fromAddr1 = order.pickupAddress?.address?.line1 || 'Address Line 1';
         doc.text(fromAddr1, 25, fromY + 12, { width: 350 });
-        
+
         let nextFromY = fromY + 24;
         if (order.pickupAddress?.address?.line2) {
           doc.text(order.pickupAddress.address.line2, 25, nextFromY, { width: 350 });
           nextFromY += 12;
         }
-        
+
         const fromCityState = `${order.pickupAddress?.address?.city || 'City'}, ${order.pickupAddress?.address?.state || 'State'}, ${order.pickupAddress?.address?.pincode || 'XXXXXX'}`;
         doc.text(fromCityState, 25, nextFromY);
-        
+
         const fromCountry = order.pickupAddress?.address?.country || 'India';
         doc.text(fromCountry, 25, nextFromY + 12);
-        
+
         const fromPhone = order.pickupAddress?.phone || 'Phone Number';
         doc.text(fromPhone, 25, nextFromY + 24);
-        
+
         currentY += 110;
-        
-        // Ship To section  
+
+        // Ship To section
         doc.rect(20, currentY, 360, 90).stroke();
         doc.fontSize(10).font('Helvetica-Bold');
         doc.text('Ship To:', 25, currentY + 5);
-        
+
         doc.fontSize(9).font('Helvetica');
         let toY = currentY + 20;
-        
+
         // To address - properly formatted
         const toName = order.deliveryAddress?.name || 'CUSTOMER NAME';
         doc.text(toName.toUpperCase(), 25, toY);
-        
+
         const toAddr1 = order.deliveryAddress?.address?.line1 || 'Customer Address';
         doc.text(toAddr1, 25, toY + 12, { width: 350 });
-        
+
         let nextToY = toY + 24;
         if (order.deliveryAddress?.address?.line2) {
           doc.text(order.deliveryAddress.address.line2, 25, nextToY, { width: 350 });
           nextToY += 12;
         }
-        
+
         const toCityState = `${order.deliveryAddress?.address?.city || 'City'}, ${order.deliveryAddress?.address?.state || 'State'}, ${order.deliveryAddress?.address?.pincode || 'XXXXXX'}`;
         doc.text(toCityState, 25, nextToY);
-        
+
         const toCountry = order.deliveryAddress?.address?.country || 'India';
         doc.text(toCountry, 25, nextToY + 12);
-        
+
         const toPhone = order.deliveryAddress?.phone || 'Customer Phone';
         doc.text(toPhone, 25, nextToY + 24);
-        
+
         currentY += 110;
-        
+
         // Order details section
         doc.rect(20, currentY, 360, 40).stroke();
         doc.fontSize(8).font('Helvetica');
         doc.text(`Order: ${order.orderNumber} | Date: ${new Date(order.createdAt).toLocaleDateString('en-IN')} | Service: ${order.selectedProvider?.serviceType || 'Standard'}`, 25, currentY + 5, { width: 350 });
         doc.text(`Declared Value: Rs. ${order.packageDetails?.declaredValue || 'N/A'} | Payment: ${order.paymentStatus || 'Pending'} | Amount: Rs. ${order.shippingRate || 'N/A'}`, 25, currentY + 15, { width: 350 });
         doc.text(`Courier: ${order.selectedProvider?.name || 'RocketryBox Express'} | Track: www.rocketrybox.com/track?awb=${awb}`, 25, currentY + 25, { width: 350 });
-        
+
         // Instructions if any
         if (order.instructions) {
           currentY += 50;
@@ -963,31 +963,31 @@ export const downloadLabel = async (req, res, next) => {
           doc.fontSize(7).font('Helvetica');
           doc.text(order.instructions, 25, currentY + 15, { width: 350, height: 10 });
         }
-        
+
         // Finalize the PDF
         doc.end();
-        
+
         // Wait for PDF to be complete
         const pdfBuffer = await pdfPromise;
-        
+
         console.log('DownloadLabel - PDFKit generated successfully, size:', pdfBuffer.length, 'bytes');
-        
+
         // Convert to base64 and cache
         const base64Label = pdfBuffer.toString('base64');
         order.label = base64Label;
         await order.save();
-        
+
         console.log('DownloadLabel - PDF cached successfully');
-        
+
         // Return PDF
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=shipping-label-${awb}.pdf`);
         res.send(pdfBuffer);
         return;
-        
+
       } catch (pdfError) {
         console.error('DownloadLabel - PDFKit generation error:', pdfError);
-        
+
         // Fallback to simple HTML if PDF generation fails
         const simpleHTML = `
           <!DOCTYPE html>
@@ -1034,7 +1034,7 @@ export const downloadLabel = async (req, res, next) => {
           </body>
           </html>
         `;
-        
+
         const htmlBuffer = Buffer.from(simpleHTML, 'utf8');
         res.setHeader('Content-Type', 'text/html');
         res.setHeader('Content-Disposition', `attachment; filename=shipping-label-${awb}.html`);
@@ -1307,7 +1307,7 @@ export const checkPaymentStatus = async (req, res, next) => {
 export const calculateRates = async (req, res, next) => {
   try {
     const { weight, pickupPincode, deliveryPincode, serviceType } = req.body;
-    
+
     // Validate required fields
     if (!weight || !pickupPincode || !deliveryPincode || !serviceType) {
       throw new AppError('Missing required fields: weight, pickupPincode, deliveryPincode, and serviceType are required', 400);
@@ -1341,7 +1341,7 @@ export const calculateRates = async (req, res, next) => {
         codCollectableAmount: 0,
         includeRTO: false
       }),
-      // Air/Express rates  
+      // Air/Express rates
       rateCardService.calculateShippingRate({
         fromPincode: pickupPincode,
         toPincode: deliveryPincode,
@@ -1395,8 +1395,8 @@ export const calculateRates = async (req, res, next) => {
       serviceType: calc.serviceMode, // 'Surface' or 'Air'
       productName: calc.productName, // Show the actual product name
       rate: formatMoney(calc.total),
-      estimatedDelivery: calc.serviceMode === 'Air' ? 
-        rateCardService.getDeliveryEstimate(zone, 'Air') : 
+      estimatedDelivery: calc.serviceMode === 'Air' ?
+        rateCardService.getDeliveryEstimate(zone, 'Air') :
         rateCardService.getDeliveryEstimate(zone, 'Surface'),
       codCharge: formatMoney(calc.codCharges || 0),
       available: true,
@@ -1531,12 +1531,12 @@ export const getTrackingInfo = async (req, res, next) => {
     const now = new Date();
     const orderCreated = new Date(order.createdAt);
     const paymentTime = order.paidAt ? new Date(order.paidAt) : orderCreated;
-    
+
     // Handle pickup date - use actual pickupDate if available, otherwise use day after order creation
-    const scheduledPickupDate = order.pickupDate ? 
-      new Date(order.pickupDate) : 
+    const scheduledPickupDate = order.pickupDate ?
+      new Date(order.pickupDate) :
       new Date(orderCreated.getTime() + 24 * 60 * 60 * 1000); // Default to next day for existing orders
-    
+
     // Calculate real time differences
     const minutesSinceOrder = (now - orderCreated) / (1000 * 60);
     const hoursSinceOrder = minutesSinceOrder / 60;
@@ -1545,15 +1545,15 @@ export const getTrackingInfo = async (req, res, next) => {
     const daysSincePickupDate = hoursSincePickupDate / 24;
 
     // Build tracking events based on REAL order status and timestamps
-    
+
     // 1. Order Confirmed (use actual creation time)
     events.push({
       status: 'Order Confirmed',
       location: 'RocketryBox Platform',
-      timestamp: orderCreated.toLocaleString('en-IN', { 
+      timestamp: orderCreated.toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
         year: 'numeric',
-        month: '2-digit', 
+        month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
@@ -1567,10 +1567,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'Processing',
         location: 'RocketryBox Fulfillment Center',
-        timestamp: paymentTime.toLocaleString('en-IN', { 
+        timestamp: paymentTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1586,10 +1586,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'Pickup Scheduled',
         location: `${order.pickupAddress.address.city}, ${order.pickupAddress.address.state}`,
-        timestamp: scheduledPickupDate.toLocaleString('en-IN', { 
+        timestamp: scheduledPickupDate.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1607,10 +1607,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'Picked Up',
         location: `${order.pickupAddress.address.city}, ${order.pickupAddress.address.state}`,
-        timestamp: actualPickupTime.toLocaleString('en-IN', { 
+        timestamp: actualPickupTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1627,10 +1627,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'In Transit',
         location: `${order.pickupAddress.address.city} Sorting Facility`,
-        timestamp: transitTime.toLocaleString('en-IN', { 
+        timestamp: transitTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1646,10 +1646,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'In Transit',
         location: `En route to ${order.deliveryAddress.address.city}`,
-        timestamp: transitToDestTime.toLocaleString('en-IN', { 
+        timestamp: transitToDestTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1665,10 +1665,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'Reached Destination',
         location: `${order.deliveryAddress.address.city}, ${order.deliveryAddress.address.state}`,
-        timestamp: reachedDestTime.toLocaleString('en-IN', { 
+        timestamp: reachedDestTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1685,10 +1685,10 @@ export const getTrackingInfo = async (req, res, next) => {
       events.push({
         status: 'Out for Delivery',
         location: `${order.deliveryAddress.address.city} Delivery Hub`,
-        timestamp: outForDeliveryTime.toLocaleString('en-IN', { 
+        timestamp: outForDeliveryTime.toLocaleString('en-IN', {
           timeZone: 'Asia/Kolkata',
           year: 'numeric',
-          month: '2-digit', 
+          month: '2-digit',
           day: '2-digit',
           hour: '2-digit',
           minute: '2-digit',
@@ -1706,7 +1706,7 @@ export const getTrackingInfo = async (req, res, next) => {
     const trackingInfo = {
       awbNumber: order.awb,
       currentStatus: currentStatus,
-      expectedDelivery: expectedDelivery.toLocaleDateString('en-IN', { 
+      expectedDelivery: expectedDelivery.toLocaleDateString('en-IN', {
         timeZone: 'Asia/Kolkata',
         year: 'numeric',
         month: 'short',
@@ -1729,4 +1729,4 @@ export const getTrackingInfo = async (req, res, next) => {
     console.error('❌ Error getting tracking info:', error);
     next(new AppError(error.message, 500));
   }
-}; 
+};

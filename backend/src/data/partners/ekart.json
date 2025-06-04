@@ -1,0 +1,69 @@
+{
+  "name": "Ekart Logistics",
+  "logoUrl": "https://storage.googleapis.com/fs.goswift.in/site/ekart_logo.png",
+  "apiStatus": "active",
+  "performanceScore": 88,
+  "supportContact": "1800-123-EKART",
+  "supportEmail": "support@ekartlogistics.in",
+  "clientId": "EKART_68222515d9cfb913b0c8dc30",
+  "apiEndpoint": "https://app.elite.ekartlogistics.in",
+  "serviceTypes": ["SURFACE", "EXPRESS"],
+  "serviceAreas": ["PAN India", "Metro Cities", "Tier 1 Cities", "Tier 2 Cities", "Tier 3 Cities"],
+  "weightLimits": {
+    "min": 0.001,
+    "max": 50
+  },
+  "dimensionLimits": {
+    "minLength": 1,
+    "minWidth": 1,
+    "minHeight": 1,
+    "maxLength": 120,
+    "maxWidth": 80,
+    "maxHeight": 80,
+    "maxSum": 280
+  },
+  "rates": {
+    "baseRate": 50,
+    "weightRate": 20,
+    "dimensionalFactor": 5000
+  },
+  "zones": [
+    {
+      "name": "Metro to Metro",
+      "baseRate": 50,
+      "additionalRate": 20,
+      "transitDays": "1-2"
+    },
+    {
+      "name": "Metro to Tier 1",
+      "baseRate": 60,
+      "additionalRate": 25,
+      "transitDays": "2-3"
+    },
+    {
+      "name": "Tier 1 to Tier 2/3",
+      "baseRate": 70,
+      "additionalRate": 30,
+      "transitDays": "3-5"
+    }
+  ],
+  "paymentModes": ["COD", "Prepaid", "Pickup"],
+  "maxCodAmount": 49999,
+  "features": {
+    "tracking": true,
+    "realTimeTracking": true,
+    "labelGeneration": true,
+    "manifestGeneration": true,
+    "ndrManagement": true,
+    "webhookSupport": true,
+    "addressManagement": true,
+    "pricingEstimates": true,
+    "reversePickup": true,
+    "qcSupport": true
+  },
+  "trackingUrl": "https://app.elite.ekartlogistics.in/track/",
+  "webhookTopics": ["track_updated", "shipment_created", "shipment_recreated"],
+  "ndrActions": ["Re-Attempt", "RTO", "Edit"],
+  "apiVersion": "3.8.1",
+  "notes": "Ekart Logistics - Comprehensive e-commerce logistics solution with full API support for shipment management, tracking, NDR handling, and pricing estimates. Supports both forward and reverse logistics with quality check options."
+} 

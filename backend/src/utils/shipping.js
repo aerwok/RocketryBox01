@@ -1,14 +1,39 @@
-import { AppError } from '../middleware/errorHandler.js';
 import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
 import * as bluedart from './bluedart.js';
-import * as ecomexpress from './ecomexpress.js';
+import { calculateRate } from './courierRates.js';
 import * as delhivery from './delhivery.js';
 import * as dtdc from './dtdc.js';
+import * as ecomexpress from './ecomexpress.js';
 import * as ekart from './ekart.js';
-import * as xpressbees from './xpressbees.js';
-import { calculateRate } from './courierRates.js';
-import { getCache, setCache } from './redis.js';
 import { logger } from './logger.js';
+import { getCache, setCache } from './redis.js';
+import * as xpressbees from './xpressbees.js';
+
+// RATE CALCULATION CONFIGURATION
+const RATE_CALCULATION_CONFIG = {
+  // Set to 'API' to use live API calls, 'DATABASE' to use rate cards, 'B2B_API' for B2B, 'B2C_API' for B2C
+  DEFAULT_METHOD: process.env.DEFAULT_RATE_METHOD || 'DATABASE',
+
+  // Partner-specific overrides
+  PARTNER_OVERRIDES: {
+    'Delhivery': process.env.DELHIVERY_RATE_METHOD || 'DATABASE',     // Force Delhivery to use specific method
+    'BlueDart': process.env.BLUEDART_RATE_METHOD || 'DATABASE',      // Can be changed to 'API' if you want live rates
+    'Ecom Express': process.env.ECOMEXPRESS_RATE_METHOD || 'DATABASE',  // Can be changed to 'API' if you want live rates
+    'DTDC': process.env.DTDC_RATE_METHOD || 'DATABASE',
+    'Ekart': process.env.EKART_RATE_METHOD || 'DATABASE',
+    'Xpressbees': process.env.XPRESSBEES_RATE_METHOD || 'DATABASE'
+  },
+
+  // API Type preferences when using API method
+  API_TYPE_PREFERENCE: {
+    'Delhivery': process.env.DELHIVERY_API_TYPE || 'B2C', // 'B2C' or 'B2B'
+    'BlueDart': 'B2C',
+    'Ecom Express': 'B2C',
+    'DTDC': 'B2C',
+    'Ekart': 'B2C',
+    'Xpressbees': 'B2C'
+  }
+};
 
 // Map of courier code to their respective utility modules
 const courierModules = {
@@ -23,6 +48,7 @@ const courierModules = {
   Dtdc: dtdc,
   EKART: ekart,
   Ekart: ekart,
+  'Ekart Logistics': ekart,
   XPRESSBEES: xpressbees,
   XpressBees: xpressbees
 };
@@ -52,6 +78,21 @@ const calculateDistance = (pickupPincode, deliveryPincode) => {
 const calculateVolumetricWeight = (dimensions) => {
   const { length, width, height } = dimensions;
   return (length * width * height) / 5000; // Standard volumetric weight calculation
+};
+
+/**
+ * Determine which rate calculation method to use for a partner
+ * @param {string} partnerName - The partner name
+ * @returns {string} - 'API' or 'DATABASE'
+ */
+const getRateCalculationMethod = (partnerName) => {
+  // Check for partner-specific override first
+  if (RATE_CALCULATION_CONFIG.PARTNER_OVERRIDES[partnerName]) {
+    return RATE_CALCULATION_CONFIG.PARTNER_OVERRIDES[partnerName];
+  }
+
+  // Fall back to default method
+  return RATE_CALCULATION_CONFIG.DEFAULT_METHOD;
 };
 
 /**
@@ -118,26 +159,26 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
       packageDetails = { weight, dimensions, serviceType, ...rest };
       deliveryDetails = { pickupPincode, deliveryPincode };
     }
-    
+
     let availablePartners = partners;
 
     // If no specific partners provided, get all active partners
     if (!availablePartners) {
-      const partnerDocs = await ShippingPartner.find({ 
+      const partnerDocs = await ShippingPartner.find({
         apiStatus: 'active',
         'weightLimits.min': { $lte: packageDetails.weight },
         'weightLimits.max': { $gte: packageDetails.weight }
       }).select('name').lean();
-      
+
       availablePartners = partnerDocs.map(p => p.name);
-      
-      // FALLBACK: If no partners found in database, use hardcoded list with API integrations
+
+      // FALLBACK: If no partners found in database, use hardcoded list
       if (!availablePartners || availablePartners.length === 0) {
         logger.warn('No active shipping partners found in database, using fallback partners');
         availablePartners = ['BlueDart', 'Ecom Express', 'Delhivery', 'DTDC', 'Ekart', 'Xpressbees'];
       }
     }
-    
+
     logger.info('Calculating rates for partners:', {
       partners: availablePartners,
       packageWeight: packageDetails.weight,
@@ -145,29 +186,97 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
       pickupPincode: deliveryDetails.pickupPincode,
       deliveryPincode: deliveryDetails.deliveryPincode
     });
-    
+
     // Calculate rates for each partner
     const ratePromises = availablePartners.map(async (partnerName) => {
       try {
         let partnerDetails = await getPartnerDetails(partnerName);
-      
+
         // If no partner details in database, create fallback details
-      if (!partnerDetails) {
+        if (!partnerDetails) {
           logger.info(`Creating fallback partner details for: ${partnerName}`);
           partnerDetails = createFallbackPartnerDetails(partnerName);
-      }
-      
-      // Check if partner module exists (try both original name and uppercase)
-      let partnerModule = courierModules[partnerName] || courierModules[partnerName.toUpperCase()];
-      
-      if (partnerModule && partnerModule.calculateRate) {
-          logger.info(`Using API integration for ${partnerName}`);
-        // Use partner-specific rate calculation - API must work properly
-        return await partnerModule.calculateRate(packageDetails, deliveryDetails, partnerDetails);
-      } else {
-          logger.info(`Using generic rate calculation for ${partnerName}`);
-        // Use generic rate calculation for partners without API integration
-        return calculateRate(packageDetails, deliveryDetails, partnerDetails);
+        }
+
+        // Determine rate calculation method for this partner
+        const rateMethod = getRateCalculationMethod(partnerName);
+        const apiType = RATE_CALCULATION_CONFIG.API_TYPE_PREFERENCE[partnerName] || 'B2C';
+        logger.info(`Rate calculation method for ${partnerName}: ${rateMethod} (${apiType})`);
+
+        if (rateMethod === 'API' || rateMethod === 'B2C_API' || rateMethod === 'B2B_API') {
+          // Check if partner module exists for API integration
+          let partnerModule = courierModules[partnerName] || courierModules[partnerName.toUpperCase()];
+
+          if (partnerModule && partnerModule.calculateRate) {
+            logger.info(`Using ${rateMethod} integration for ${partnerName}`);
+
+            // For Delhivery, check if we should use B2B API
+            if (partnerName === 'Delhivery' && (rateMethod === 'B2B_API' || apiType === 'B2B')) {
+              // Use B2B freight estimator instead of B2C rate calculation
+              try {
+                const delhiveryAPI = new (await import('./delhivery.js')).DelhiveryAPI();
+                const freightResult = await delhiveryAPI.b2bFreightEstimator({
+                  dimensions: [{
+                    length_cm: packageDetails.dimensions?.length || 20,
+                    width_cm: packageDetails.dimensions?.width || 15,
+                    height_cm: packageDetails.dimensions?.height || 10,
+                    box_count: 1
+                  }],
+                  weightG: Math.round(packageDetails.weight * 1000), // Convert to grams
+                  sourcePin: deliveryDetails.pickupPincode,
+                  consigneePin: deliveryDetails.deliveryPincode,
+                  paymentMode: packageDetails.paymentMode?.toLowerCase() === 'cod' ? 'cod' : 'prepaid',
+                  codAmount: packageDetails.codAmount || 0,
+                  invAmount: packageDetails.invoiceValue || packageDetails.codAmount || 1000,
+                  freightMode: 'fop',
+                  rovInsurance: false
+                });
+
+                if (freightResult.success) {
+                  return {
+                    success: true,
+                    provider: {
+                      id: partnerDetails.id || 'delhivery-b2b',
+                      name: 'Delhivery',
+                      serviceType: 'B2B Freight',
+                      apiType: 'B2B',
+                      estimatedDays: '2-4 days'
+                    },
+                    totalRate: Math.round(freightResult.estimatedCost),
+                    breakdown: freightResult.breakdown,
+                    source: 'B2B_API'
+                  };
+                } else {
+                  logger.warn(`Delhivery B2B API failed, falling back to B2C or database: ${freightResult.error}`);
+                  // Fall through to regular B2C API or database
+                }
+              } catch (error) {
+                logger.error(`Delhivery B2B API error: ${error.message}`);
+                // Fall through to regular B2C API or database
+              }
+            }
+
+            // Use standard API integration (B2C)
+            const apiResult = await partnerModule.calculateRate(packageDetails, deliveryDetails, partnerDetails);
+            if (apiResult && apiResult.success) {
+              apiResult.source = 'B2C_API';
+              return apiResult;
+            } else {
+              logger.warn(`${partnerName} API failed, falling back to database rates`);
+              return await calculateRate(packageDetails, deliveryDetails, partnerDetails);
+            }
+          } else {
+            logger.warn(`API integration not available for ${partnerName}, falling back to database rates`);
+            return await calculateRate(packageDetails, deliveryDetails, partnerDetails);
+          }
+        } else {
+          // Use database rate cards
+          logger.info(`Using database rate cards for ${partnerName}`);
+          const dbResult = await calculateRate(packageDetails, deliveryDetails, partnerDetails);
+          if (dbResult) {
+            dbResult.source = 'DATABASE';
+          }
+          return dbResult;
         }
       } catch (error) {
         logger.error(`Error calculating rate for ${partnerName}: ${error.message}`);
@@ -175,12 +284,12 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
         return null;
       }
     });
-    
+
     const rates = await Promise.all(ratePromises);
     const validRates = rates.filter(rate => rate !== null);
-    
+
     logger.info(`Rate calculation completed: ${validRates.length} valid rates out of ${availablePartners.length} partners`);
-    
+
     return validRates;
   } catch (error) {
     logger.error(`Error calculating shipping rates: ${error.message}`);
@@ -292,21 +401,21 @@ const createFallbackPartnerDetails = (partnerName) => {
 export const bookShipment = async (courierCode, shipmentDetails) => {
   try {
     const partnerDetails = await getPartnerDetails(courierCode);
-    
+
     if (!partnerDetails) {
       throw new Error(`Partner details not found for ${courierCode}`);
     }
-    
+
     // Check if partner module exists
     const partnerModule = courierModules[courierCode.toUpperCase()];
-    
+
     if (!partnerModule || !partnerModule.bookShipment) {
       throw new Error(`Booking functionality not available for ${courierCode}`);
     }
-    
+
     // Call the partner-specific booking function
     const bookingResponse = await partnerModule.bookShipment(shipmentDetails, partnerDetails);
-    
+
     // If booking successful, update shipment count for the partner
     if (bookingResponse.success) {
       await ShippingPartner.findByIdAndUpdate(
@@ -314,7 +423,7 @@ export const bookShipment = async (courierCode, shipmentDetails) => {
         { $inc: { shipmentCount: 1 } }
       );
     }
-    
+
     return bookingResponse;
   } catch (error) {
     logger.error(`Error booking shipment with ${courierCode}: ${error.message}`);
@@ -334,18 +443,18 @@ export const bookShipment = async (courierCode, shipmentDetails) => {
 export const trackShipment = async (trackingNumber, courierCode) => {
   try {
     const partnerDetails = await getPartnerDetails(courierCode);
-    
+
     if (!partnerDetails) {
       throw new Error(`Partner details not found for ${courierCode}`);
     }
-    
+
     // Check if partner module exists
     const partnerModule = courierModules[courierCode.toUpperCase()];
-    
+
     if (!partnerModule || !partnerModule.trackShipment) {
       throw new Error(`Tracking functionality not available for ${courierCode}`);
     }
-    
+
     // Call the partner-specific tracking function
     return await partnerModule.trackShipment(trackingNumber, partnerDetails);
   } catch (error) {
@@ -367,7 +476,7 @@ export const validatePincode = (pincode) => {
 export const getServiceAvailability = (pickupPincode, deliveryPincode) => {
   // In a real application, this would check against a database of serviceable pincodes
   const isServiceable = validatePincode(pickupPincode) && validatePincode(deliveryPincode);
-  
+
   return {
     success: true,
     data: {
@@ -376,4 +485,4 @@ export const getServiceAvailability = (pickupPincode, deliveryPincode) => {
       message: isServiceable ? 'Service available' : 'Service not available for these pincodes'
     }
   };
-}; 
+};

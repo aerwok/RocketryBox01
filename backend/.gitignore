@@ -33,4 +33,20 @@ coverage
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# PROJECT RULES - NO MARKDOWN FILES UNLESS EXPLICITLY REQUESTED
+# Prevent accidental markdown file creation
+*.md
+!README.md
+# Exception: Only allow specific markdown files when explicitly created
+# To add a markdown file: git add -f filename.md
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Build artifacts
+dist/
+build/

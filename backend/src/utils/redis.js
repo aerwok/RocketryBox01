@@ -1,690 +1,278 @@
-import { logger } from './logger.js';
 import { createClient } from 'redis';
-
-// In-memory store for fallback mode
-const memoryStore = new Map();
-const expiryTimes = new Map();
+import { logger } from './logger.js';
 
 // Redis connection details from environment variables
 const REDIS_HOST = process.env.REDIS_HOST || 'redis-13884.c305.ap-south-1-1.ec2.redns.redis-cloud.com';
 const REDIS_PORT = process.env.REDIS_PORT || '13884';
-const REDIS_USERNAME = process.env.REDIS_USERNAME || 'default';
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'GUP1RJOkJVgAhu7ydayYSo9OCwfcrYIZ';
+const REDIS_API_KEY = process.env.REDIS_API_KEY || process.env.REDIS_PASSWORD || 'GUP1RJOkJVgAhu7ydayYSo9OCwfcrYIZ';
 
-// Construct Redis URL
-const REDIS_URL = `redis://${REDIS_USERNAME}:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}`;
+// TTL Constants
+const REDIS_TTL = parseInt(process.env.REDIS_TTL || '3600'); // 1 hour
+const REDIS_OTP_TTL = parseInt(process.env.REDIS_OTP_TTL || '300'); // 5 minutes
+const REDIS_SESSION_TTL = parseInt(process.env.REDIS_SESSION_TTL || '86400'); // 24 hours
 
-// Fallback mode flag
-let usingFallbackMode = false;
+// Construct Redis URL with API key (no username, just API key as password)
+const REDIS_URL = `redis://:${REDIS_API_KEY}@${REDIS_HOST}:${REDIS_PORT}`;
 
-// Setup fallback mode
-function setupFallbackMode() {
-  if (usingFallbackMode) return;
-  
-  usingFallbackMode = true;
-  logger.warn('Switching to fallback in-memory implementation');
-  
-  // Set up cleanup interval for in-memory store
-  setInterval(() => {
-    try {
-      const now = Date.now();
-      let expiredCount = 0;
-      for (const [key, expiry] of expiryTimes.entries()) {
-        if (now > expiry) {
-          memoryStore.delete(key);
-          expiryTimes.delete(key);
-          expiredCount++;
-        }
-      }
-      if (expiredCount > 0) {
-        logger.debug(`[FALLBACK] Cleaned up ${expiredCount} expired keys`);
-      }
-    } catch (error) {
-      logger.error(`[FALLBACK] Cleanup error: ${error.message}`);
-    }
-  }, 30000); // Run cleanup every 30 seconds
-}
+console.log('🔍 Redis Connection Details:');
+console.log(`   Host: ${REDIS_HOST}`);
+console.log(`   Port: ${REDIS_PORT}`);
+console.log(`   API Key: ${REDIS_API_KEY.substring(0, 10)}...`);
+console.log(`   URL: redis://:***@${REDIS_HOST}:${REDIS_PORT}`);
 
-// Create a dummy Redis client for fallback mode
-const dummyRedisClient = {
-  isOpen: false,
-  connect: async () => { return; },
-  get: async () => null,
-  set: async () => null,
-  setEx: async () => null,
-  del: async () => null,
-  keys: async () => [],
-  incr: async () => 1,
-  expire: async () => true,
-  on: () => dummyRedisClient // For method chaining
-};
-
-// Create Redis client or use dummy
+// Create Redis client
 let redisClient;
 
 try {
-  logger.info(`Creating Redis client with URL: ${REDIS_URL}`);
+  logger.info('Creating Redis client...');
   redisClient = createClient({
     url: REDIS_URL,
     socket: {
       reconnectStrategy: (retries) => {
-        if (retries > 5) {
-          logger.warn(`Failed to connect to Redis after ${retries} attempts, falling back to mock implementation`);
-          setupFallbackMode();
+        if (retries > 3) {
+          logger.error(`Failed to connect to Redis after ${retries} attempts`);
           return false; // stop retrying
         }
-        const delay = Math.min(retries * 500, 5000); // Wait max 5 seconds between retries
+        const delay = Math.min(retries * 1000, 5000);
         logger.debug(`Redis reconnect attempt ${retries} in ${delay}ms`);
         return delay;
       },
-      connectTimeout: 10000 // 10 seconds timeout for connection
+      connectTimeout: 5000
     }
   });
-  
+
   // Handle Redis events
   redisClient.on('error', (err) => {
     logger.error('Redis Client Error:', err.message);
-    setupFallbackMode();
   });
-  
+
   redisClient.on('connect', () => logger.info('Redis Client Connected'));
-  redisClient.on('ready', () => {
-    logger.info('Redis Client Ready');
-    usingFallbackMode = false; // Reset fallback mode if connection successful
-  });
+  redisClient.on('ready', () => logger.info('Redis Client Ready'));
   redisClient.on('reconnecting', () => logger.info('Redis Client Reconnecting'));
-  redisClient.on('end', () => {
-    logger.info('Redis Client Connection Ended');
-    setupFallbackMode();
-  });
+  redisClient.on('end', () => logger.info('Redis Client Connection Ended'));
 
   // Try to connect
-  redisClient.connect().catch((err) => {
-    logger.error('Failed to connect to Redis:', err.message);
-    setupFallbackMode();
-  });
+  await redisClient.connect();
 } catch (error) {
   logger.error('Error creating Redis client:', error.message);
-  setupFallbackMode();
-  redisClient = dummyRedisClient;
+  throw new Error(`Redis connection failed: ${error.message}`);
 }
 
-// Helper function to check if we should use Redis
-const useRedis = async () => {
-  if (usingFallbackMode) return false;
-  try {
-    return redisClient?.isOpen || false;
-  } catch (error) {
-    logger.error('Error checking Redis connection:', error.message);
-    setupFallbackMode();
-    return false;
-  }
+// Helper function to check if Redis is connected
+const isRedisConnected = () => {
+  return redisClient?.isOpen || false;
 };
 
-// Export Redis health check with more details
+// Export Redis health check
 export const isRedisHealthy = () => {
-  const status = {
-    connected: redisClient.isOpen && !usingFallbackMode,
-    useFallbackMode: usingFallbackMode,
-    clientOpen: redisClient.isOpen,
-    memoryStoreSize: memoryStore.size,
-    expiryTimesSize: expiryTimes.size
+  return {
+    connected: redisClient.isOpen,
+    clientOpen: redisClient.isOpen
   };
-  
-  logger.debug(`Redis health status: ${JSON.stringify(status)}`);
-  return status;
 };
-
-// Add a periodic health check to monitor Redis status
-export const startRedisMonitoring = (intervalMs = 60000) => {
-  logger.info(`Starting Redis monitoring with ${intervalMs}ms interval`);
-  
-  const monitoringInterval = setInterval(() => {
-    const status = isRedisHealthy();
-    
-    if (!status.connected) {
-      logger.warn(`Redis is disconnected, fallback mode: ${status.useFallbackMode}, memory items: ${status.memoryStoreSize}`);
-      
-      // Try to reconnect if client is closed and not in fallback mode
-      if (!redisClient.isOpen && !usingFallbackMode) {
-        logger.info('Attempting to reconnect to Redis...');
-        try {
-          redisClient.connect().catch(err => {
-            logger.error(`Redis reconnection failed: ${err.message}`);
-          });
-        } catch (error) {
-          logger.error(`Error during Redis reconnection attempt: ${error.message}`);
-        }
-      }
-    } else {
-      logger.debug('Redis connection is healthy');
-    }
-  }, intervalMs);
-  
-  // Clean up monitoring on process exit
-  process.on('SIGTERM', () => clearInterval(monitoringInterval));
-  process.on('SIGINT', () => clearInterval(monitoringInterval));
-  
-  return monitoringInterval;
-};
-
-// Auto-start monitoring with a 1-minute interval
-startRedisMonitoring();
 
 // Session Management
-export const setSession = async (userId, sessionData, expiryInSeconds = 3600) => {
-  try {
-    const key = `session:${userId}`;
-    const value = JSON.stringify(sessionData);
-    
-    if (await useRedis()) {
-      await redisClient.setEx(key, expiryInSeconds, value);
-    } else {
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error('Redis Set Session Error:', error.message);
-    // Fallback
-    try {
-      const key = `session:${userId}`;
-      const value = JSON.stringify(sessionData);
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-      return true;
-    } catch (fallbackError) {
-      logger.error('Fallback Set Session Error:', fallbackError.message);
-      return false;
-    }
+export const setSession = async (userId, sessionData, expiryInSeconds = REDIS_SESSION_TTL) => {
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `session:${userId}`;
+  const value = JSON.stringify(sessionData);
+  await redisClient.setEx(key, expiryInSeconds, value);
+  return true;
 };
 
 export const getSession = async (userId) => {
-  try {
-    const key = `session:${userId}`;
-    
-    let data = null;
-    if (await useRedis()) {
-      data = await redisClient.get(key);
-    } else {
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-      } else {
-        data = memoryStore.get(key);
-      }
-    }
-    
-    return data ? JSON.parse(data) : null;
-  } catch (error) {
-    logger.error('Redis Get Session Error:', error.message);
-    // Fallback
-    try {
-      const key = `session:${userId}`;
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-        return null;
-      }
-      const data = memoryStore.get(key);
-      return data ? JSON.parse(data) : null;
-    } catch (fallbackError) {
-      logger.error('Fallback Get Session Error:', fallbackError.message);
-      return null;
-    }
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `session:${userId}`;
+  const data = await redisClient.get(key);
+  return data ? JSON.parse(data) : null;
 };
 
 export const deleteSession = async (userId) => {
-  try {
-    const key = `session:${userId}`;
-    
-    if (await useRedis()) {
-      await redisClient.del(key);
-    } else {
-      memoryStore.delete(key);
-      expiryTimes.delete(key);
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error('Redis Delete Session Error:', error.message);
-    // Fallback
-    try {
-      const key = `session:${userId}`;
-      memoryStore.delete(key);
-      expiryTimes.delete(key);
-      return true;
-    } catch (fallbackError) {
-      logger.error('Fallback Delete Session Error:', fallbackError.message);
-      return false;
-    }
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `session:${userId}`;
+  await redisClient.del(key);
+  return true;
 };
 
 // OTP Management
-export const setOTP = async (userId, otp, expiryInSeconds = 300) => {
-  try {
-    const key = `otp:${userId}`;
-    const data = {
-      code: otp,
-      attempts: 0,
-      createdAt: Date.now()
-    };
-    const value = JSON.stringify(data);
-    
-    if (await useRedis()) {
-      await redisClient.setEx(key, expiryInSeconds, value);
-    } else {
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error('Redis Set OTP Error:', error.message);
-    // Fallback
-    try {
-      const key = `otp:${userId}`;
-      const data = {
-        code: otp,
-        attempts: 0,
-        createdAt: Date.now()
-      };
-      const value = JSON.stringify(data);
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-      return true;
-    } catch (fallbackError) {
-      logger.error('Fallback Set OTP Error:', fallbackError.message);
-      return false;
-    }
+export const setOTP = async (userId, otp, expiryInSeconds = REDIS_OTP_TTL) => {
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `otp:${userId}`;
+  const data = {
+    code: otp,
+    attempts: 0,
+    createdAt: Date.now()
+  };
+  const value = JSON.stringify(data);
+  await redisClient.setEx(key, expiryInSeconds, value);
+  return true;
 };
 
 export const getOTP = async (userId) => {
-  try {
-    const key = `otp:${userId}`;
-    
-    let data = null;
-    if (await useRedis()) {
-      data = await redisClient.get(key);
-    } else {
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-      } else {
-        data = memoryStore.get(key);
-      }
-    }
-    
-    return data ? JSON.parse(data) : null;
-  } catch (error) {
-    logger.error('Redis Get OTP Error:', error.message);
-    // Fallback
-    try {
-      const key = `otp:${userId}`;
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-        return null;
-      }
-      const data = memoryStore.get(key);
-      return data ? JSON.parse(data) : null;
-    } catch (fallbackError) {
-      logger.error('Fallback Get OTP Error:', fallbackError.message);
-      return null;
-    }
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `otp:${userId}`;
+  const data = await redisClient.get(key);
+  return data ? JSON.parse(data) : null;
 };
 
 export const verifyOTP = async (userId, inputOTP) => {
-  try {
-    const key = `otp:${userId}`;
-    
-    let data = null;
-    if (await useRedis()) {
-      data = await redisClient.get(key);
-    } else {
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-      } else {
-        data = memoryStore.get(key);
-      }
-    }
-    
-    if (!data) return { valid: false, message: 'OTP expired or not found' };
-
-    const otpData = JSON.parse(data);
-    
-    // Check attempts
-    const maxAttempts = 3;
-    if (otpData.attempts >= maxAttempts) {
-      if (await useRedis()) {
-        await redisClient.del(key);
-      } else {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-      }
-      return { valid: false, message: 'Maximum attempts exceeded' };
-    }
-
-    // Update attempts
-    otpData.attempts += 1;
-    const value = JSON.stringify(otpData);
-    
-    if (await useRedis()) {
-      await redisClient.setEx(key, 300, value);
-    } else {
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (300 * 1000));
-    }
-
-    // Verify OTP
-    if (otpData.code !== inputOTP) {
-      return { 
-        valid: false, 
-        message: 'Invalid OTP',
-        remainingAttempts: maxAttempts - otpData.attempts 
-      };
-    }
-
-    // OTP verified, clean up
-    if (await useRedis()) {
-      await redisClient.del(key);
-    } else {
-      memoryStore.delete(key);
-      expiryTimes.delete(key);
-    }
-    
-    return { valid: true, message: 'OTP verified successfully' };
-  } catch (error) {
-    logger.error('Redis Verify OTP Error:', error.message);
-    return { valid: false, message: 'Error verifying OTP' };
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `otp:${userId}`;
+  const data = await redisClient.get(key);
+
+  if (!data) return { valid: false, message: 'OTP expired or not found' };
+
+  const otpData = JSON.parse(data);
+
+  // Check attempts
+  const maxAttempts = 3;
+  if (otpData.attempts >= maxAttempts) {
+    await redisClient.del(key);
+    return { valid: false, message: 'Maximum attempts exceeded' };
+  }
+
+  // Update attempts
+  otpData.attempts += 1;
+  const value = JSON.stringify(otpData);
+  await redisClient.setEx(key, 300, value);
+
+  // Verify OTP
+  if (otpData.code !== inputOTP) {
+    return {
+      valid: false,
+      message: 'Invalid OTP',
+      remainingAttempts: maxAttempts - otpData.attempts
+    };
+  }
+
+  // OTP verified, clean up
+  await redisClient.del(key);
+  return { valid: true, message: 'OTP verified successfully' };
 };
 
 // Rate Limiting
 export const checkRateLimit = async (key, limit, windowInSeconds) => {
-  try {
-    let current = 1;
-    
-    if (await useRedis()) {
-      current = await redisClient.incr(key);
-      if (current === 1) {
-        await redisClient.expire(key, windowInSeconds);
-      }
-    } else {
-      const currentValue = parseInt(memoryStore.get(key) || '0', 10);
-      current = currentValue + 1;
-      memoryStore.set(key, current.toString());
-      if (current === 1) {
-        expiryTimes.set(key, Date.now() + (windowInSeconds * 1000));
-      }
-    }
-
-    return {
-      current,
-      isAllowed: current <= limit,
-      remainingAttempts: Math.max(0, limit - current)
-    };
-  } catch (error) {
-    logger.error('Redis Rate Limit Error:', error.message);
-    return { 
-      current: 1, 
-      isAllowed: true, 
-      remainingAttempts: limit - 1 
-    }; // Fail open for rate limiting
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const current = await redisClient.incr(key);
+  if (current === 1) {
+    await redisClient.expire(key, windowInSeconds);
+  }
+
+  return {
+    current,
+    isAllowed: current <= limit,
+    remainingAttempts: Math.max(0, limit - current)
+  };
 };
 
 // Cache Management
-export const setCache = async (key, data, expiryInSeconds = 3600) => {
-  try {
-    if (!key) {
-      // Add stack trace to identify the caller
-      const stack = new Error().stack;
-      logger.error(`Redis Set Cache Error: Key cannot be null or undefined. Stack trace: ${stack}`);
-      return false;
-    }
-    
-    // Add debug logging to see what key is being set
-    logger.debug(`Setting cache with key: ${key}`);
-    
-    // Make sure data is not undefined
-    const safeData = data === undefined ? null : data;
-    const value = JSON.stringify(safeData);
-    
-    if (await useRedis()) {
-      await redisClient.setEx(key, expiryInSeconds, value);
-    } else {
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error('Redis Set Cache Error:', error.message);
-    // Fallback
-    try {
-      const safeData = data === undefined ? null : data;
-      const value = JSON.stringify(safeData);
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-      return true;
-    } catch (fallbackError) {
-      logger.error('Fallback Set Cache Error:', fallbackError.message);
-      return false;
-    }
+export const setCache = async (key, data, expiryInSeconds = REDIS_TTL) => {
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  if (!key) {
+    throw new Error('Key cannot be null or undefined');
+  }
+
+  const safeData = data === undefined ? null : data;
+  const value = JSON.stringify(safeData);
+  await redisClient.setEx(key, expiryInSeconds, value);
+  return true;
 };
 
 export const getCache = async (key) => {
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
+  }
+
+  if (!key) {
+    throw new Error('Key cannot be null or undefined');
+  }
+
+  const data = await redisClient.get(key);
+  if (!data) return null;
+
   try {
-    if (!key) {
-      // Add stack trace to identify the caller
-      const stack = new Error().stack;
-      logger.error(`Redis Get Cache Error: Key cannot be null or undefined. Stack trace: ${stack}`);
-      return null;
-    }
-    
-    // Add debug logging to see what key is being requested
-    logger.debug(`Getting cache with key: ${key}`);
-    
-    let data = null;
-    if (await useRedis()) {
-      data = await redisClient.get(key);
-    } else {
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-      } else {
-        data = memoryStore.get(key);
-      }
-    }
-    
-    if (!data) return null;
-    
-    try {
-      return JSON.parse(data);
-    } catch (parseError) {
-      logger.error(`Redis Parse Error for key ${key}:`, parseError.message);
-      return null;
-    }
-  } catch (error) {
-    logger.error(`Redis Get Cache Error for key ${key}:`, error.message);
-    // Fallback
-    try {
-      if (!key) return null;
-      
-      const expiry = expiryTimes.get(key);
-      if (expiry && Date.now() > expiry) {
-        memoryStore.delete(key);
-        expiryTimes.delete(key);
-        return null;
-      }
-      const data = memoryStore.get(key);
-      if (!data) return null;
-      
-      try {
-        return JSON.parse(data);
-      } catch (parseError) {
-        logger.error(`Fallback Parse Error for key ${key}:`, parseError.message);
-        return null;
-      }
-    } catch (fallbackError) {
-      logger.error(`Fallback Get Cache Error for key ${key}:`, fallbackError.message);
-      return null;
-    }
+    return JSON.parse(data);
+  } catch (parseError) {
+    logger.error(`Redis Parse Error for key ${key}:`, parseError.message);
+    return null;
   }
 };
 
 export const deleteCache = async (key) => {
-  try {
-    if (!key) {
-      logger.error('Redis Delete Cache Error: Key cannot be null or undefined');
-      return false;
-    }
-    
-    if (await useRedis()) {
-      await redisClient.del(key);
-    } else {
-      memoryStore.delete(key);
-      expiryTimes.delete(key);
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error(`Redis Delete Cache Error for key ${key}:`, error.message);
-    // Fallback
-    try {
-      if (!key) return false;
-      
-      memoryStore.delete(key);
-      expiryTimes.delete(key);
-      return true;
-    } catch (fallbackError) {
-      logger.error(`Fallback Delete Cache Error for key ${key}:`, fallbackError.message);
-      return false;
-    }
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  if (!key) {
+    throw new Error('Key cannot be null or undefined');
+  }
+
+  await redisClient.del(key);
+  return true;
 };
 
 export const getAllSessions = async () => {
-  try {
-    let keys = [];
-    if (await useRedis()) {
-      keys = await redisClient.keys('session:*');
-    } else {
-      for (const key of memoryStore.keys()) {
-        if (key.startsWith('session:')) {
-          const expiry = expiryTimes.get(key);
-          if (!expiry || Date.now() <= expiry) {
-            keys.push(key);
-          }
-        }
-      }
-    }
-    
-    if (!keys || keys.length === 0) return [];
-    
-    const sessions = [];
-    for (const key of keys) {
-      let data = null;
-      if (await useRedis()) {
-        data = await redisClient.get(key);
-      } else {
-        const expiry = expiryTimes.get(key);
-        if (expiry && Date.now() > expiry) {
-          memoryStore.delete(key);
-          expiryTimes.delete(key);
-        } else {
-          data = memoryStore.get(key);
-        }
-      }
-      
-      if (data) {
-        const userId = key.split(':')[1];
-        sessions.push({
-          userId,
-          data: JSON.parse(data)
-        });
-      }
-    }
-    
-    return sessions;
-  } catch (error) {
-    logger.error('Redis Get All Sessions Error:', error.message);
-    // Fallback
-    try {
-      const sessions = [];
-      for (const key of memoryStore.keys()) {
-        if (key.startsWith('session:')) {
-          const expiry = expiryTimes.get(key);
-          if (!expiry || Date.now() <= expiry) {
-            const data = memoryStore.get(key);
-            const userId = key.split(':')[1];
-            sessions.push({
-              userId,
-              data: JSON.parse(data)
-            });
-          }
-        }
-      }
-      return sessions;
-    } catch (fallbackError) {
-      logger.error('Fallback Get All Sessions Error:', fallbackError.message);
-      return [];
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
+  }
+
+  const keys = await redisClient.keys('session:*');
+  if (!keys || keys.length === 0) return [];
+
+  const sessions = [];
+  for (const key of keys) {
+    const data = await redisClient.get(key);
+    if (data) {
+      const userId = key.split(':')[1];
+      sessions.push({
+        userId,
+        data: JSON.parse(data)
+      });
     }
   }
+
+  return sessions;
 };
 
 export const storeOTP = async (phone, otp, expiryInSeconds = 300) => {
-  try {
-    const key = `phone_otp:${phone}`;
-    const data = {
-      code: otp,
-      attempts: 0,
-      createdAt: Date.now()
-    };
-    const value = JSON.stringify(data);
-    
-    if (await useRedis()) {
-      await redisClient.setEx(key, expiryInSeconds, value);
-    } else {
-      memoryStore.set(key, value);
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-    }
-    
-    return true;
-  } catch (error) {
-    logger.error('Redis Store Phone OTP Error:', error.message);
-    // Fallback
-    try {
-      const key = `phone_otp:${phone}`;
-      const data = {
-        code: otp,
-        attempts: 0,
-        createdAt: Date.now()
-      };
-      memoryStore.set(key, JSON.stringify(data));
-      expiryTimes.set(key, Date.now() + (expiryInSeconds * 1000));
-      return true;
-    } catch (fallbackError) {
-      logger.error('Fallback Store Phone OTP Error:', fallbackError.message);
-      return false;
-    }
+  if (!isRedisConnected()) {
+    throw new Error('Redis not connected');
   }
+
+  const key = `phone_otp:${phone}`;
+  const data = {
+    code: otp,
+    attempts: 0,
+    createdAt: Date.now()
+  };
+  const value = JSON.stringify(data);
+  await redisClient.setEx(key, expiryInSeconds, value);
+  return true;
 };
 
 // For compatibility with code that expects the redis client directly
-export default redisClient; 
+export default redisClient;

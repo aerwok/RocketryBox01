@@ -1,0 +1,154 @@
+{
+  // CUSTOM PROJECT RULES - ENFORCED
+  // Rule 1: ONLY USE POWERSHELL COMMANDS
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.defaultProfile.linux": "pwsh",
+  "terminal.integrated.defaultProfile.osx": "pwsh",
+  "terminal.integrated.profiles.windows": {
+    "PowerShell": {
+      "source": "PowerShell",
+      "icon": "terminal-powershell",
+      "args": [
+        "-NoLogo"
+      ]
+    }
+  },
+  "terminal.integrated.automationProfile.windows": {
+    "path": "powershell.exe"
+  },
+  // Rule 2: NO MARKDOWN FILES UNTIL EXPLICITLY REQUESTED
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/logs": true,
+    "**/temp": true,
+    "**/.git": true,
+    "**/uploads": true
+  },
+  "markdown.extension.toc.autoGenerateOnSave": false,
+  "markdown.preview.breaks": false,
+  "emmet.excludeLanguages": [
+    "markdown"
+  ],
+  // Editor Configuration
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
+  "editor.formatOnPaste": true,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "editor.trimAutoWhitespace": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit",
+    "source.removeUnusedImports": "explicit"
+  },
+  // File Management
+  "files.autoSave": "onFocusChange",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "files.defaultLanguage": "javascript",
+  // JavaScript/Node.js Specific
+  "javascript.preferences.importModuleSpecifier": "relative",
+  "javascript.preferences.includePackageJsonAutoImports": "on",
+  "javascript.suggest.autoImports": true,
+  "javascript.updateImportsOnFileMove.enabled": "always",
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "typescript.suggest.autoImports": true,
+  // Error Detection & Validation
+  "javascript.validate.enable": true,
+  "json.validate.enable": true,
+  // Project Structure
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "*.js": "${capture}.test.js,${capture}.spec.js",
+    "package.json": "package-lock.json,yarn.lock,.npmrc",
+    ".env": ".env.*"
+  },
+  // Git Integration
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "git.enableSmartCommit": true,
+  "git.suggestSmartCommit": true,
+  // Search & Replace
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/logs": true,
+    "**/temp": true,
+    "**/*.log": true
+  },
+  // Terminal Configuration - POWERSHELL ENFORCED
+  "terminal.integrated.cwd": "${workspaceFolder}",
+  "terminal.integrated.inheritEnv": true,
+  // Language Specific Settings
+  "[javascript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features",
+    "editor.maxTokenizationLineLength": 2500
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "vscode.markdown-language-features",
+    "editor.wordWrap": "on",
+    "editor.quickSuggestions": {
+      "comments": "off",
+      "strings": "off",
+      "other": "off"
+    },
+    "files.autoSave": "off"
+  },
+  // Debugging
+  "debug.onTaskErrors": "showErrors",
+  "debug.console.fontSize": 14,
+  // Extensions
+  "emmet.includeLanguages": {
+    "javascript": "javascriptreact"
+  },
+  // Project Specific Rules
+  "workbench.colorCustomizations": {
+    "statusBar.background": "#1e88e5",
+    "statusBar.foreground": "#ffffff",
+    "titleBar.activeBackground": "#1976d2",
+    "titleBar.activeForeground": "#ffffff"
+  },
+  // Code Folding
+  "editor.foldingStrategy": "indentation",
+  "editor.showFoldingControls": "always",
+  // Minimap
+  "editor.minimap.enabled": true,
+  "editor.minimap.maxColumn": 120,
+  // Breadcrumbs
+  "breadcrumbs.enabled": true,
+  "breadcrumbs.showFiles": true,
+  "breadcrumbs.showSymbols": true,
+  // IntelliSense
+  "editor.quickSuggestions": {
+    "other": true,
+    "comments": false,
+    "strings": true
+  },
+  "editor.suggestSelection": "first",
+  "editor.acceptSuggestionOnCommitCharacter": true,
+  // File Associations
+  "files.associations": {
+    "*.env.*": "properties",
+    "*.config.js": "javascript",
+    "*.test.js": "javascript",
+    "*.spec.js": "javascript"
+  },
+  // WORKFLOW RESTRICTIONS
+  "workbench.editor.enablePreview": false,
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": true,
+  // TASK CONFIGURATION - POWERSHELL ONLY
+  "tasks.defaultBuildTask": {
+    "type": "shell",
+    "command": "powershell.exe"
+  },
+  // AI ASSISTANT RULES
+  "cursor.general.enableCodeLens": true,
+  // PROJECT WORKFLOW RULES
+  "npm.packageManager": "npm",
+  "node.npmPath": "npm"
+}

@@ -1,24 +1,25 @@
-import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import { AppError } from '../middleware/errorHandler.js';
 import { logger } from './logger.js';
 
-// Check if Razorpay credentials are available
-const hasRazorpayCredentials = process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
+// Function to check if Razorpay credentials are available (lazy check)
+const hasRazorpayCredentials = () => {
+  return process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET;
+};
 
-// Initialize Razorpay or create a mock implementation
-let razorpay;
+// Function to get Razorpay instance (lazy initialization)
+const getRazorpayInstance = () => {
+  if (hasRazorpayCredentials()) {
+    return new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET
+    });
+  }
 
-if (hasRazorpayCredentials) {
-  razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET
-  });
-  logger.info('Razorpay initialized with real credentials');
-} else {
+  // Return mock implementation for development
   logger.warn('Razorpay credentials not found, using mock implementation');
-  // Mock implementation for development
-  razorpay = {
+  return {
     orders: {
       create: async (orderData) => {
         logger.info('Mock Razorpay order created:', orderData);
@@ -64,7 +65,7 @@ if (hasRazorpayCredentials) {
       }
     }
   };
-}
+};
 
 // Create payment order
 export const createPaymentOrder = async ({
@@ -78,6 +79,9 @@ export const createPaymentOrder = async ({
     if (!amount || !currency || !awbNumber || !paymentMethod) {
       throw new AppError('Missing required parameters', 400);
     }
+
+    // Get Razorpay instance (lazy initialization)
+    const razorpay = getRazorpayInstance();
 
     // Create Razorpay order
     const order = await razorpay.orders.create({
@@ -120,7 +124,7 @@ export const verifyPayment = async ({
     }
 
     // In mock mode, just return success
-    if (!hasRazorpayCredentials) {
+    if (!hasRazorpayCredentials()) {
       logger.info('Mock payment verification:', { razorpay_payment_id, razorpay_order_id });
       return {
         success: true,
@@ -154,7 +158,8 @@ export const verifyPayment = async ({
       throw new AppError('Invalid payment signature', 400);
     }
 
-    // Get payment details
+    // Get Razorpay instance and fetch payment details
+    const razorpay = getRazorpayInstance();
     const payment = await razorpay.payments.fetch(razorpay_payment_id);
 
     return {
@@ -195,6 +200,9 @@ export const refundPayment = async ({
       throw new AppError('Payment ID is required', 400);
     }
 
+    // Get Razorpay instance
+    const razorpay = getRazorpayInstance();
+
     // Create refund
     const refund = await razorpay.payments.refund(paymentId, {
       amount: amount ? amount * 100 : undefined, // Convert to paise if amount provided
@@ -231,6 +239,9 @@ export const getPaymentStatus = async (paymentId) => {
       throw new AppError('Payment ID is required', 400);
     }
 
+    // Get Razorpay instance
+    const razorpay = getRazorpayInstance();
+
     // Get payment details
     const payment = await razorpay.payments.fetch(paymentId);
 
@@ -257,4 +268,4 @@ export const getPaymentStatus = async (paymentId) => {
       error: error.message
     };
   }
-}; 
+};

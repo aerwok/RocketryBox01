@@ -1,0 +1,88 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "PowerShell Command",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-Command"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "options": {
+        "shell": {
+          "executable": "powershell.exe",
+          "args": [
+            "-NoProfile",
+            "-Command"
+          ]
+        }
+      }
+    },
+    {
+      "label": "Run Node Script (PowerShell)",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-Command",
+        "node ${file}"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "NPM Install (PowerShell)",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-Command",
+        "npm install"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "NPM Start (PowerShell)",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-Command",
+        "npm start"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      }
+    }
+  ],
+  "options": {
+    "shell": {
+      "executable": "powershell.exe",
+      "args": [
+        "-NoProfile"
+      ]
+    }
+  }
+}

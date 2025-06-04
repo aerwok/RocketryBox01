@@ -1,22 +1,22 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-import mongoose from 'mongoose';
-import { createServer } from 'http';
 import cookieParser from 'cookie-parser';
-import { errorHandler } from './middleware/errorHandler.js';
-import { shippingErrorMiddleware } from './middleware/shippingErrorHandler.js';
-import { logger } from './utils/logger.js';
-import { initSocketIO } from './utils/socketio.js';
-import { setupEventListeners } from './utils/eventEmitter.js';
-import { broadcastDashboardUpdates, broadcastDashboardSectionUpdate, getRealtimeDashboardData } from './modules/admin/services/realtime.service.js';
-import { checkMaintenanceMode } from './middleware/maintenanceMode.js';
-import { isRedisHealthy, getCache } from './utils/redis.js';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import { createServer } from 'http';
+import mongoose from 'mongoose';
+import morgan from 'morgan';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { errorHandler } from './middleware/errorHandler.js';
+import { checkMaintenanceMode } from './middleware/maintenanceMode.js';
+import { shippingErrorMiddleware } from './middleware/shippingErrorHandler.js';
+import { broadcastDashboardUpdates } from './modules/admin/services/realtime.service.js';
+import { setupEventListeners } from './utils/eventEmitter.js';
+import { logger } from './utils/logger.js';
+import { getCache, isRedisHealthy } from './utils/redis.js';
+import { initSocketIO } from './utils/socketio.js';
 
 // Get the directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -29,15 +29,15 @@ dotenv.config({ path: envPath });
 
 // Debug environment variables
 logger.info('Environment variables loaded:', {
-    MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
-    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set',
-    PORT: process.env.PORT,
-    NODE_ENV: process.env.NODE_ENV,
-    CORS_ORIGIN: process.env.CORS_ORIGIN,
-    AWS_REGION: process.env.AWS_REGION ? 'Set' : 'Not set',
-    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set',
-    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set',
-    SES_FROM_EMAIL: process.env.SES_FROM_EMAIL ? 'Set' : 'Not set'
+  MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
+  MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set',
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV,
+  CORS_ORIGIN: process.env.CORS_ORIGIN,
+  AWS_REGION: process.env.AWS_REGION ? 'Set' : 'Not set',
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ? 'Set' : 'Not set',
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ? 'Set' : 'Not set',
+  SES_FROM_EMAIL: process.env.SES_FROM_EMAIL ? 'Set' : 'Not set'
 });
 
 // Set development environment if not set
@@ -47,13 +47,13 @@ if (!process.env.NODE_ENV) {
 }
 
 // Import routes
+import adminRoutes from './modules/admin/index.js';
+import pincodeRoutes from './modules/common/routes/pincode.routes.js';
 import customerRoutes from './modules/customer/index.js';
+import webhookRoutes from './modules/customer/routes/webhook.routes.js';
 import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
-import adminRoutes from './modules/admin/index.js';
 import shippingRoutes from './modules/shipping/index.js';
-import pincodeRoutes from './modules/common/routes/pincode.routes.js';
-import webhookRoutes from './modules/customer/routes/webhook.routes.js';
 
 // Dashboard update configuration with dynamic adjustment
 const DASHBOARD_UPDATE_CONFIG = {
@@ -70,15 +70,15 @@ const server = createServer(app);
 
 // Request logging middleware
 app.use((req, res, next) => {
-    logger.info('Incoming request:', {
-        method: req.method,
-        url: req.url,
-        path: req.path,
-        originalUrl: req.originalUrl,
-        headers: req.headers,
-        body: req.body
-    });
-    next();
+  logger.info('Incoming request:', {
+    method: req.method,
+    url: req.url,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    headers: req.headers,
+    body: req.body
+  });
+  next();
 });
 
 // Initialize Socket.IO
@@ -96,16 +96,16 @@ const adjustUpdateInterval = () => {
   // Simplified version without checking connected admin count
   // Reset to initial interval
   dashboardUpdateInterval = DASHBOARD_UPDATE_CONFIG.initialInterval;
-  
+
   // Clear existing interval and set new one
   if (updateIntervalId) {
     clearInterval(updateIntervalId);
   }
-  
+
   updateIntervalId = setInterval(async () => {
     await broadcastDashboardUpdates();
   }, dashboardUpdateInterval);
-  
+
   logger.info(`Dashboard update interval set to ${dashboardUpdateInterval / 1000}s`);
 };
 
@@ -122,56 +122,54 @@ setInterval(() => {
 // Connect to MongoDB
 const MONGODB_URI = process.env.MONGODB_ATLAS_URI || process.env.MONGODB_URI;
 if (!MONGODB_URI) {
-    logger.error('MongoDB URI not found in environment variables. Please check your .env file.');
-    logger.info('Required environment variables:', {
-        MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
-        MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
-    });
-    process.exit(1);
+  logger.error('MongoDB URI not found in environment variables. Please check your .env file.');
+  logger.info('Required environment variables:', {
+    MONGODB_ATLAS_URI: process.env.MONGODB_ATLAS_URI ? 'Set' : 'Not set',
+    MONGODB_URI: process.env.MONGODB_URI ? 'Set' : 'Not set'
+  });
+  process.exit(1);
 }
 
-logger.info('Connecting to MongoDB...', {
-    uri: MONGODB_URI.replace(/\/\/[^:]+:[^@]+@/, '//****:****@') // Hide credentials in logs
-});
+logger.info('Connecting to MongoDB...');
 
 mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 30000, // Increased from 5000ms to 30000ms (30s)
-    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+  serverSelectionTimeoutMS: 30000, // Increased from 5000ms to 30000ms (30s)
+  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
 })
-.then(async () => {
+  .then(async () => {
     logger.info('Connected to MongoDB successfully');
     // Sync mobile and phone fields on startup
     if (process.env.NODE_ENV === 'development') {
       try {
-        logger.info('Syncing mobile and phone fields...');
+        // logger.info('Syncing mobile and phone fields...');
         const db = mongoose.connection;
         const customersCollection = db.collection('customers');
-        
+
         // Find customers with mobile but no phone
         const results = await customersCollection.updateMany(
           { mobile: { $exists: true }, phone: { $exists: false } },
           [{ $set: { phone: "$mobile" } }]
         );
-        
+
         // Find customers with phone but no mobile
         const results2 = await customersCollection.updateMany(
           { phone: { $exists: true }, mobile: { $exists: false } },
           [{ $set: { mobile: "$phone" } }]
         );
-        
-        logger.info(`Sync complete: ${results.modifiedCount + results2.modifiedCount} customers updated`);
+
+        // logger.info(`Sync complete: ${results.modifiedCount + results2.modifiedCount} customers updated`);
       } catch (error) {
         logger.error('Error syncing mobile and phone fields:', error);
       }
     }
-})
-.catch((error) => {
+  })
+  .catch((error) => {
     logger.error('MongoDB connection error:', {
-        error: error.message,
-        stack: error.stack
+      error: error.message,
+      stack: error.stack
     });
     process.exit(1);
-});
+  });
 
 // Security middleware
 app.use(helmet());
@@ -256,14 +254,14 @@ app.use('/api/webhooks', webhookRoutes);
 
 // Test route
 app.get('/api/test', (req, res) => {
-    res.json({ message: 'API is working!' });
+  res.json({ message: 'API is working!' });
 });
 
 // Health check endpoint
 app.get('/health', (req, res) => {
   // Get Redis status
   const redisStatus = isRedisHealthy();
-  
+
   res.status(200).json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -283,12 +281,12 @@ if (process.env.NODE_ENV === 'development') {
     try {
       const { key } = req.params;
       if (!key) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           success: false,
           error: 'No key provided'
         });
       }
-      
+
       logger.debug(`Debug checking Redis key: ${key}`);
       const value = await getCache(key);
       res.status(200).json({
