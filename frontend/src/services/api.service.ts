@@ -1,6 +1,6 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import { ApiResponse, ApiError } from '@/types/api';
+import { ApiError, ApiResponse } from '@/types/api';
 import { secureStorage } from '@/utils/secureStorage';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 export type { ApiResponse };
 
@@ -9,7 +9,7 @@ export class ApiService {
   private api!: AxiosInstance;
   private navigate: ((path: string) => void) | null = null;
   private isInitialized: boolean = false;
-  
+
   // Request throttling to prevent rate limiting
   private requestThrottles: Record<string, number> = {};
   private readonly THROTTLE_INTERVAL = 2000; // 2 seconds between identical requests
@@ -41,12 +41,12 @@ export class ApiService {
     // Get base domain without any path
     const baseDomain = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const baseURL = `${baseDomain}/api/v2`;
-    
+
     // Log initialization only once and more concisely
     if (process.env.NODE_ENV === 'development') {
       console.log(`🚀 API Service initialized: ${baseURL}`);
     }
-    
+
     this.api = axios.create({
       baseURL,
       withCredentials: true, // Enable sending cookies with every request
@@ -71,7 +71,7 @@ export class ApiService {
         try {
           // Get token from secure storage
           const token = await secureStorage.getItem('auth_token');
-          
+
           // Add token to headers if it exists
           if (token) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -82,7 +82,7 @@ export class ApiService {
             try {
               const { sellerAuthService } = await import('@/services/seller-auth.service');
               const currentUser = await sellerAuthService.getCurrentUser();
-              
+
               if (currentUser?.userType === 'team_member') {
                 // For team members, use a shared seller context for dashboard data
                 const sellerData = JSON.parse(localStorage.getItem('current_seller_data') || '{}');
@@ -102,7 +102,7 @@ export class ApiService {
               baseURL: config.baseURL
             });
           }
-          
+
           return config;
         } catch (error) {
           console.error('❌ Request interceptor error:', error);
@@ -118,10 +118,10 @@ export class ApiService {
     this.api.interceptors.response.use(
       (response) => {
         // Success logging only for important endpoints
-        if (process.env.NODE_ENV === 'development' && 
-            response.config.url && 
-            !response.config.url.includes('/health') &&
-            response.status >= 400) {
+        if (process.env.NODE_ENV === 'development' &&
+          response.config.url &&
+          !response.config.url.includes('/health') &&
+          response.status >= 400) {
           console.log(`✅ ${response.status} ${response.config.url}`);
         }
         return response;
@@ -134,14 +134,14 @@ export class ApiService {
           message: error.response?.data?.message || error.message,
           baseURL: error.config?.baseURL
         });
-        
+
         if (error.response) {
           if (error.response.status === 401) {
             // Check if this is a team member with mock token before clearing auth
             try {
               const userType = await secureStorage.getItem('user_type');
               const authToken = await secureStorage.getItem('auth_token');
-              
+
               // For team members, don't clear tokens on 401 errors since they use mock tokens
               // Only clear tokens for real authentication failures (main sellers)
               if (userType === 'team_member' && authToken) {
@@ -156,17 +156,17 @@ export class ApiService {
                 await secureStorage.removeItem('user_permissions');
                 await secureStorage.removeItem('user_context');
                 localStorage.removeItem('seller_token');
-                
+
                 // Redirect to appropriate login page based on current URL
                 const currentPath = window.location.pathname;
                 let redirectPath = '/seller/login';
-                
+
                 if (currentPath.includes('/admin')) {
                   redirectPath = '/admin/login';
                 } else if (currentPath.includes('/customer')) {
-                  redirectPath = '/customer/login';
+                  redirectPath = '/customer/auth/login';
                 }
-                
+
                 // Use React Router navigation if available, fallback to window.location
                 if (this.navigate) {
                   this.navigate(redirectPath);
@@ -213,18 +213,18 @@ export class ApiService {
     try {
       // Generate a request key for throttling based on the URL and method
       const requestKey = `${config.method}-${config.url}`;
-      
+
       // Check if we need to throttle this request
       const lastRequestTime = this.requestThrottles[requestKey] || 0;
       const currentTime = Date.now();
-      
+
       if (currentTime - lastRequestTime < this.THROTTLE_INTERVAL) {
         console.log(`⏱️ Throttling request to ${config.url}`);
-        await new Promise(resolve => 
+        await new Promise(resolve =>
           setTimeout(resolve, this.THROTTLE_INTERVAL - (currentTime - lastRequestTime))
         );
       }
-      
+
       // Update last request time
       this.requestThrottles[requestKey] = Date.now();
 
@@ -272,7 +272,7 @@ export class ApiService {
       purpose
     });
   }
-  
+
   async verifySellerOTP(emailOrPhone: string, otp: string, purpose: string): Promise<ApiResponse<any>> {
     return this.post('seller/auth/otp/verify', {
       emailOrPhone,
@@ -352,4 +352,4 @@ export class ApiService {
 }
 
 // Export a default instance for convenience
-export const apiService = ApiService.getInstance(); 
+export const apiService = ApiService.getInstance();

@@ -1,11 +1,11 @@
-import Customer from '../models/customer.model.js';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
-import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
-import { generateOTP } from '../../../utils/otp.js';
-import { setOTP, verifyOTP, setSession, deleteSession } from '../../../utils/redis.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 import { logger } from '../../../utils/logger.js';
+import { generateOTP } from '../../../utils/otp.js';
+import { deleteSession, setOTP, setSession, verifyOTP } from '../../../utils/redis.js';
+import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
+import Customer from '../models/customer.model.js';
 
 // Register new customer
 export const register = async (req, res, next) => {
@@ -21,7 +21,7 @@ export const register = async (req, res, next) => {
     if (password !== confirmPassword) {
       return next(new AppError('Passwords do not match', 400));
     }
-    
+
     // Validate mobile number
     if (!mobile || mobile.trim() === '') {
       return next(new AppError('Mobile number is required', 400));
@@ -197,7 +197,7 @@ export const login = async (req, res, next) => {
     // Set cookie with the auth token
     // Calculate expiry time (default: 1 day, remember me: 30 days)
     const cookieExpiry = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-    
+
     res.cookie('auth_token', accessToken, {
       httpOnly: true, // Make the cookie accessible only by the web server
       secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
@@ -222,184 +222,184 @@ export const login = async (req, res, next) => {
 
 // Helper function to generate OTP
 const generateOTPHelper = () => {
-    const digits = process.env.OTP_LENGTH || 6;
-    return Math.floor(Math.random() * Math.pow(10, digits)).toString().padStart(digits, '0');
+  const digits = process.env.OTP_LENGTH || 6;
+  return Math.floor(Math.random() * Math.pow(10, digits)).toString().padStart(digits, '0');
 };
 
 // Send OTP
 export const sendOTP = async (req, res, next) => {
-    try {
-        const { phoneOrEmail, purpose } = req.body;
+  try {
+    const { phoneOrEmail, purpose } = req.body;
 
-        // Check if customer exists
-        const customer = await Customer.findOne({
-            $or: [
-                { email: phoneOrEmail },
-                { mobile: phoneOrEmail }
-            ]
+    // Check if customer exists
+    const customer = await Customer.findOne({
+      $or: [
+        { email: phoneOrEmail },
+        { mobile: phoneOrEmail }
+      ]
+    });
+
+    // For verification purpose during registration, we shouldn't check if account exists
+    if (purpose === 'verify' && !customer) {
+      // Generate OTP for new registration
+      const otp = generateOTPHelper();
+
+      // Log OTP for development purposes
+      console.log('\n=========== DEVELOPMENT OTP ===========');
+      console.log(`📱 Phone/Email: ${phoneOrEmail}`);
+      console.log(`🔐 OTP Generated: ${otp}`);
+      console.log(`⏱️ Expires in: 10 minutes`);
+      console.log('========================================\n');
+
+      // Store OTP in Redis with a temporary key
+      const tempKey = `temp_${phoneOrEmail}`;
+      const stored = await setOTP(tempKey, otp);
+      console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
+
+      try {
+        // Send OTP via email or SMS
+        if (phoneOrEmail.includes('@')) {
+          await sendEmail({
+            to: phoneOrEmail,
+            subject: 'Verify Your Email - RocketryBox',
+            text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
+          });
+        } else {
+          await sendSMS({
+            to: phoneOrEmail,
+            templateId: SMS_TEMPLATES.OTP.templateId,
+            variables: {
+              otp: otp,
+              expiry: '10 minutes'
+            }
+          });
+        }
+      } catch (sendError) {
+        // In development mode, ignore sending errors
+        if (process.env.NODE_ENV !== 'development') {
+          throw sendError;
+        }
+        logger.warn('Development mode: Ignoring SMS/Email sending error', {
+          error: sendError.message,
+          phoneOrEmail: phoneOrEmail.includes('@') ?
+            '***' + phoneOrEmail.slice(-10) :
+            '***' + phoneOrEmail.slice(-4)
         });
+      }
 
-        // For verification purpose during registration, we shouldn't check if account exists
-        if (purpose === 'verify' && !customer) {
-            // Generate OTP for new registration
-            const otp = generateOTPHelper();
-            
-            // Log OTP for development purposes
-            console.log('\n=========== DEVELOPMENT OTP ===========');
-            console.log(`📱 Phone/Email: ${phoneOrEmail}`);
-            console.log(`🔐 OTP Generated: ${otp}`);
-            console.log(`⏱️ Expires in: 10 minutes`);
-            console.log('========================================\n');
-            
-            // Store OTP in Redis with a temporary key
-            const tempKey = `temp_${phoneOrEmail}`;
-            const stored = await setOTP(tempKey, otp);
-            console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
-
-            try {
-                // Send OTP via email or SMS
-                if (phoneOrEmail.includes('@')) {
-                    await sendEmail({
-                        to: phoneOrEmail,
-                        subject: 'Verify Your Email - RocketryBox',
-                        text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
-                    });
-                } else {
-                    await sendSMS({
-                        to: phoneOrEmail,
-                        templateId: SMS_TEMPLATES.OTP.templateId,
-                        variables: {
-                            otp: otp,
-                            expiry: '10 minutes'
-                        }
-                    });
-                }
-            } catch (sendError) {
-                // In development mode, ignore sending errors
-                if (process.env.NODE_ENV !== 'development') {
-                    throw sendError;
-                }
-                logger.warn('Development mode: Ignoring SMS/Email sending error', {
-                    error: sendError.message,
-                    phoneOrEmail: phoneOrEmail.includes('@') ? 
-                        '***' + phoneOrEmail.slice(-10) : 
-                        '***' + phoneOrEmail.slice(-4)
-                });
-            }
-
-            return res.status(200).json({
-                success: true,
-                data: {
-                    message: 'OTP sent successfully',
-                    expiresIn: 600 // 10 minutes in seconds
-                }
-            });
+      return res.status(200).json({
+        success: true,
+        data: {
+          message: 'OTP sent successfully',
+          expiresIn: 600 // 10 minutes in seconds
         }
-
-        // For login/reset purposes, we need an existing account
-        if ((purpose === 'login' || purpose === 'reset') && !customer) {
-            return next(new AppError('No account found with this email or phone number', 404));
-        }
-
-        const otp = generateOTPHelper();
-        
-        // Log OTP for development purposes
-        console.log('\n=========== DEVELOPMENT OTP ===========');
-        console.log(`📱 Phone/Email: ${phoneOrEmail}`);
-        console.log(`🔐 OTP Generated: ${otp}`);
-        console.log(`⏱️ Expires in: 10 minutes`);
-        console.log('========================================\n');
-        
-        // Store OTP in Redis
-        const key = customer ? customer._id.toString() : `temp_${phoneOrEmail}`;
-        const stored = await setOTP(key, otp);
-        console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
-
-        try {
-            // Send OTP via email or SMS
-            if (phoneOrEmail.includes('@')) {
-                await sendEmail({
-                    to: phoneOrEmail,
-                    subject: 'Verify Your Email - RocketryBox',
-                    text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
-                });
-            } else {
-                await sendSMS({
-                    to: phoneOrEmail,
-                    templateId: SMS_TEMPLATES.OTP.templateId,
-                    variables: {
-                        otp: otp,
-                        expiry: '10 minutes'
-                    }
-                });
-            }
-        } catch (sendError) {
-            // In development mode, ignore sending errors
-            if (process.env.NODE_ENV !== 'development') {
-                throw sendError;
-            }
-            logger.warn('Development mode: Ignoring SMS/Email sending error', {
-                error: sendError.message,
-                phoneOrEmail: phoneOrEmail.includes('@') ? 
-                    '***' + phoneOrEmail.slice(-10) : 
-                    '***' + phoneOrEmail.slice(-4)
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: {
-                message: 'OTP sent successfully',
-                expiresIn: 600 // 10 minutes in seconds
-            }
-        });
-    } catch (error) {
-        next(new AppError(error.message, 400));
+      });
     }
+
+    // For login/reset purposes, we need an existing account
+    if ((purpose === 'login' || purpose === 'reset') && !customer) {
+      return next(new AppError('No account found with this email or phone number', 404));
+    }
+
+    const otp = generateOTPHelper();
+
+    // Log OTP for development purposes
+    console.log('\n=========== DEVELOPMENT OTP ===========');
+    console.log(`📱 Phone/Email: ${phoneOrEmail}`);
+    console.log(`🔐 OTP Generated: ${otp}`);
+    console.log(`⏱️ Expires in: 10 minutes`);
+    console.log('========================================\n');
+
+    // Store OTP in Redis
+    const key = customer ? customer._id.toString() : `temp_${phoneOrEmail}`;
+    const stored = await setOTP(key, otp);
+    console.log(`OTP Storage Status: ${stored ? 'Successfully Stored' : 'Storage Failed'}`);
+
+    try {
+      // Send OTP via email or SMS
+      if (phoneOrEmail.includes('@')) {
+        await sendEmail({
+          to: phoneOrEmail,
+          subject: 'Verify Your Email - RocketryBox',
+          text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
+        });
+      } else {
+        await sendSMS({
+          to: phoneOrEmail,
+          templateId: SMS_TEMPLATES.OTP.templateId,
+          variables: {
+            otp: otp,
+            expiry: '10 minutes'
+          }
+        });
+      }
+    } catch (sendError) {
+      // In development mode, ignore sending errors
+      if (process.env.NODE_ENV !== 'development') {
+        throw sendError;
+      }
+      logger.warn('Development mode: Ignoring SMS/Email sending error', {
+        error: sendError.message,
+        phoneOrEmail: phoneOrEmail.includes('@') ?
+          '***' + phoneOrEmail.slice(-10) :
+          '***' + phoneOrEmail.slice(-4)
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP sent successfully',
+        expiresIn: 600 // 10 minutes in seconds
+      }
+    });
+  } catch (error) {
+    next(new AppError(error.message, 400));
+  }
 };
 
 // Verify OTP
 export const verifyOTPHandler = async (req, res, next) => {
+  try {
+    const { phoneOrEmail, otp } = req.body;
+
+    // Find customer
+    const customer = await Customer.findOne({
+      $or: [
+        { email: phoneOrEmail },
+        { mobile: phoneOrEmail }
+      ]
+    });
+
+    if (!customer) {
+      return next(new AppError('No account found with this email or phone number', 404));
+    }
+
+    // Verify OTP using Redis
+    const result = await verifyOTP(customer._id.toString(), otp);
+
+    if (!result.valid) {
+      return next(new AppError(result.message, 400));
+    }
+
+    // Generate password reset token (valid for 1 hour)
+    const resetToken = generateOTPHelper() + generateOTPHelper(); // 12 digit token
+    const resetTokenExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
+
+    // Save reset token to customer
+    customer.passwordResetToken = resetToken;
+    customer.passwordResetTokenExpiry = resetTokenExpiry;
+    await customer.save();
+
+    // Create reset link
+    const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(customer.email)}`;
+
+    // Send password reset email
     try {
-        const { phoneOrEmail, otp } = req.body;
-
-        // Find customer
-        const customer = await Customer.findOne({
-            $or: [
-                { email: phoneOrEmail },
-                { mobile: phoneOrEmail }
-            ]
-        });
-
-        if (!customer) {
-            return next(new AppError('No account found with this email or phone number', 404));
-        }
-
-        // Verify OTP using Redis
-        const result = await verifyOTP(customer._id.toString(), otp);
-
-        if (!result.valid) {
-            return next(new AppError(result.message, 400));
-        }
-
-        // Generate password reset token (valid for 1 hour)
-        const resetToken = generateOTPHelper() + generateOTPHelper(); // 12 digit token
-        const resetTokenExpiry = Date.now() + 60 * 60 * 1000; // 1 hour
-
-        // Save reset token to customer
-        customer.passwordResetToken = resetToken;
-        customer.passwordResetTokenExpiry = resetTokenExpiry;
-        await customer.save();
-
-        // Create reset link
-        const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/auth/reset-password?token=${resetToken}&email=${encodeURIComponent(customer.email)}`;
-
-        // Send password reset email
-        try {
-            await sendEmail({
-                to: customer.email,
-                subject: 'Reset Your Password - RocketryBox',
-                html: `
+      await sendEmail({
+        to: customer.email,
+        subject: 'Reset Your Password - RocketryBox',
+        html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                         <h2 style="color: #333;">Reset Your Password</h2>
                         <p>Hello ${customer.name},</p>
@@ -415,114 +415,141 @@ export const verifyOTPHandler = async (req, res, next) => {
                         <p style="color: #666; font-size: 12px;">RocketryBox - Shipping & Logistics</p>
                     </div>
                 `,
-                text: `Hello ${customer.name},\n\nYou have successfully verified your identity. Please click the following link to reset your password:\n\n${resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nRocketryBox - Shipping & Logistics`
-            });
+        text: `Hello ${customer.name},\n\nYou have successfully verified your identity. Please click the following link to reset your password:\n\n${resetLink}\n\nThis link will expire in 1 hour.\n\nIf you didn't request this password reset, please ignore this email.\n\nRocketryBox - Shipping & Logistics`
+      });
 
-            console.log('\n=========== PASSWORD RESET EMAIL SENT ===========');
-            console.log(`📧 Email sent to: ${customer.email}`);
-            console.log(`🔗 Reset link: ${resetLink}`);
-            console.log(`⏱️ Expires in: 1 hour`);
-            console.log('===============================================\n');
+      console.log('\n=========== PASSWORD RESET EMAIL SENT ===========');
+      console.log(`📧 Email sent to: ${customer.email}`);
+      console.log(`🔗 Reset link: ${resetLink}`);
+      console.log(`⏱️ Expires in: 1 hour`);
+      console.log('===============================================\n');
 
-        } catch (emailError) {
-            console.error('Failed to send password reset email:', emailError);
-            // In development mode, still return success but log the error
-            if (process.env.NODE_ENV !== 'development') {
-                return next(new AppError('Failed to send password reset email. Please try again.', 500));
-            }
-        }
-
-        res.status(200).json({
-            success: true,
-            data: {
-                message: 'OTP verified successfully. A password reset link has been sent to your email.',
-                resetTokenSent: true
-            }
-        });
-    } catch (error) {
-        next(new AppError(error.message, 400));
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+      // In development mode, still return success but log the error
+      if (process.env.NODE_ENV !== 'development') {
+        return next(new AppError('Failed to send password reset email. Please try again.', 500));
+      }
     }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP verified successfully. A password reset link has been sent to your email.',
+        resetTokenSent: true
+      }
+    });
+  } catch (error) {
+    next(new AppError(error.message, 400));
+  }
 };
 
 // Reset Password
 export const resetPassword = async (req, res, next) => {
-    try {
-        const { token, email, newPassword, confirmPassword } = req.body;
+  try {
+    const { token, email, newPassword, confirmPassword } = req.body;
 
-        // Validate input
-        if (!token || !email || !newPassword || !confirmPassword) {
-            return next(new AppError('All fields are required', 400));
-        }
-
-        if (newPassword !== confirmPassword) {
-            return next(new AppError('Passwords do not match', 400));
-        }
-
-        if (newPassword.length < 8) {
-            return next(new AppError('Password must be at least 8 characters long', 400));
-        }
-
-        // Find customer with valid reset token
-        const customer = await Customer.findOne({
-            email: email,
-            passwordResetToken: token,
-            passwordResetTokenExpiry: { $gt: Date.now() }
-        }).select('+passwordResetToken +passwordResetTokenExpiry');
-
-        if (!customer) {
-            return next(new AppError('Invalid or expired reset token', 400));
-        }
-
-        // Update password and clear reset token
-        customer.password = newPassword;
-        customer.passwordResetToken = undefined;
-        customer.passwordResetTokenExpiry = undefined;
-        await customer.save();
-
-        console.log('\n=========== PASSWORD RESET SUCCESSFUL ===========');
-        console.log(`📧 Password reset for: ${customer.email}`);
-        console.log(`👤 Customer: ${customer.name}`);
-        console.log('===============================================\n');
-
-        res.status(200).json({
-            success: true,
-            data: {
-                message: 'Password reset successfully. You can now login with your new password.'
-            }
-        });
-    } catch (error) {
-        next(new AppError(error.message, 400));
+    // Validate input
+    if (!token || !email || !newPassword || !confirmPassword) {
+      return next(new AppError('All fields are required', 400));
     }
+
+    if (newPassword !== confirmPassword) {
+      return next(new AppError('Passwords do not match', 400));
+    }
+
+    if (newPassword.length < 8) {
+      return next(new AppError('Password must be at least 8 characters long', 400));
+    }
+
+    // Find customer with valid reset token
+    const customer = await Customer.findOne({
+      email: email,
+      passwordResetToken: token,
+      passwordResetTokenExpiry: { $gt: Date.now() }
+    }).select('+passwordResetToken +passwordResetTokenExpiry');
+
+    if (!customer) {
+      return next(new AppError('Invalid or expired reset token', 400));
+    }
+
+    // Update password and clear reset token
+    customer.password = newPassword;
+    customer.passwordResetToken = undefined;
+    customer.passwordResetTokenExpiry = undefined;
+    await customer.save();
+
+    console.log('\n=========== PASSWORD RESET SUCCESSFUL ===========');
+    console.log(`📧 Password reset for: ${customer.email}`);
+    console.log(`👤 Customer: ${customer.name}`);
+    console.log('===============================================\n');
+
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'Password reset successfully. You can now login with your new password.'
+      }
+    });
+  } catch (error) {
+    next(new AppError(error.message, 400));
+  }
 };
 
 // Check if user is authenticated
 export const checkAuthStatus = async (req, res) => {
   try {
-    // If this route is protected by the auth middleware,
-    // req.user will be available if authentication was successful
-    if (!req.user) {
+    // Check for auth token in headers or cookies
+    let token = null;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    } else if (req.cookies && req.cookies.auth_token) {
+      token = req.cookies.auth_token;
+    }
+
+    if (!token) {
       return res.status(200).json({
         success: false,
-        message: 'Not authenticated'
+        message: 'Not authenticated',
+        isAuthenticated: false
+      });
+    }
+
+    // Verify token manually
+    const jwt = (await import('jsonwebtoken')).default;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Find the customer
+    const Customer = (await import('../../models/customer.model.js')).default;
+    const customer = await Customer.findById(decoded.id);
+
+    if (!customer) {
+      return res.status(200).json({
+        success: false,
+        message: 'User not found',
+        isAuthenticated: false
       });
     }
 
     // User is authenticated, return basic user info
     res.status(200).json({
       success: true,
+      isAuthenticated: true,
       data: {
         user: {
-          id: req.user.id,
-          name: req.user.name,
-          email: req.user.email,
-          role: req.user.role
+          id: customer._id,
+          name: customer.name,
+          email: customer.email,
+          role: 'customer'
         }
       }
     });
   } catch (error) {
-    res.status(500).json({
+    console.log('Auth check error:', error.message);
+    res.status(200).json({
       success: false,
-      message: 'Error checking authentication status'
+      message: 'Invalid token',
+      isAuthenticated: false
     });
   }
 };
@@ -550,4 +577,4 @@ export const logout = async (req, res, next) => {
   } catch (error) {
     next(new AppError(error.message, 400));
   }
-}; 
+};

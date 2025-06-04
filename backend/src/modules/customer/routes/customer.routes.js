@@ -1,62 +1,60 @@
 import express from 'express';
-import { register, login, sendOTP, verifyOTPHandler, resetPassword, checkAuthStatus, logout } from '../controllers/auth.controller.js';
+import { protect } from '../../../middleware/auth.js';
+import { handleMulterError, upload } from '../../../middleware/fileUpload.js';
 import {
-  getProfile,
-  updateProfile,
-  uploadProfileImage,
-  addAddress,
-  updateAddress,
-  deleteAddress
-} from '../controllers/profile.controller.js';
+  authLimiter,
+  defaultLimiter,
+  paymentLimiter,
+  refundLimiter,
+  trackingLimiter
+} from '../../../middleware/rateLimiter.js';
+import { validationHandler as validateRequest } from '../../../middleware/validator.js';
+import { checkAuthStatus, login, logout, register, resetPassword, sendOTP, verifyOTPHandler } from '../controllers/auth.controller.js';
 import {
-  createOrder,
-  listOrders,
-  getOrderDetails,
-  downloadLabel,
-  createPayment,
-  verifyOrderPayment,
-  subscribeTracking,
-  refundPayment,
-  checkPaymentStatus,
   calculateRates,
+  checkPaymentStatus,
+  createOrder,
+  createPayment,
+  downloadLabel,
   getOrderById,
+  getOrderDetails,
   getOrderHistory,
   getOrderStatusCounts,
-  getTrackingInfo
+  getTrackingInfo,
+  refundPayment,
+  subscribeTracking,
+  verifyOrderPayment
 } from '../controllers/order.controller.js';
 import PaymentController from '../controllers/payment.controller.js';
 import {
-  listServices,
-  checkAvailability
+  addAddress,
+  deleteAddress,
+  getProfile,
+  updateAddress,
+  updateProfile,
+  uploadProfileImage
+} from '../controllers/profile.controller.js';
+import {
+  checkAvailability,
+  listServices
 } from '../controllers/service.controller.js';
 import { handleTrackingWebhook } from '../controllers/webhook.controller.js';
-import { protect } from '../../../middleware/auth.js';
-import { validationHandler as validateRequest } from '../../../middleware/validator.js';
-import { upload, handleMulterError } from '../../../middleware/fileUpload.js';
 import {
-  defaultLimiter,
-  authLimiter,
-  paymentLimiter,
-  trackingLimiter,
-  refundLimiter
-} from '../../../middleware/rateLimiter.js';
-import {
-  registerSchema,
+  addressSchema,
   loginSchema,
   otpSchema,
-  verifyOTPSchema,
-  resetPasswordSchema,
   profileUpdateSchema,
-  addressSchema
+  registerSchema,
+  resetPasswordSchema,
+  verifyOTPSchema
 } from '../validators/customer.validator.js';
 import {
+  calculateRatesSchema,
   createOrderSchema,
-  listOrdersSchema,
   createPaymentSchema,
-  verifyPaymentSchema,
-  subscribeTrackingSchema,
   refundSchema,
-  calculateRatesSchema
+  subscribeTrackingSchema,
+  verifyPaymentSchema
 } from '../validators/order.validator.js';
 import { checkAvailabilitySchema } from '../validators/service.validator.js';
 
@@ -71,6 +69,7 @@ router.post('/auth/login', authLimiter, validateRequest([loginSchema]), login);
 router.post('/auth/otp/send', authLimiter, validateRequest([otpSchema]), sendOTP);
 router.post('/auth/otp/verify', authLimiter, validateRequest([verifyOTPSchema]), verifyOTPHandler);
 router.post('/auth/reset-password', authLimiter, validateRequest([resetPasswordSchema]), resetPassword);
+router.get('/auth/check', checkAuthStatus);
 
 // Public endpoints (no auth required)
 router.post('/services/check', validateRequest([checkAvailabilitySchema]), checkAvailability);
@@ -82,7 +81,6 @@ router.post('/webhook/tracking', handleTrackingWebhook);
 router.use(protect);
 
 // Auth routes (protected)
-router.get('/auth/check', checkAuthStatus);
 router.post('/auth/logout', authLimiter, logout);
 
 // Profile routes
@@ -119,4 +117,4 @@ router.get('/orders/awb/:awb/tracking', trackingLimiter, getTrackingInfo);
 // Refund routes
 router.post('/refunds', refundLimiter, validateRequest([refundSchema]), refundPayment);
 
-export default router; 
+export default router;
