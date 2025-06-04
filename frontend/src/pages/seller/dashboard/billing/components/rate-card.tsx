@@ -52,13 +52,20 @@ interface CourierRate {
     name: string;
     baseCharge: number;
     codCharge: number;
+    rtoCharges?: number;
     gst: number;
     total: number;
+    courier?: string;
+    productName?: string;
+    mode?: string;
+    finalWeight?: string;
+    weightMultiplier?: number;
 }
 
 interface CalculationResult {
     zone: string;
     weight: string;
+    volumetricWeight: string;
     rates: CourierRate[];
 }
 
@@ -130,23 +137,43 @@ const RateCard = () => {
             // Use the greater of actual or volumetric weight
             const chargableWeight = Math.max(parseFloat(data.packageWeight), volWeight);
             
-            // Use seller billing API that properly handles pincodes and script.js logic
-            const response = await ServiceFactory.seller.billing.calculateRates({
+            // Prepare request data with all required fields
+            const requestData = {
                 pickupPincode: data.pickupPincode,
                 deliveryPincode: data.deliveryPincode,
                 paymentType: data.paymentType,
                 purchaseAmount: parseFloat(data.purchaseAmount),
-                weight: chargableWeight
-            });
+                weight: parseFloat(data.packageWeight),
+                packageLength: parseFloat(data.packageLength),
+                packageWidth: parseFloat(data.packageWidth),
+                packageHeight: parseFloat(data.packageHeight),
+                includeRTO: data.paymentType.toLowerCase() === 'prepaid' // Include RTO for prepaid orders
+            };
+            
+            // Use seller billing API that properly handles pincodes and the new calculation logic
+            const response = await ServiceFactory.seller.billing.calculateRates(requestData);
 
             if (response.success) {
                 setCalculationResult({
                     zone: response.data.zone,
-                    weight: `${chargableWeight.toFixed(2)} kg`,
-                    rates: response.data.rates
+                    weight: `${chargableWeight.toFixed(2)} kg (Billed: ${response.data.billedWeight} kg)`,
+                    volumetricWeight: response.data.volumetricWeight,
+                    rates: response.data.rates.map(rate => ({
+                        name: rate.name,
+                        baseCharge: rate.baseCharge,
+                        codCharge: rate.codCharge,
+                        rtoCharges: rate.rtoCharges || 0,
+                        gst: rate.gst,
+                        total: rate.total,
+                        courier: rate.courier,
+                        productName: rate.productName,
+                        mode: rate.mode,
+                        finalWeight: rate.finalWeight,
+                        weightMultiplier: rate.weightMultiplier
+                    }))
                 });
                 setShowConfirmation(true);
-                toast.success(`Found ${response.data.rates.length} rates!`);
+                toast.success(`Found ${response.data.rates.length} rates for zone: ${response.data.zone}`);
             } else {
                 throw new Error(response.message || 'Failed to calculate rates');
             }
@@ -447,52 +474,95 @@ const RateCard = () => {
 
             {/* Calculation Result Modal */}
             <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
-                <DialogContent className="bg-white border border-gray-200 max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="bg-white border border-gray-200 max-w-6xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="text-center text-2xl font-medium text-gray-800">
-                            Available Shipping Options
+                            Shipping Rate Calculation Results
                         </DialogTitle>
                     </DialogHeader>
                     {calculationResult && (
                         <div className="py-4 space-y-4">
                             <div className="bg-[#F8F7FF] p-4 rounded-lg">
-                                <div className="grid grid-cols-2 gap-2 text-sm">
-                                    <div className="text-gray-500">Weight Used:</div>
-                                    <div className="font-medium">{calculationResult.weight}</div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                    <div>
+                                        <div className="text-gray-500">Weight Used:</div>
+                                        <div className="font-medium">{calculationResult.weight}</div>
+                                    </div>
                                     
-                                    <div className="text-gray-500">Zone:</div>
-                                    <div className="font-medium">{calculationResult.zone}</div>
+                                    <div>
+                                        <div className="text-gray-500">Volumetric Weight:</div>
+                                        <div className="font-medium">{calculationResult.volumetricWeight} kg</div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="text-gray-500">Zone:</div>
+                                        <div className="font-medium text-blue-600">{calculationResult.zone}</div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="text-gray-500">Total Options:</div>
+                                        <div className="font-medium text-green-600">{calculationResult.rates.length} couriers</div>
+                                    </div>
                                 </div>
                             </div>
                             
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm border-collapse">
+                                <table className="w-full text-sm border-collapse border border-gray-200">
                                     <thead>
                                         <tr className="bg-[#6D5BD0] text-white">
-                                            <th className="p-2 text-left">Courier</th>
-                                            <th className="p-2 text-right">Base Charge</th>
-                                            <th className="p-2 text-right">COD Charge</th>
-                                            <th className="p-2 text-right">GST (18%)</th>
-                                            <th className="p-2 text-right">Total</th>
+                                            <th className="p-3 text-left border border-gray-300">Courier</th>
+                                            <th className="p-3 text-left border border-gray-300">Product</th>
+                                            <th className="p-3 text-left border border-gray-300">Mode</th>
+                                            <th className="p-3 text-right border border-gray-300">Final Weight</th>
+                                            <th className="p-3 text-right border border-gray-300">Weight Units</th>
+                                            <th className="p-3 text-right border border-gray-300">Base Charge</th>
+                                            <th className="p-3 text-right border border-gray-300">COD Charge</th>
+                                            <th className="p-3 text-right border border-gray-300">RTO Charge</th>
+                                            <th className="p-3 text-right border border-gray-300">GST (18%)</th>
+                                            <th className="p-3 text-right border border-gray-300 font-bold">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {calculationResult.rates.map((rate, index) => (
                                             <tr key={index} className={index % 2 === 0 ? "bg-gray-50" : "bg-white"}>
-                                                <td className="p-2 border">{rate.name}</td>
-                                                <td className="p-2 border text-right">₹{rate.baseCharge.toFixed(2)}</td>
-                                                <td className="p-2 border text-right">₹{rate.codCharge.toFixed(2)}</td>
-                                                <td className="p-2 border text-right">₹{rate.gst.toFixed(2)}</td>
-                                                <td className="p-2 border text-right font-medium">₹{rate.total.toFixed(2)}</td>
+                                                <td className="p-3 border border-gray-300 font-medium text-blue-600">
+                                                    {rate.courier || rate.name.split(' ')[0]}
+                                                </td>
+                                                <td className="p-3 border border-gray-300">
+                                                    {rate.productName || '-'}
+                                                </td>
+                                                <td className="p-3 border border-gray-300">
+                                                    <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                                                        {rate.mode || 'Surface'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 border border-gray-300 text-right">
+                                                    {rate.finalWeight || '-'} kg
+                                                </td>
+                                                <td className="p-3 border border-gray-300 text-right">
+                                                    {rate.weightMultiplier || '-'} units
+                                                </td>
+                                                <td className="p-3 border border-gray-300 text-right">₹{rate.baseCharge.toFixed(2)}</td>
+                                                <td className="p-3 border border-gray-300 text-right">₹{rate.codCharge.toFixed(2)}</td>
+                                                <td className="p-3 border border-gray-300 text-right">₹{(rate.rtoCharges || 0).toFixed(2)}</td>
+                                                <td className="p-3 border border-gray-300 text-right">₹{rate.gst.toFixed(2)}</td>
+                                                <td className="p-3 border border-gray-300 text-right font-bold text-green-600">₹{rate.total.toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
                             
-                            <div className="bg-[#F8F7FF] p-3 rounded text-sm text-gray-500">
-                                <p>* Rates are subject to change and may vary based on actual weight verification.</p>
-                                <p>* GST will be charged as per applicable rate at the time of billing.</p>
+                            <div className="bg-blue-50 p-4 rounded-lg">
+                                <h4 className="font-semibold text-blue-800 mb-2">Calculation Notes:</h4>
+                                <div className="text-sm text-blue-700 space-y-1">
+                                    <p>• <strong>Weight Units:</strong> Calculated in 0.5 kg increments (minimum billable weight applies)</p>
+                                    <p>• <strong>Volumetric Weight:</strong> (L × W × H) ÷ 5000, billed weight is higher of actual or volumetric</p>
+                                    <p>• <strong>COD Charges:</strong> Higher of fixed amount or percentage of order value</p>
+                                    <p>• <strong>RTO Charges:</strong> Return charges included for prepaid orders (if applicable)</p>
+                                    <p>• <strong>GST:</strong> 18% applied on base charges + COD + RTO charges</p>
+                                    <p>• <strong>Zone Logic:</strong> Based on pickup/delivery locations and special zone rules</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -507,9 +577,10 @@ const RateCard = () => {
                             variant="purple"
                             onClick={() => {
                                 setShowConfirmation(false);
+                                // Optionally scroll to rate table or other action
                             }}
                         >
-                            Got it
+                            View Rate Table
                         </Button>
                     </DialogFooter>
                 </DialogContent>

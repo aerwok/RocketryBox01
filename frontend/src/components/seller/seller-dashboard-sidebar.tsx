@@ -13,37 +13,43 @@ import { Link, useLocation } from "react-router-dom";
 import WalletModal from "./wallet-modal";
 import { useWallet } from "@/hooks/useWallet";
 import { Loader2 } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
 
-const SIDEBAR_LINKS = [
+const ALL_SIDEBAR_LINKS = [
     {
         icon: UserIcon,
         to: "/seller/dashboard/profile",
         label: "Profile",
         isModal: false,
+        permission: null, // Always accessible
     },
     {
         icon: WalletIcon,
         to: "#",
         label: "Wallet",
         isModal: true,
+        permission: "Wallet",
     },
     {
         icon: PackageIcon,
         to: "/seller/dashboard/new-order",
         label: "New Order",
         isModal: false,
+        permission: "New Order",
     },
     {
         icon: HeadsetIcon,
         to: "/seller/dashboard/support",
         label: "Support",
         isModal: false,
+        permission: "Support",
     },
     {
         icon: SettingsIcon,
         to: "/seller/dashboard/settings",
         label: "Settings",
         isModal: false,
+        permission: null, // Always accessible
     },
 ];
 
@@ -52,6 +58,15 @@ const SellerDashboardSidebar = () => {
     const isExpanded = useSidebarStore((state) => state.isExpanded);
     const [isWalletOpen, setIsWalletOpen] = useState<boolean>(false);
     const { walletBalance, isLoadingBalance } = useWallet();
+    const { hasPermission } = usePermissions();
+
+    // Filter sidebar links based on user permissions
+    const SIDEBAR_LINKS = ALL_SIDEBAR_LINKS.filter(link => {
+        // If no permission required, always show
+        if (!link.permission) return true;
+        // Otherwise check if user has the required permission
+        return hasPermission(link.permission);
+    });
 
     const handleLinkClick = (link: typeof SIDEBAR_LINKS[0], e: React.MouseEvent) => {
         if (link.isModal) {

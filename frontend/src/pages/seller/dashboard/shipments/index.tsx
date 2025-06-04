@@ -6,170 +6,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-// Mock data - will be used when API is not available or for testing
-const shipmentData = [
-    {
-        orderId: "ORD123456",
-        orderDate: "2024-03-15",
-        booked: "2024-03-15 10:30 AM",
-        pickupId: "PKP789",
-        customer: "John Doe",
-        product: "iPhone 15 Pro",
-        amount: "₹129,900",
-        payment: "COD",
-        weight: "0.5",
-        channel: "Website",
-        awb: "AWB123456789",
-        courier: "Blue Dart",
-        tracking: "View",
-        status: "Booked"
-    },
-    {
-        orderId: "ORD123457",
-        orderDate: "2024-03-14",
-        booked: "2024-03-14 11:45 AM",
-        pickupId: "PKP790",
-        customer: "Jane Smith",
-        product: "Samsung S24 Ultra",
-        amount: "₹134,999",
-        payment: "Prepaid",
-        weight: "0.6",
-        channel: "Mobile App",
-        awb: "AWB123456790",
-        courier: "DTDC",
-        tracking: "View",
-        status: "In-transit"
-    },
-    {
-        orderId: "ORD123458",
-        orderDate: "2024-03-13",
-        booked: "2024-03-13 09:15 AM",
-        pickupId: "PKP791",
-        customer: "Mike Johnson",
-        product: "MacBook Air",
-        amount: "₹114,900",
-        payment: "COD",
-        weight: "1.8",
-        channel: "Website",
-        awb: "AWB123456791",
-        courier: "Delhivery",
-        tracking: "View",
-        status: "Delivered"
-    },
-    {
-        orderId: "ORD123459",
-        orderDate: "2024-03-15",
-        booked: "2024-03-15 14:20 PM",
-        pickupId: "PKP792",
-        customer: "Sarah Wilson",
-        product: "iPad Pro",
-        amount: "₹89,900",
-        payment: "Prepaid",
-        weight: "0.7",
-        channel: "Website",
-        awb: "AWB123456792",
-        courier: "Blue Dart",
-        tracking: "View",
-        status: "Pending Pickup"
-    },
-    {
-        orderId: "ORD123460",
-        orderDate: "2024-03-14",
-        booked: "2024-03-14 16:30 PM",
-        pickupId: "PKP793",
-        customer: "Robert Brown",
-        product: "AirPods Pro",
-        amount: "₹24,900",
-        payment: "COD",
-        weight: "0.3",
-        channel: "Mobile App",
-        awb: "AWB123456793",
-        courier: "DTDC",
-        tracking: "View",
-        status: "Cancelled"
-    },
-    {
-        orderId: "ORD123461",
-        orderDate: "2024-03-13",
-        booked: "2024-03-13 12:45 PM",
-        pickupId: "PKP794",
-        customer: "Emily Davis",
-        product: "MacBook Pro",
-        amount: "₹199,900",
-        payment: "Prepaid",
-        weight: "2.1",
-        channel: "Website",
-        awb: "AWB123456794",
-        courier: "Delhivery",
-        tracking: "View",
-        status: "Exception"
-    },
-    {
-        orderId: "ORD123462",
-        orderDate: "2024-03-15",
-        booked: "2024-03-15 09:10 AM",
-        pickupId: "PKP795",
-        customer: "Tom Wilson",
-        product: "Apple Watch",
-        amount: "₹45,900",
-        payment: "COD",
-        weight: "0.4",
-        channel: "Website",
-        awb: "AWB123456795",
-        courier: "Blue Dart",
-        tracking: "View",
-        status: "Booked"
-    },
-    {
-        orderId: "ORD123463",
-        orderDate: "2024-03-14",
-        booked: "2024-03-14 13:25 PM",
-        pickupId: "PKP796",
-        customer: "Lisa Anderson",
-        product: "Galaxy Tab S9",
-        amount: "₹74,999",
-        payment: "Prepaid",
-        weight: "0.8",
-        channel: "Mobile App",
-        awb: "AWB123456796",
-        courier: "DTDC",
-        tracking: "View",
-        status: "In-transit"
-    },
-    {
-        orderId: "ORD123464",
-        orderDate: "2024-03-13",
-        booked: "2024-03-13 15:40 PM",
-        pickupId: "PKP797",
-        customer: "David Miller",
-        product: "OnePlus 12",
-        amount: "₹64,999",
-        payment: "COD",
-        weight: "0.5",
-        channel: "Website",
-        awb: "AWB123456797",
-        courier: "Delhivery",
-        tracking: "View",
-        status: "Pending Pickup"
-    },
-    {
-        orderId: "ORD123465",
-        orderDate: "2024-03-15",
-        booked: "2024-03-15 11:55 AM",
-        pickupId: "PKP798",
-        customer: "Emma Thompson",
-        product: "Sony WH-1000XM5",
-        amount: "₹34,990",
-        payment: "Prepaid",
-        weight: "0.4",
-        channel: "Mobile App",
-        awb: "AWB123456798",
-        courier: "Blue Dart",
-        tracking: "View",
-        status: "Exception"
-    }
-];
-
 // Types for the shipment data
 interface Shipment {
     orderId: string;
@@ -188,15 +24,15 @@ interface Shipment {
     status: string;
 }
 
+// Type for API response that might be wrapped
+type ShipmentsAPIResponse = Shipment[] | { data: Shipment[] } | { shipments: Shipment[] };
+
 // API Service for shipments
 const ShipmentService = {
-    // Set this to true to use the real API instead of mock data
-    useRealApi: false,
-    
     // Generic fetch function that can be reused for different endpoints
     async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
         try {
-            const baseUrl = process.env.REACT_APP_API_URL || 'https://api.example.com';
+            const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
             const url = `${baseUrl}${endpoint}`;
             
             const response = await fetch(url, {
@@ -221,54 +57,18 @@ const ShipmentService = {
     
     // Get shipments with filters
     async getShipments(filters: { status?: string; awb?: string; }): Promise<Shipment[]> {
-        // Use real API if enabled
-        if (this.useRealApi) {
-            const queryParams = new URLSearchParams();
-            
-            if (filters.status && filters.status !== 'all') {
-                queryParams.append('status', filters.status);
-            }
-            
-            if (filters.awb) {
-                queryParams.append('awb', filters.awb);
-            }
-            
-            const endpoint = `/shipments?${queryParams.toString()}`;
-            return this.fetch<Shipment[]>(endpoint);
-        } 
+        const queryParams = new URLSearchParams();
         
-        // Otherwise use mock data
-        return this.getMockShipments(filters);
-    },
-    
-    // Mock implementation for testing
-    async getMockShipments(filters: { status?: string; awb?: string; }): Promise<Shipment[]> {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        let filteredData = [...shipmentData];
-        
-        // Filter by status if provided
         if (filters.status && filters.status !== 'all') {
-            const formattedStatus = filters.status
-                .split('-')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
-                
-            filteredData = filteredData.filter(shipment => 
-                shipment.status === formattedStatus
-            );
+            queryParams.append('status', filters.status);
         }
         
-        // Filter by AWB if provided
-        if (filters.awb && filters.awb.trim() !== '') {
-            const searchTerm = filters.awb.toLowerCase().trim();
-            filteredData = filteredData.filter(shipment => 
-                shipment.awb.toLowerCase().includes(searchTerm)
-            );
+        if (filters.awb) {
+            queryParams.append('awb', filters.awb);
         }
         
-        return filteredData;
+        const endpoint = `/api/v2/seller/shipments?${queryParams.toString()}`;
+        return this.fetch<Shipment[]>(endpoint);
     }
 };
 
@@ -283,15 +83,34 @@ function useShipments(status?: string, awbSearch?: string) {
             setIsLoading(true);
             setError(null);
             
-            const shipments = await ShipmentService.getShipments({
+            const response = await ShipmentService.getShipments({
                 status,
                 awb: awbSearch
-            });
+            }) as ShipmentsAPIResponse;
             
-            setData(shipments);
+            // Ensure the response is an array
+            if (Array.isArray(response)) {
+                setData(response);
+            } else if (response && typeof response === 'object') {
+                // Handle case where API returns { data: Shipment[] } or { shipments: Shipment[] }
+                if ('data' in response && Array.isArray(response.data)) {
+                    setData(response.data);
+                } else if ('shipments' in response && Array.isArray(response.shipments)) {
+                    setData(response.shipments);
+                } else {
+                    // If response is not in expected format, set empty array
+                    console.warn('API response is not in expected format:', response);
+                    setData([]);
+                }
+            } else {
+                // If response is not in expected format, set empty array
+                console.warn('API response is not in expected format:', response);
+                setData([]);
+            }
         } catch (error) {
             console.error('Failed to load shipments', error);
             setError('There was an error loading your shipments. Please try again.');
+            setData([]); // Ensure data is always an array even on error
             toast.error('Failed to load shipments');
         } finally {
             setIsLoading(false);
@@ -341,7 +160,9 @@ const ShipmentsTable = ({
         setSortConfig({ key, direction });
     };
 
-    const sortedData = [...data].sort((a, b) => {
+    // Ensure data is always an array before spreading
+    const safeData = Array.isArray(data) ? data : [];
+    const sortedData = [...safeData].sort((a, b) => {
         if (!sortConfig.key || !sortConfig.direction) return 0;
 
         const aValue = a[sortConfig.key];
@@ -389,7 +210,7 @@ const ShipmentsTable = ({
         );
     }
 
-    if (data.length === 0) {
+    if (safeData.length === 0) {
         return (
             <div className="w-full flex items-center justify-center py-20">
                 <div className="flex flex-col items-center gap-4 max-w-md text-center">

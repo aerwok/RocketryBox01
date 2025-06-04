@@ -4,11 +4,13 @@
  */
 
 import { toast } from "sonner";
-import { ApiService } from '@/services/api.service';
+import { apiService } from '@/services/api.service';
 import { ApiResponse } from '@/types/api';
 import { User, UserFilters } from '@/types/user';
+import { sellerAuthService } from '@/services/seller-auth.service';
 
-const apiService = new ApiService();
+// Job role definitions
+export type JobRole = 'Manager' | 'Support' | 'Finance';
 
 // Types
 export interface SellerTeamMember {
@@ -16,47 +18,90 @@ export interface SellerTeamMember {
   name: string;
   email: string;
   contactNumber?: string;
+  jobRole: JobRole;
   status: "active" | "inactive";
   createdAt: string;
   permissions: string[];
+  sellerId?: string; // ID of the parent seller
 }
 
-// Mock data for development
-export const MOCK_TEAM_MEMBERS: SellerTeamMember[] = [
-  {
-    id: "1",
-    name: "John Doe",
-    email: "john@example.com",
-    contactNumber: "+1234567890",
-    status: "active",
-    createdAt: "2023-05-15T10:30:00Z",
-    permissions: ["Dashboard access", "Order", "Shipments", "Manifest"]
-  },
-  {
-    id: "2",
-    name: "Jane Smith",
-    email: "jane@example.com",
-    status: "active",
-    createdAt: "2023-07-22T14:45:00Z",
-    permissions: ["Dashboard access", "Order"]
-  },
-  {
-    id: "3",
-    name: "Mike Johnson",
-    email: "mike@example.com",
-    status: "inactive",
-    createdAt: "2023-03-10T09:15:00Z",
-    permissions: ["Dashboard access"]
-  },
-  {
-    id: "4",
-    name: "Sarah Wilson",
-    email: "sarah@example.com",
-    status: "active",
-    createdAt: "2023-08-05T16:20:00Z",
-    permissions: ["Dashboard access", "Support", "Warehouse"]
+// Role-based permission presets
+export const ROLE_PERMISSIONS: Record<JobRole, string[]> = {
+  Manager: [
+    "Dashboard access",
+    "Order",
+    "Shipments", 
+    "Manifest",
+    "Received",
+    "New Order",
+    "NDR List",
+    "Weight Dispute",
+    "Support",
+    "Warehouse",
+    "Service",
+    "Items & SKU",
+    "Stores",
+    "Priority",
+    "Label"
+  ],
+  Support: [
+    "Dashboard access",
+    "Order",
+    "Shipments",
+    "NDR List",
+    "Weight Dispute", 
+    "Support",
+    "Warehouse",
+    "Service"
+  ],
+  Finance: [
+    "Dashboard access",
+    "Order",
+    "Fright",
+    "Wallet",
+    "Invoice",
+    "Ledger",
+    "COD Remittance"
+  ]
+};
+
+// Storage key for localStorage
+const STORAGE_KEY = 'seller_team_members';
+
+// Helper function to get current seller ID
+const getCurrentSellerId = async (): Promise<string> => {
+  try {
+    const currentUser = await sellerAuthService.getCurrentUser();
+    if (currentUser?.userType === 'seller') {
+      return currentUser.id;
+    } else if (currentUser?.userType === 'team_member') {
+      return currentUser.parentSellerId || 'seller_main';
+    }
+    return 'seller_main'; // Fallback
+  } catch (error) {
+    console.error('Error getting current seller ID:', error);
+    return 'seller_main'; // Fallback
   }
-];
+};
+
+// Helper functions for localStorage persistence
+export const getStoredTeamMembers = (): SellerTeamMember[] => {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Error reading team members from localStorage:', error);
+    return [];
+  }
+};
+
+const saveTeamMembers = (members: SellerTeamMember[]): void => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+  } catch (error) {
+    console.error('Error saving team members to localStorage:', error);
+  }
+};
 
 /**
  * Fetch all team members for the current seller
@@ -64,15 +109,15 @@ export const MOCK_TEAM_MEMBERS: SellerTeamMember[] = [
 export const fetchTeamMembers = async (): Promise<SellerTeamMember[]> => {
   try {
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // In production, this would be an API call:
     // const response = await fetch('/api/seller/team-members');
     // if (!response.ok) throw new Error('Failed to fetch team members');
     // return await response.json();
 
-    // For development, return mock data
-    return MOCK_TEAM_MEMBERS;
+    // Return persisted data from localStorage
+    return getStoredTeamMembers();
   } catch (error) {
     console.error("Error fetching team members:", error);
     toast.error("Failed to load team members. Please try again.");
@@ -88,7 +133,7 @@ export const addTeamMember = async (
 ): Promise<SellerTeamMember> => {
   try {
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // In production, this would be an API call:
     // const response = await fetch('/api/seller/team-members', {
@@ -99,16 +144,19 @@ export const addTeamMember = async (
     // if (!response.ok) throw new Error('Failed to add team member');
     // return await response.json();
 
-    // For development, simulate creating a new member
-    const { password, ...memberData } = member; // Extract password from member data
+    // Create new member with unique ID
+    const { password, ...memberData } = member;
     const newMember: SellerTeamMember = {
-      id: String(Math.floor(Math.random() * 1000)),
+      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ...memberData,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      sellerId: await getCurrentSellerId() // Get from current user context
     };
 
-    // Update mock data (would be handled by the backend in production)
-    MOCK_TEAM_MEMBERS.push(newMember);
+    // Get current members, add new one, and save back to localStorage
+    const currentMembers = getStoredTeamMembers();
+    const updatedMembers = [...currentMembers, newMember];
+    saveTeamMembers(updatedMembers);
 
     return newMember;
   } catch (error) {
@@ -127,7 +175,7 @@ export const updateTeamMember = async (
 ): Promise<SellerTeamMember> => {
   try {
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // In production, this would be an API call:
     // const response = await fetch(`/api/seller/team-members/${id}`, {
@@ -138,18 +186,23 @@ export const updateTeamMember = async (
     // if (!response.ok) throw new Error('Failed to update team member');
     // return await response.json();
 
-    // For development, update the mock data
-    const index = MOCK_TEAM_MEMBERS.findIndex(member => member.id === id);
+    // Get current members from localStorage
+    const currentMembers = getStoredTeamMembers();
+    const index = currentMembers.findIndex(member => member.id === id);
     if (index === -1) {
       throw new Error(`Team member with ID ${id} not found`);
     }
 
     const updatedMember = {
-      ...MOCK_TEAM_MEMBERS[index],
+      ...currentMembers[index],
       ...updates
     };
 
-    MOCK_TEAM_MEMBERS[index] = updatedMember;
+    // Update the member and save back to localStorage
+    const updatedMembers = [...currentMembers];
+    updatedMembers[index] = updatedMember;
+    saveTeamMembers(updatedMembers);
+
     return updatedMember;
   } catch (error) {
     console.error(`Error updating team member ${id}:`, error);
@@ -164,7 +217,7 @@ export const updateTeamMember = async (
 export const deleteTeamMember = async (id: string): Promise<void> => {
   try {
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // In production, this would be an API call:
     // const response = await fetch(`/api/seller/team-members/${id}`, {
@@ -172,13 +225,16 @@ export const deleteTeamMember = async (id: string): Promise<void> => {
     // });
     // if (!response.ok) throw new Error('Failed to delete team member');
 
-    // For development, update the mock data
-    const index = MOCK_TEAM_MEMBERS.findIndex(member => member.id === id);
+    // Get current members from localStorage
+    const currentMembers = getStoredTeamMembers();
+    const index = currentMembers.findIndex(member => member.id === id);
     if (index === -1) {
       throw new Error(`Team member with ID ${id} not found`);
     }
 
-    MOCK_TEAM_MEMBERS.splice(index, 1);
+    // Remove the member and save back to localStorage
+    const updatedMembers = currentMembers.filter(member => member.id !== id);
+    saveTeamMembers(updatedMembers);
   } catch (error) {
     console.error(`Error deleting team member ${id}:`, error);
     toast.error("Failed to delete team member. Please try again.");
@@ -192,7 +248,7 @@ export const deleteTeamMember = async (id: string): Promise<void> => {
 export const resetTeamMemberPassword = async (id: string): Promise<void> => {
   try {
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // In production, this would be an API call:
     // const response = await fetch(`/api/seller/team-members/${id}/reset-password`, {
@@ -200,13 +256,26 @@ export const resetTeamMemberPassword = async (id: string): Promise<void> => {
     // });
     // if (!response.ok) throw new Error('Failed to reset team member password');
 
-    // For development, no actual action needed
     console.log(`Password reset initiated for team member ${id}`);
   } catch (error) {
     console.error(`Error resetting password for team member ${id}:`, error);
     toast.error("Failed to reset password. Please try again.");
     throw error;
   }
+};
+
+/**
+ * Get role-based permission presets
+ */
+export const getRolePermissions = (role: JobRole): string[] => {
+  return ROLE_PERMISSIONS[role] || [];
+};
+
+/**
+ * Get available job roles
+ */
+export const getAvailableJobRoles = (): JobRole[] => {
+  return Object.keys(ROLE_PERMISSIONS) as JobRole[];
 };
 
 export const sellerUsersApi = {
@@ -251,7 +320,7 @@ export const sellerUsersApi = {
     async deleteUser(id: string): Promise<ApiResponse<void>> {
         try {
             const response = await apiService.delete(`/seller/users/${id}`);
-            return response;
+            return response as ApiResponse<void>;
         } catch (error) {
             throw new Error('Failed to delete user');
         }

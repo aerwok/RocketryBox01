@@ -1,5 +1,6 @@
 import SellerDashboardNavbar from "@/components/seller/seller-dashboard-navbar";
 import SellerDashboardSidebar from "@/components/seller/seller-dashboard-sidebar";
+import AuthStatusIndicator from "@/components/seller/auth-status-indicator";
 import { cn } from "@/lib/utils";
 import { Outlet } from "react-router-dom";
 
@@ -21,6 +22,9 @@ const SellerDashboardLayout = () => {
                     </div>
                 </main>
             </div>
+            
+            {/* Debug component for development */}
+            <AuthStatusIndicator />
         </div>
     );
 };

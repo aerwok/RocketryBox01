@@ -12,7 +12,8 @@ import {
   generateImportTemplate,
   addOrderNote,
   getOrderTimeline,
-  getOrderNotes
+  getOrderNotes,
+  updateTracking
 } from '../controllers/order.controller.js';
 import { validateOrderStatus, validateBulkOrderStatus } from '../validators/order.validator.js';
 import { protect } from '../../../middleware/auth.js';
@@ -38,6 +39,7 @@ router.post('/bulk-status', validateBulkOrderStatus, bulkUpdateStatus);
 // Individual order routes
 router.get('/:id', getOrder);
 router.patch('/:id/status', validateOrderStatus, updateOrderStatus);
+router.patch('/:id/tracking', updateTracking);
 router.post('/:id/cancel', cancelOrder);
 
 // Order notes and timeline

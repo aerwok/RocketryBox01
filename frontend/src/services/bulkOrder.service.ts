@@ -1,4 +1,4 @@
-import { ApiService, ApiResponse } from './api.service';
+import { ApiResponse } from './api.service';
 import { ExcelValidator, ExcelValidationResult } from '@/utils/excel';
 import { secureStorage } from '@/utils/secureStorage';
 import { ERROR_MESSAGES } from '@/utils/validation';
@@ -76,14 +76,12 @@ export interface ReceivedOrder {
     }[];
 }
 
-class BulkOrderService extends ApiService {
+class BulkOrderService {
     private static instance: BulkOrderService;
     private readonly MAX_RETRIES = 3;
     private readonly RETRY_DELAY = 1000;
 
-    private constructor() {
-        super();
-    }
+    private constructor() {}
 
     public static getInstance(): BulkOrderService {
         if (!BulkOrderService.instance) {
@@ -192,10 +190,10 @@ class BulkOrderService extends ApiService {
                         try {
                             const response = JSON.parse(xhr.responseText);
                             resolve({
-                                data: response,
-                                message: 'File uploaded successfully',
+                                data: response.data,
+                                message: response.message || 'File uploaded successfully',
                                 status: xhr.status,
-                                success: true
+                                success: response.success || true
                             });
                         } catch (error) {
                             reject(new Error(ERROR_MESSAGES.SERVER_ERROR));
@@ -209,7 +207,7 @@ class BulkOrderService extends ApiService {
                     reject(new Error(ERROR_MESSAGES.NETWORK_ERROR));
                 });
 
-                xhr.open('POST', '/api/bulk-orders/upload');
+                xhr.open('POST', '/api/v2/seller/bulk-orders/upload');
                 
                 Promise.all([
                     secureStorage.getItem('auth_token'),
@@ -226,11 +224,11 @@ class BulkOrderService extends ApiService {
     async getBulkOrderStatus(orderId: string): Promise<ApiResponse<BulkOrderStatus>> {
         return this.retryWithBackoff(async () => {
             const [authHeader, csrfHeader] = await Promise.all([
-                BulkOrderService.getAuthHeader(),
-                BulkOrderService.getCsrfHeader()
+                this.getAuthHeader(),
+                this.getCsrfHeader()
             ]);
-            return BulkOrderService.handleRequest<BulkOrderStatus>(
-                fetch(`/api/bulk-orders/${orderId}/status`, {
+            return this.handleRequest<BulkOrderStatus>(
+                fetch(`/api/v2/seller/bulk-orders/${orderId}/status`, {
                     headers: {
                         ...authHeader,
                         ...csrfHeader
@@ -243,11 +241,11 @@ class BulkOrderService extends ApiService {
     async getReceivedOrders(): Promise<ApiResponse<ReceivedOrder[]>> {
         return this.retryWithBackoff(async () => {
             const [authHeader, csrfHeader] = await Promise.all([
-                BulkOrderService.getAuthHeader(),
-                BulkOrderService.getCsrfHeader()
+                this.getAuthHeader(),
+                this.getCsrfHeader()
             ]);
-            return BulkOrderService.handleRequest<ReceivedOrder[]>(
-                fetch('/api/seller/received-orders', {
+            return this.handleRequest<ReceivedOrder[]>(
+                fetch('/api/v2/seller/orders', {
                     headers: {
                         ...authHeader,
                         ...csrfHeader
@@ -260,11 +258,11 @@ class BulkOrderService extends ApiService {
     async downloadSampleTemplate(): Promise<ApiResponse<Blob>> {
         return this.retryWithBackoff(async () => {
             const [authHeader, csrfHeader] = await Promise.all([
-                BulkOrderService.getAuthHeader(),
-                BulkOrderService.getCsrfHeader()
+                this.getAuthHeader(),
+                this.getCsrfHeader()
             ]);
-            return BulkOrderService.handleRequest<Blob>(
-                fetch('/api/seller/received-orders/template', {
+            return this.handleRequest<Blob>(
+                fetch('/api/v2/seller/bulk-orders/template', {
                     headers: {
                         ...authHeader,
                         ...csrfHeader
@@ -277,11 +275,11 @@ class BulkOrderService extends ApiService {
     async cancelBulkOrder(orderId: string): Promise<ApiResponse<{ success: boolean }>> {
         return this.retryWithBackoff(async () => {
             const [authHeader, csrfHeader] = await Promise.all([
-                BulkOrderService.getAuthHeader(),
-                BulkOrderService.getCsrfHeader()
+                this.getAuthHeader(),
+                this.getCsrfHeader()
             ]);
-            return BulkOrderService.handleRequest<{ success: boolean }>(
-                fetch(`/api/bulk-orders/${orderId}/cancel`, {
+            return this.handleRequest<{ success: boolean }>(
+                fetch(`/api/v2/seller/bulk-orders/${orderId}/cancel`, {
                     method: 'POST',
                     headers: {
                         ...authHeader,
@@ -294,160 +292,46 @@ class BulkOrderService extends ApiService {
 
     async downloadBulkOrderTemplate(): Promise<Blob> {
         try {
-            // Create workbook
-            const wb = XLSX.utils.book_new();
+            const [authHeader, csrfHeader] = await Promise.all([
+                this.getAuthHeader(),
+                this.getCsrfHeader()
+            ]);
             
-            // Define headers and descriptions
-            const headers = [
-                // Grid 1
-                'Order Id *',
-                'Payment Type *',
-                'Order Date *',
-                'Shipping Full Name *',
-                'Shipping Company Name',
-                'Shipping Address Line1 *',
-                'Shipping Address Line2 *',
-                'Shipping Contact Number *',
-                'Shipping City *',
-                'Shipping Pincode *',
-                'Billing Full Name',
-                
-                // Grid 2
-                'Billing Company Name',
-                'Billing Address1',
-                'Billing Address2',
-                'Billing City',
-                'Billing Pincode',
-                'Billing GST',
-                'Package Weight *',
-                'Package Length *',
-                'Package Height *',
-                'Package Width *',
-                'Purchase Amount *',
-                
-                // Grid 3 - Product 1
-                'SKU1',
-                'Product Name1 *',
-                'Quantity1 *',
-                'Item Weight1 *',
-                'Item Price1 *',
-                
-                // Grid 3 - Product 2
-                'SKU2',
-                'Product Name2',
-                'Quantity2',
-                'Item Weight2',
-                'Item Price2',
-                
-                // Grid 4 - Product 3
-                'SKU3',
-                'Product Name3',
-                'Quantity3',
-                'Item Weight3',
-                'Item Price3',
-                
-                // Grid 4 - Product 4
-                'SKU4',
-                'Product Name4',
-                'Quantity4',
-                'Item Weight4',
-                'Item Price4'
-            ];
+            const response = await fetch('/api/v2/seller/bulk-orders/template', {
+                headers: {
+                    ...authHeader,
+                    ...csrfHeader
+                }
+            });
 
-            const descriptions = [
-                // Grid 1
-                'NT0075 (Your store order-number)',
-                'COD/PAID/REV',
-                '2022/07/20',
-                'Sangeeta Singh',
-                'Test Company',
-                'Shipping address - 1',
-                'Shipping address - 2',
-                '8989898989',
-                'New Delhi',
-                '110062',
-                'Test',
-                
-                // Grid 2
-                'Test Company',
-                'Test Billing address - 1',
-                'Test Billing address - 2',
-                'New Delhi',
-                '122001',
-                '22AAAAA0000A1Z5',
-                '0.5Kg',
-                '10',
-                '10',
-                '3Kg (Total Weight)',
-                '1000',
-                
-                // Grid 3 - Product 1
-                'DLR_RED (Product-1 SKU)',
-                'T-shirt - 32 Red',
-                '1',
-                '0.5Kg',
-                '230',
-                
-                // Grid 3 - Product 2
-                'DLR_GRN',
-                'T-shirt - 32 Green',
-                '1',
-                '0.5Kg',
-                '100',
-                
-                // Grid 4 - Product 3
-                'DLR_BLU (Product-3 SKU)',
-                'T-shirt - 32 Blue',
-                '3',
-                '1.5Kg',
-                '290',
-                
-                // Grid 4 - Product 4
-                'DLR_YLO',
-                'T-shirt - 32 Yellow',
-                '10',
-                '0.5Kg',
-                '100'
-            ];
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
 
-            // Create worksheet
-            const ws = XLSX.utils.aoa_to_sheet([headers, descriptions]);
-
-            // Add column widths
-            const colWidths = headers.map(() => ({ wch: 20 }));
-            ws['!cols'] = colWidths;
-
-            // Add worksheet to workbook
-            XLSX.utils.book_append_sheet(wb, ws, 'Bulk Order Template');
-
-            // Generate Excel file
-            const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-            const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
-            return blob;
+            return await response.blob();
         } catch (error) {
-            console.error('Template generation error:', error);
+            console.error('Template download error:', error);
             throw new Error(ERROR_MESSAGES.DOWNLOAD_ERROR);
         }
     }
 
-    private static async getAuthHeader(): Promise<Record<string, string>> {
+    private async getAuthHeader(): Promise<Record<string, string>> {
         const token = await secureStorage.getItem('auth_token');
         return { 'Authorization': `Bearer ${token}` };
     }
 
-    private static async getCsrfHeader(): Promise<Record<string, string>> {
+    private async getCsrfHeader(): Promise<Record<string, string>> {
         const csrfToken = await secureStorage.getItem('csrf_token');
         return { 'X-CSRF-Token': csrfToken || '' };
     }
 
-    private static async handleRequest<T>(promise: Promise<any>): Promise<ApiResponse<T>> {
+    private async handleRequest<T>(promise: Promise<any>): Promise<ApiResponse<T>> {
         const response = await promise;
         return {
-            data: response,
-            message: 'Request successful',
-            status: 200,
-            success: true
+            data: response.data || response,
+            message: response.message || 'Request successful',
+            status: response.status || 200,
+            success: response.success !== undefined ? response.success : true
         };
     }
 }

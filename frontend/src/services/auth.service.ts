@@ -25,7 +25,7 @@ export class AuthService {
   private api: ApiService;
 
   constructor() {
-    this.api = new ApiService();
+    this.api = ApiService.getInstance();
   }
 
   async login(credentials: { phoneOrEmail: string; password: string; otp?: string; rememberMe?: boolean }): Promise<ApiResponse<LoginResponse>> {
@@ -44,11 +44,11 @@ export class AuthService {
     return this.api.post<{ accessToken: string }>('/customer/auth/refresh-token');
   }
 
-  async sendMobileOTP(mobile: string): Promise<ApiResponse<{ message: string }>> {
+  async sendMobileOTP(mobile: string, purpose: string = 'verify'): Promise<ApiResponse<{ message: string }>> {
     try {
       return await this.api.post<{ message: string }>('/customer/auth/otp/send', { 
         phoneOrEmail: mobile,
-        purpose: 'reset'
+        purpose: purpose
       });
     } catch (error) {
       const apiError = error as ApiError;
@@ -57,11 +57,11 @@ export class AuthService {
     }
   }
 
-  async sendEmailOTP(email: string): Promise<ApiResponse<{ message: string }>> {
+  async sendEmailOTP(email: string, purpose: string = 'verify'): Promise<ApiResponse<{ message: string }>> {
     try {
       return await this.api.post<{ message: string }>('/customer/auth/otp/send', { 
         phoneOrEmail: email,
-        purpose: 'reset'
+        purpose: purpose
       });
     } catch (error) {
       const apiError = error as ApiError;
@@ -150,6 +150,14 @@ export class AuthService {
         user: null
       };
     }
+  }
+
+  async sendMobileOTPForReset(mobile: string): Promise<ApiResponse<{ message: string }>> {
+    return this.sendMobileOTP(mobile, 'reset');
+  }
+
+  async sendEmailOTPForReset(email: string): Promise<ApiResponse<{ message: string }>> {
+    return this.sendEmailOTP(email, 'reset');
   }
 }
 

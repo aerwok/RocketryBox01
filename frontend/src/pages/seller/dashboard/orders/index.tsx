@@ -904,7 +904,7 @@ const OrdersTable = ({ data, onBulkStatusUpdate, dateRange }: {
 };
 
 const SellerOrdersPage = () => {
-    const activeTab = "not-booked";
+    const [activeTab, setActiveTab] = useState<OrderData['status'] | 'all'>('all');
     const [orders, setOrders] = useState<OrderData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -914,14 +914,40 @@ const SellerOrdersPage = () => {
         fetchOrders();
     }, [activeTab, dateRange]);
 
+    // Auto-refresh every 30 seconds to catch new bulk orders
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchOrders();
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(interval);
+    }, [activeTab, dateRange]);
+
     const fetchOrders = async () => {
         try {
             setIsLoading(true);
-            const response = await ServiceFactory.seller.order.getOrders({
-                status: activeTab as OrderData['status'],
-                startDate: dateRange?.from?.toISOString(),
-                endDate: dateRange?.to?.toISOString()
-            });
+            
+            // Build parameters object, only including dates if they exist
+            const params: {
+                status?: OrderData['status'];
+                startDate?: string;
+                endDate?: string;
+            } = {};
+            
+            // Only add status filter if not "all"
+            if (activeTab !== 'all') {
+                params.status = activeTab as OrderData['status'];
+            }
+            
+            // Only add date parameters if they exist and are valid
+            if (dateRange?.from) {
+                params.startDate = dateRange.from.toISOString();
+            }
+            if (dateRange?.to) {
+                params.endDate = dateRange.to.toISOString();
+            }
+            
+            const response = await ServiceFactory.seller.order.getOrders(params);
 
             if (!response.success) {
                 throw new Error(response.message || 'Failed to fetch orders');
@@ -1001,13 +1027,22 @@ const SellerOrdersPage = () => {
         <div className="space-y-4">
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-bold">Orders</h1>
-                <DateRangePicker 
-                    date={dateRange}
-                    setDate={setDateRange}
-                />
+                <div className="flex gap-2">
+                    <Button 
+                        variant="outline" 
+                        onClick={fetchOrders}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? "Refreshing..." : "Refresh"}
+                    </Button>
+                    <DateRangePicker 
+                        date={dateRange}
+                        setDate={setDateRange}
+                    />
+                </div>
             </div>
 
-            <Tabs defaultValue="all" className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as OrderData['status'] | 'all')} className="w-full">
                 <TabsList className="grid w-full grid-cols-7">
                     <TabsTrigger value="all">All ({orders.length})</TabsTrigger>
                     <TabsTrigger value="not-booked">Not Booked ({orders.filter(o => o.status === "not-booked").length})</TabsTrigger>

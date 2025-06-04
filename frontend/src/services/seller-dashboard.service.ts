@@ -1,9 +1,9 @@
-import { ApiService } from './api.service';
+import { apiService } from './api.service';
 import { ApiResponse } from '@/types/api';
 import { DashboardStats, DashboardChartData, CourierData, ProductData } from './types/dashboard';
 import { secureStorage } from '@/utils/secureStorage';
 
-class SellerDashboardService extends ApiService {
+class SellerDashboardService {
     private static instance: SellerDashboardService;
     private readonly CACHE_KEY_STATS = 'dashboard_stats';
     private readonly CACHE_KEY_CHARTS = 'dashboard_charts';
@@ -12,7 +12,7 @@ class SellerDashboardService extends ApiService {
     private readonly CACHE_DURATION = 60000; // 60 seconds
 
     private constructor() {
-        super();
+        // Private constructor for singleton
     }
 
     static getInstance(): SellerDashboardService {
@@ -24,16 +24,33 @@ class SellerDashboardService extends ApiService {
 
     private async getCachedData<T>(cacheKey: string): Promise<T | null> {
         try {
+            // First try to get from secure storage (main seller data)
             const cached = await secureStorage.getItem(cacheKey);
-            if (!cached) return null;
-
-            const { data, timestamp } = JSON.parse(cached);
-            if (Date.now() - timestamp > this.CACHE_DURATION) {
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp <= this.CACHE_DURATION) {
+                    return data;
+                }
                 await secureStorage.removeItem(cacheKey);
-                return null;
             }
 
-            return data;
+            // For team members, also check shared localStorage cache
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
+            
+            if (currentUser?.userType === 'team_member') {
+                const sharedCacheKey = `shared_${cacheKey}`;
+                const sharedCached = localStorage.getItem(sharedCacheKey);
+                if (sharedCached) {
+                    const { data, timestamp } = JSON.parse(sharedCached);
+                    if (Date.now() - timestamp <= this.CACHE_DURATION) {
+                        return data;
+                    }
+                    localStorage.removeItem(sharedCacheKey);
+                }
+            }
+
+            return null;
         } catch (error) {
             console.error(`Cache read error for ${cacheKey}:`, error);
             return null;
@@ -46,7 +63,13 @@ class SellerDashboardService extends ApiService {
                 data,
                 timestamp: Date.now()
             };
+            
+            // Always store in secure storage for main seller
             secureStorage.setItem(cacheKey, JSON.stringify(cacheData));
+            
+            // Also store in shared localStorage so team members can access it
+            const sharedCacheKey = `shared_${cacheKey}`;
+            localStorage.setItem(sharedCacheKey, JSON.stringify(cacheData));
         } catch (error) {
             console.error(`Cache write error for ${cacheKey}:`, error);
         }
@@ -54,7 +77,7 @@ class SellerDashboardService extends ApiService {
 
     async getDashboardStats(): Promise<ApiResponse<DashboardStats>> {
         try {
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<DashboardStats>(this.CACHE_KEY_STATS);
             if (cached) {
                 return {
@@ -65,10 +88,19 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<DashboardStats>('/seller/dashboard/stats');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                // Team members can't fetch fresh data, return error to let main seller fetch it
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<DashboardStats>('/seller/dashboard/stats');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_STATS, response.data);
             
             return response;
@@ -82,7 +114,7 @@ class SellerDashboardService extends ApiService {
         try {
             const cacheKey = `${this.CACHE_KEY_CHARTS}_${timeframe}`;
             
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<DashboardChartData>(cacheKey);
             if (cached) {
                 return {
@@ -93,12 +125,20 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<DashboardChartData>('/seller/dashboard/charts', {
-                timeframe // Pass directly without nesting
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
+            
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<DashboardChartData>('/seller/dashboard/charts', {
+                timeframe
             });
             
-            // Cache the response
+            // Cache the response (will be shared with team members)
             this.setCachedData(cacheKey, response.data);
             
             return response;
@@ -110,7 +150,7 @@ class SellerDashboardService extends ApiService {
 
     async getCourierPerformance(): Promise<ApiResponse<CourierData[]>> {
         try {
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<CourierData[]>(this.CACHE_KEY_COURIERS);
             if (cached) {
                 return {
@@ -121,10 +161,18 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<CourierData[]>('/seller/dashboard/couriers');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<CourierData[]>('/seller/dashboard/couriers');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_COURIERS, response.data);
             
             return response;
@@ -136,7 +184,7 @@ class SellerDashboardService extends ApiService {
 
     async getProductPerformance(): Promise<ApiResponse<ProductData[]>> {
         try {
-            // Check cache first
+            // Check cache first (includes shared cache for team members)
             const cached = await this.getCachedData<ProductData[]>(this.CACHE_KEY_PRODUCTS);
             if (cached) {
                 return {
@@ -147,10 +195,18 @@ class SellerDashboardService extends ApiService {
                 };
             }
             
-            // Fetch from API if not cached
-            const response = await this.get<ProductData[]>('/seller/dashboard/products');
+            // Only main seller can fetch fresh data from API
+            const { sellerAuthService } = await import('@/services/seller-auth.service');
+            const currentUser = await sellerAuthService.getCurrentUser();
             
-            // Cache the response
+            if (currentUser?.userType === 'team_member') {
+                throw new Error('Dashboard data not available. Please ask the main account holder to refresh the dashboard.');
+            }
+            
+            // Fetch from API - only for main seller
+            const response = await apiService.get<ProductData[]>('/seller/dashboard/products');
+            
+            // Cache the response (will be shared with team members)
             this.setCachedData(this.CACHE_KEY_PRODUCTS, response.data);
             
             return response;
@@ -166,7 +222,7 @@ class SellerDashboardService extends ApiService {
     }
 
     async downloadReport(format: 'csv' | 'pdf'): Promise<Blob> {
-        const response = await this.get<Blob>('/seller/dashboard/report', {
+        const response = await apiService.get<Blob>('/seller/dashboard/report', {
             format, // Pass directly without nesting
             responseType: 'blob'
         });

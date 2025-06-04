@@ -19,6 +19,8 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/components/ui/accordion";
+import { sellerAuthService } from '@/services/seller-auth.service';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const SellerDashboardNavbar = () => {
     const location = useLocation();
@@ -28,15 +30,35 @@ const SellerDashboardNavbar = () => {
     const toggleSidebar = useSidebarStore((state) => state.toggleSidebar);
     const [searchQuery, setSearchQuery] = useState("");
     const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const { hasPermission } = usePermissions();
 
     useEffect(() => {
-        // Check if user is authenticated
-        const isAuthenticated = localStorage.getItem('seller_token');
+        // Check if user is authenticated using seller auth service
+        const checkAuthentication = async () => {
+            try {
+                console.log('🔐 Dashboard navbar: Checking authentication...');
+                
+                // First try to validate and restore session
+                const sessionValid = await sellerAuthService.validateAndRestoreSession();
+                
+                if (!sessionValid) {
+                    // If session validation fails, check basic authentication
+                    const isAuthenticated = await sellerAuthService.isAuthenticated();
+                    
+                    if (!isAuthenticated) {
+                        console.log('🔐 User not authenticated, redirecting to login');
+                        navigate('/seller/login');
+                    }
+                } else {
+                    console.log('🔐 User session validated successfully');
+                }
+            } catch (error) {
+                console.error('🔐 Authentication check failed:', error);
+                navigate('/seller/login');
+            }
+        };
         
-        // Redirect to login if not authenticated
-        if (!isAuthenticated) {
-            navigate('/seller/login');
-        }
+        checkAuthentication();
     }, [navigate]);
 
     // Initialize search from URL parameters
@@ -51,22 +73,38 @@ const SellerDashboardNavbar = () => {
         }
     }, [searchParams]);
 
+    // Navigation links with permission requirements
     const orderSubLinks = [
-        { to: "/seller/dashboard/new-order", label: "New Order" },
-        { to: "/seller/dashboard/orders", label: "Orders" },
-        { to: "/seller/dashboard/shipments", label: "Shipments" },
-        { to: "/seller/dashboard/received", label: "Received" },
+        { to: "/seller/dashboard/new-order", label: "New Order", permission: "New Order" },
+        { to: "/seller/dashboard/orders", label: "Orders", permission: "Order" },
+        { to: "/seller/dashboard/shipments", label: "Shipments", permission: "Shipments" },
+        { to: "/seller/dashboard/received", label: "Received", permission: "Received" },
     ];
 
-    const navLinks = [
-        { to: "/seller/dashboard", label: "Home" },
-        { to: "/seller/dashboard/orders", label: "Orders", subLinks: orderSubLinks },
-        { to: "/seller/dashboard/ndr", label: "NDR" },
-        { to: "/seller/dashboard/billing", label: "Billing", },
-        { to: "/seller/dashboard/weight-dispute", label: "Weight Dispute" },
-        { to: "/seller/dashboard/cod", label: "COD" },
-        { to: "/seller/dashboard/tools", label: "Tools" },
+    const allNavLinks = [
+        { to: "/seller/dashboard", label: "Home", permission: "Dashboard access" },
+        { 
+            to: "/seller/dashboard/orders", 
+            label: "Orders", 
+            permission: "Order",
+            subLinks: orderSubLinks 
+        },
+        { to: "/seller/dashboard/ndr", label: "NDR", permission: "NDR List" },
+        { to: "/seller/dashboard/billing", label: "Billing", permission: "Fright" },
+        { to: "/seller/dashboard/weight-dispute", label: "Weight Dispute", permission: "Weight Dispute" },
+        { to: "/seller/dashboard/cod", label: "COD", permission: "COD Remittance" },
+        { to: "/seller/dashboard/tools", label: "Tools", permission: "Service" },
     ];
+
+    // Filter navigation links based on user permissions
+    const navLinks = allNavLinks.filter(link => {
+        const hasMainPermission = hasPermission(link.permission);
+        if (hasMainPermission && link.subLinks) {
+            // Filter sub-links based on permissions
+            link.subLinks = link.subLinks.filter(subLink => hasPermission(subLink.permission));
+        }
+        return hasMainPermission;
+    });
 
     const isActiveLink = (to: string) => {
         if (to === "/seller/dashboard") {

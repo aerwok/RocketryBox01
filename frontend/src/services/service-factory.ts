@@ -9,22 +9,6 @@ import { PoliciesService } from "./policies.service";
 import { ProfileService, DocumentType as ProfileDocumentType, CompanyDetails as ProfileCompanyDetails } from './profile.service';
 import { Seller } from '@/types/api';
 
-interface Invoice {
-    id: string;
-    invoiceNumber: string;
-    period: string;
-    shipments: number;
-    amount: string;
-}
-
-interface InvoiceSummary {
-    totalInvoices: number;
-    pendingAmount: string;
-    overdueAmount: string;
-    totalPaid: string;
-    totalOutstanding: string;
-}
-
 interface WalletTransaction {
     id: number;
     date: string;
@@ -211,6 +195,7 @@ interface Product {
 
 /**
  * Service factory that provides real API services
+ * Uses singleton pattern to ensure consistent service instances
  */
 export class ServiceFactory {
   private static instance: ServiceFactory;
@@ -223,7 +208,8 @@ export class ServiceFactory {
   private profileService: ProfileService;
 
   private constructor() {
-    this.apiService = new ApiService();
+    // Use singleton instances for all services to prevent multiple initialization
+    this.apiService = ApiService.getInstance();
     this.authService = new AuthService();
     this.adminService = new AdminService();
     this.uploadService = new UploadService();
@@ -376,7 +362,7 @@ export class ServiceFactory {
     // Legacy method - kept for backward compatibility
     async calculateRates(rateData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.post('/shipping/calculate-rates', rateData);
+      return apiService.post('/seller/rate-card/calculate', rateData);
     },
 
     async getShipmentDetails(id: string): Promise<ApiResponse<any>> {
@@ -607,13 +593,37 @@ export class ServiceFactory {
 
   static tickets = {
     async getTickets(page: number, pageSize: number): Promise<ApiResponse<any>> {
-      const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.get('/admin/tickets', { params: { page, pageSize } });
+      // Import the tickets API
+      const { getAllTickets } = await import('@/lib/api/support-tickets');
+      
+      try {
+        const result = await getAllTickets(page, pageSize);
+        return {
+          success: true,
+          data: result,
+          message: "Tickets fetched successfully",
+          status: 200
+        };
+      } catch (error) {
+        throw new Error('Failed to fetch tickets');
+      }
     },
 
     async updateTicketStatus(id: string, status: string): Promise<ApiResponse<any>> {
-      const apiService = ServiceFactory.getInstance().getApiService();
-      return apiService.patch(`/admin/tickets/${id}/status`, { status });
+      // Import the tickets API
+      const { updateTicketStatus } = await import('@/lib/api/support-tickets');
+      
+      try {
+        const updatedTicket = await updateTicketStatus(id, status as any);
+        return {
+          success: true,
+          data: updatedTicket,
+          message: "Ticket status updated successfully",
+          status: 200
+        };
+      } catch (error) {
+        throw new Error('Failed to update ticket status');
+      }
     }
   };
 
@@ -746,23 +756,55 @@ export class ServiceFactory {
   static seller = {
     billing: {
       getInvoices: async (params: { from: string; to: string }) => {
-        return await ServiceFactory.callApi<{ invoices: Invoice[] }>(
-          `/seller/billing/invoices?from=${params.from}&to=${params.to}`
+        const queryParams = new URLSearchParams();
+        if (params.from) queryParams.append('startDate', params.from);
+        if (params.to) queryParams.append('endDate', params.to);
+        
+        const response = await ServiceFactory.callApi<any[]>(
+          `/seller/invoices?${queryParams.toString()}`
         );
+        
+        // Transform response to match expected format
+        if (response.success) {
+          return {
+            ...response,
+            data: { invoices: response.data }
+          };
+        }
+        return response;
       },
       getInvoiceSummary: async (params: { from: string; to: string }) => {
-        return await ServiceFactory.callApi<{ summary: InvoiceSummary }>(
-          `/seller/billing/invoices/summary?from=${params.from}&to=${params.to}`
-        );
+        // Since summary endpoint doesn't exist, we'll calculate from invoices
+        const invoicesResponse = await ServiceFactory.seller.billing.getInvoices(params);
+        
+        if (invoicesResponse.success) {
+          const invoices = (invoicesResponse.data as { invoices: any[] }).invoices;
+          const summary = {
+            totalInvoices: invoices.length,
+            pendingAmount: `₹${invoices.filter((inv: any) => inv.status === 'pending').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            overdueAmount: `₹${invoices.filter((inv: any) => inv.status === 'overdue').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            totalPaid: `₹${invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
+            totalOutstanding: `₹${invoices.filter((inv: any) => inv.status !== 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`
+          };
+          
+          return {
+            success: true,
+            data: { summary },
+            message: 'Summary calculated successfully',
+            status: 200
+          };
+        }
+        
+        return invoicesResponse;
       },
       downloadInvoice: async (invoiceId: string) => {
         return await ServiceFactory.callApi<{ pdfUrl: string }>(
-          `/seller/billing/invoices/${invoiceId}/download`
+          `/seller/invoices/${invoiceId}/pdf`
         );
       },
       downloadShipments: async (invoiceId: string) => {
         return await ServiceFactory.callApi<Blob>(
-          `/seller/billing/invoices/${invoiceId}/shipments?format=csv`,
+          `/seller/invoices/${invoiceId}/shipments?format=csv`,
           'GET',
           undefined,
           'blob'
@@ -772,7 +814,7 @@ export class ServiceFactory {
         return await ServiceFactory.callApi<{ 
           lastUpdated: string;
           rates: any[];
-        }>('/seller/billing/rate-card');
+        }>('/seller/rate-card');
       },
       calculateRates: async (data: {
         pickupPincode: string;
@@ -780,23 +822,36 @@ export class ServiceFactory {
         paymentType: string;
         purchaseAmount: number;
         weight: number;
+        packageLength?: number;
+        packageWidth?: number;
+        packageHeight?: number;
+        includeRTO?: boolean;
       }) => {
         return await ServiceFactory.callApi<{
           zone: string;
+          billedWeight: string;
+          volumetricWeight: string;
           rates: Array<{
             name: string;
+            courier: string;
+            productName: string;
+            mode: string;
             baseCharge: number;
             codCharge: number;
+            rtoCharges: number;
             gst: number;
             total: number;
+            finalWeight: string;
+            weightMultiplier: number;
+            rateCardId: string;
           }>;
-        }>('/seller/billing/calculate-rates', 'POST', data);
+        }>('/seller/rate-card/calculate', 'POST', data);
       },
       getWalletTransactions: async (params: WalletTransactionParams): Promise<ApiResponse<{ transactions: WalletTransaction[]; total: number }>> => {
-        return ServiceFactory.callApi('GET', '/seller/wallet/transactions', params);
+        return ServiceFactory.callApi('/seller/wallet/transactions', 'GET', params);
       },
       getWalletSummary: async (): Promise<ApiResponse<WalletSummary>> => {
-        return ServiceFactory.callApi('GET', '/seller/wallet/summary');
+        return ServiceFactory.callApi('/seller/wallet/summary', 'GET');
       }
     },
     product: {
@@ -885,8 +940,57 @@ export class ServiceFactory {
       getDetails: async (id: string): Promise<ApiResponse<any>> => {
         return ServiceFactory.callApi(`/seller/orders/${id}`);
       },
+      createOrder: async (orderData: {
+        orderId: string;
+        customer: {
+          name: string;
+          phone: string;
+          email: string;
+          address: {
+            street: string;
+            city: string;
+            state: string;
+            pincode: string;
+            country?: string;
+          };
+        };
+        product: {
+          name: string;
+          sku: string;
+          quantity: number;
+          price: number;
+          weight: string;
+          dimensions: {
+            length: number;
+            width: number;
+            height: number;
+          };
+        };
+        payment: {
+          method: 'COD' | 'Prepaid';
+          amount: string;
+          codCharge?: string;
+          shippingCharge: string;
+          gst: string;
+          total: string;
+        };
+        channel?: string;
+      }): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi('/seller/orders', 'POST', orderData);
+      },
       getOrders: async (params: { status?: string; startDate?: string; endDate?: string }): Promise<ApiResponse<any>> => {
-        return ServiceFactory.callApi(`/seller/orders?${new URLSearchParams(params as any)}`);
+        // Filter out undefined values to prevent URLSearchParams from converting them to "undefined" strings
+        const cleanParams: Record<string, string> = {};
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null && value !== '') {
+            cleanParams[key] = String(value);
+          }
+        });
+        
+        const queryString = new URLSearchParams(cleanParams).toString();
+        const endpoint = queryString ? `/seller/orders?${queryString}` : '/seller/orders';
+        
+        return ServiceFactory.callApi(endpoint);
       },
       updateStatus: async (id: string, status: string): Promise<ApiResponse<void>> => {
         return ServiceFactory.callApi(`/seller/orders/${id}/status`, 'PATCH', { status });
@@ -914,6 +1018,26 @@ export class ServiceFactory {
 
   private static async callApi<T>(endpoint: string, method: string = 'GET', data?: any, responseType?: 'json' | 'blob'): Promise<ApiResponse<T>> {
     try {
+      // Check if current user is a team member and if they have permission for this endpoint
+      const permissionRequired = ServiceFactory.getRequiredPermission(endpoint);
+      if (permissionRequired) {
+        try {
+          const { sellerAuthService } = await import('@/services/seller-auth.service');
+          const currentUser = await sellerAuthService.getCurrentUser();
+          
+          if (currentUser?.userType === 'team_member') {
+            const hasPermission = await sellerAuthService.hasPermission(permissionRequired);
+            if (!hasPermission) {
+              console.log(`Team member doesn't have permission "${permissionRequired}" for ${endpoint}, returning empty response`);
+              return ServiceFactory.getEmptyResponse<T>(endpoint);
+            }
+          }
+        } catch (permError) {
+          console.warn('Permission check failed, proceeding with API call:', permError);
+          // Continue with API call if permission check fails
+        }
+      }
+
       const apiService = ServiceFactory.getInstance().getApiService();
       let response: ApiResponse<T>;
 
@@ -1023,6 +1147,89 @@ export class ServiceFactory {
         status: error.status || 500
       };
     }
+  }
+
+  // Helper method to get required permission for an endpoint
+  private static getRequiredPermission(endpoint: string): string | null {
+    // Map endpoints to required permissions
+    const permissionMap: Record<string, string> = {
+      '/seller/orders': 'Order',
+      '/seller/ndr': 'NDR List',
+      '/seller/disputes': 'Weight Dispute',
+      '/seller/manifests': 'Manifest',
+      '/seller/cod': 'COD Remittance',
+      '/seller/products': 'Items & SKU',
+      '/seller/invoices': 'Fright',
+      '/seller/wallet': 'Wallet',
+      '/seller/bulk-orders': 'New Order',
+      '/seller/shipments': 'Shipments',
+    };
+
+    // Check if endpoint starts with any of the mapped paths
+    for (const [path, permission] of Object.entries(permissionMap)) {
+      if (endpoint.startsWith(path)) {
+        return permission;
+      }
+    }
+
+    return null; // No permission required (e.g., profile endpoints)
+  }
+
+  // Helper method to return appropriate empty responses
+  private static getEmptyResponse<T>(endpoint: string): ApiResponse<T> {
+    let emptyData: any = [];
+
+    // Provide appropriate empty data based on endpoint
+    if (endpoint.includes('/orders')) {
+      emptyData = [];
+    } else if (endpoint.includes('/ndr')) {
+      emptyData = [];
+    } else if (endpoint.includes('/disputes')) {
+      emptyData = [];
+    } else if (endpoint.includes('/manifests')) {
+      emptyData = [];
+    } else if (endpoint.includes('/cod/summary')) {
+      emptyData = {
+        totalCOD: '0',
+        remittedTillDate: '0',
+        lastRemittance: '0',
+        totalRemittanceDue: '0',
+        nextRemittance: 'N/A'
+      };
+    } else if (endpoint.includes('/cod')) {
+      emptyData = { remittances: [] };
+    } else if (endpoint.includes('/products')) {
+      emptyData = [];
+    } else if (endpoint.includes('/invoices/summary')) {
+      emptyData = {
+        summary: {
+          totalInvoices: 0,
+          pendingAmount: '0',
+          overdueAmount: '0',
+          totalPaid: '0',
+          totalOutstanding: '0'
+        }
+      };
+    } else if (endpoint.includes('/invoices')) {
+      emptyData = { invoices: [] };
+    } else if (endpoint.includes('/wallet/transactions')) {
+      emptyData = { transactions: [], total: 0 };
+    } else if (endpoint.includes('/wallet/summary')) {
+      emptyData = {
+        totalRecharge: 0,
+        totalUsed: 0,
+        lastRecharge: '0',
+        codToWallet: 0,
+        closingBalance: '0'
+      };
+    }
+
+    return {
+      success: true,
+      data: emptyData as T,
+      message: 'Access restricted - Empty data returned',
+      status: 200
+    };
   }
 }
 

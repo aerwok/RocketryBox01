@@ -3,23 +3,49 @@ import { ApiResponse, ApiError } from '@/types/api';
 import { secureStorage } from '@/utils/secureStorage';
 
 export type { ApiResponse };
+
 export class ApiService {
-  private api: AxiosInstance;
+  private static instance: ApiService;
+  private api!: AxiosInstance;
   private navigate: ((path: string) => void) | null = null;
+  private isInitialized: boolean = false;
   
   // Request throttling to prevent rate limiting
   private requestThrottles: Record<string, number> = {};
   private readonly THROTTLE_INTERVAL = 2000; // 2 seconds between identical requests
 
-  constructor() {
+  private constructor() {
+    this.initializeService();
+  }
+
+  /**
+   * Get the singleton instance of ApiService
+   * This ensures only one instance exists throughout the application
+   */
+  public static getInstance(): ApiService {
+    if (!ApiService.instance) {
+      ApiService.instance = new ApiService();
+    }
+    return ApiService.instance;
+  }
+
+  /**
+   * Initialize the API service with axios configuration
+   * Only runs once per application lifecycle
+   */
+  private initializeService(): void {
+    if (this.isInitialized) {
+      return;
+    }
+
     // Get base domain without any path
     const baseDomain = import.meta.env.VITE_API_URL || 'http://localhost:8000';
     const baseURL = `${baseDomain}/api/v2`;
     
-    console.log('Initializing API service:', {
-      baseDomain,
-      baseURL
-    });
+    // Log initialization only once and more concisely
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🚀 API Service initialized: ${baseURL}`);
+    }
     
     this.api = axios.create({
       baseURL,
@@ -30,6 +56,7 @@ export class ApiService {
     });
 
     this.setupInterceptors();
+    this.isInitialized = true;
   }
 
   // Method to set the navigation function
@@ -50,20 +77,35 @@ export class ApiService {
             config.headers.Authorization = `Bearer ${token}`;
           }
 
-          // Enhanced logging for debugging
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Request:', {
-              method: config.method?.toUpperCase(),
-              baseURL: config.baseURL,
-              url: config.url,
-              fullUrl: `${config.baseURL}/${config.url}`,
-              hasToken: !!token
+          // For team members accessing dashboard data, use main seller context
+          if (config.url?.includes('/seller/dashboard/')) {
+            try {
+              const { sellerAuthService } = await import('@/services/seller-auth.service');
+              const currentUser = await sellerAuthService.getCurrentUser();
+              
+              if (currentUser?.userType === 'team_member') {
+                // For team members, use a shared seller context for dashboard data
+                const sellerData = JSON.parse(localStorage.getItem('current_seller_data') || '{}');
+                if (sellerData.sellerId) {
+                  config.headers['X-Seller-Context'] = sellerData.sellerId;
+                }
+              }
+            } catch (error) {
+              console.warn('Failed to get user context for dashboard request:', error);
+            }
+          }
+
+          // Reduced logging - only log important requests in development
+          if (process.env.NODE_ENV === 'development' && config.url && !config.url.includes('/health')) {
+            console.log(`📡 ${config.method?.toUpperCase()} ${config.url}`, {
+              hasAuth: !!token,
+              baseURL: config.baseURL
             });
           }
           
           return config;
         } catch (error) {
-          console.error('Error in request interceptor:', error);
+          console.error('❌ Request interceptor error:', error);
           return config;
         }
       },
@@ -74,37 +116,67 @@ export class ApiService {
 
     // Response interceptor
     this.api.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Success logging only for important endpoints
+        if (process.env.NODE_ENV === 'development' && 
+            response.config.url && 
+            !response.config.url.includes('/health') &&
+            response.status >= 400) {
+          console.log(`✅ ${response.status} ${response.config.url}`);
+        }
+        return response;
+      },
       async (error) => {
-        console.error('API Error:', {
+        // Enhanced error logging
+        console.error('🚨 API Error:', {
           status: error.response?.status,
-          data: error.response?.data,
-          message: error.message,
           url: error.config?.url,
+          message: error.response?.data?.message || error.message,
           baseURL: error.config?.baseURL
         });
         
         if (error.response) {
           if (error.response.status === 401) {
-            // Clear secure storage on unauthorized
-            await secureStorage.removeItem('auth_token');
-            await secureStorage.removeItem('user');
-            
-            // Redirect to appropriate login page based on current URL
-            const currentPath = window.location.pathname;
-            let redirectPath = '/seller/login';
-            
-            if (currentPath.includes('/admin')) {
-              redirectPath = '/admin/login';
-            } else if (currentPath.includes('/customer')) {
-              redirectPath = '/customer/login';
-            }
-            
-            // Use React Router navigation if available, fallback to window.location
-            if (this.navigate) {
-              this.navigate(redirectPath);
-            } else {
-              window.location.href = redirectPath;
+            // Check if this is a team member with mock token before clearing auth
+            try {
+              const userType = await secureStorage.getItem('user_type');
+              const authToken = await secureStorage.getItem('auth_token');
+              
+              // For team members, don't clear tokens on 401 errors since they use mock tokens
+              // Only clear tokens for real authentication failures (main sellers)
+              if (userType === 'team_member' && authToken) {
+                console.log('🔐 Team member API call failed (expected for mock tokens), preserving auth tokens');
+                // Don't clear tokens for team members - they have limited API access by design
+              } else {
+                // Clear tokens only for main sellers with real authentication failures
+                console.log('🔐 Main seller authentication failed, clearing tokens');
+                await secureStorage.removeItem('auth_token');
+                await secureStorage.removeItem('refresh_token');
+                await secureStorage.removeItem('user_type');
+                await secureStorage.removeItem('user_permissions');
+                await secureStorage.removeItem('user_context');
+                localStorage.removeItem('seller_token');
+                
+                // Redirect to appropriate login page based on current URL
+                const currentPath = window.location.pathname;
+                let redirectPath = '/seller/login';
+                
+                if (currentPath.includes('/admin')) {
+                  redirectPath = '/admin/login';
+                } else if (currentPath.includes('/customer')) {
+                  redirectPath = '/customer/login';
+                }
+                
+                // Use React Router navigation if available, fallback to window.location
+                if (this.navigate) {
+                  this.navigate(redirectPath);
+                } else {
+                  window.location.href = redirectPath;
+                }
+              }
+            } catch (storageError) {
+              console.error('Error checking user type during 401 handling:', storageError);
+              // If we can't check user type, don't clear tokens to be safe
             }
           }
 
@@ -147,7 +219,7 @@ export class ApiService {
       const currentTime = Date.now();
       
       if (currentTime - lastRequestTime < this.THROTTLE_INTERVAL) {
-        console.log(`Throttling request to ${config.url} (too frequent)`);
+        console.log(`⏱️ Throttling request to ${config.url}`);
         await new Promise(resolve => 
           setTimeout(resolve, this.THROTTLE_INTERVAL - (currentTime - lastRequestTime))
         );
@@ -155,26 +227,17 @@ export class ApiService {
       
       // Update last request time
       this.requestThrottles[requestKey] = Date.now();
-      
-      // Make the request
-      console.log('Making request:', {
-        baseURL: this.api.defaults.baseURL,
-        endpoint: config.url,
-        method: config.method
-      });
 
+      // Make the request
       const response = await this.api.request({
         ...config,
         withCredentials: true // Ensure cookies are sent with each request
       });
 
-      console.log('API response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        responseType: config.responseType,
-        dataType: typeof response.data,
-        isBlob: response.data instanceof Blob
-      });
+      // Reduced response logging
+      if (process.env.NODE_ENV === 'development' && config.responseType === 'blob') {
+        console.log(`📄 Blob response: ${config.url} (${response.data?.size || 'unknown'} bytes)`);
+      }
 
       // Handle blob responses differently
       if (config.responseType === 'blob') {
@@ -190,13 +253,6 @@ export class ApiService {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.error('Request failed:', {
-          url: error.config?.url,
-          baseURL: error.config?.baseURL,
-          method: error.config?.method,
-          status: error.response?.status
-        });
-        
         const apiError: ApiError = {
           message: error.response?.data?.message || 'An error occurred',
           code: error.response?.data?.code || 'SERVER_ERROR',
@@ -283,4 +339,17 @@ export class ApiService {
       },
     });
   }
-} 
+
+  /**
+   * Reset the singleton instance (for testing purposes only)
+   * @internal
+   */
+  public static resetInstance(): void {
+    if (process.env.NODE_ENV === 'test') {
+      ApiService.instance = null as any;
+    }
+  }
+}
+
+// Export a default instance for convenience
+export const apiService = ApiService.getInstance(); 
