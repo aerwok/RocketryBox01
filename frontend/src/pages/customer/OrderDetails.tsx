@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { orderService } from '../../services/order.service';
 import { paymentService } from '../../services/payment.service';
+import { customerApi } from './services/api'; // Import the correct API service
 
 interface OrderDetails {
   _id: string;
@@ -68,10 +68,32 @@ const OrderDetails: React.FC = () => {
 
   const fetchOrderDetails = async () => {
     try {
-      const response = await orderService.getOrderById(orderId!);
-      setOrder(response.data.data);
+      if (!orderId) {
+        throw new Error('No order identifier provided');
+      }
+
+      // Detect if the parameter is an AWB (format: RB followed by 9 digits) or MongoDB ObjectId
+      const isAwb = /^RB\d{9}$/.test(orderId);
+
+      console.log('🔍 Fetching order details:', {
+        parameter: orderId,
+        isAwb: isAwb,
+        parameterType: isAwb ? 'AWB' : 'Order ID'
+      });
+
+      let response;
+      if (isAwb) {
+        // Use AWB endpoint for AWB numbers
+        response = await customerApi.orders.getByAwb(orderId);
+      } else {
+        // Use ID endpoint for MongoDB ObjectIds
+        response = await customerApi.orders.getById(orderId);
+      }
+
+      setOrder(response); // Now response is the actual order data
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to fetch order details');
+      console.error('❌ Order details fetch error:', error);
+      toast.error(error.response?.data?.message || error.message || 'Failed to fetch order details');
       navigate('/customer/orders');
     } finally {
       setLoading(false);
@@ -134,10 +156,10 @@ const OrderDetails: React.FC = () => {
 
             if (verifyResponse.data.success) {
               console.log('✅ Payment verification response:', verifyResponse.data);
-              
+
               // Enhanced success notification
               const awbNumber = verifyResponse.data?.awb;
-              
+
               toast.success(
                 <div className="flex flex-col gap-1">
                   <div className="font-semibold">🎉 Order Created Successfully!</div>
@@ -155,7 +177,7 @@ const OrderDetails: React.FC = () => {
                   className: "success-toast"
                 }
               );
-              
+
               // Refresh order details to get AWB after a delay
               setTimeout(() => {
                 fetchOrderDetails();
@@ -283,8 +305,8 @@ const OrderDetails: React.FC = () => {
                 <div>
                   <p className="text-sm text-gray-600">Dimensions (L×W×H)</p>
                   <p className="font-medium">
-                    {order.packageDetails?.dimensions ? 
-                      `${order.packageDetails.dimensions.length} × ${order.packageDetails.dimensions.width} × ${order.packageDetails.dimensions.height} cm` : 
+                    {order.packageDetails?.dimensions ?
+                      `${order.packageDetails.dimensions.length} × ${order.packageDetails.dimensions.width} × ${order.packageDetails.dimensions.height} cm` :
                       'N/A'
                     }
                   </p>
@@ -369,7 +391,7 @@ const OrderDetails: React.FC = () => {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-sm p-6 sticky top-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Payment Summary</h2>
-              
+
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Shipping Rate</span>
@@ -430,4 +452,4 @@ const OrderDetails: React.FC = () => {
   );
 };
 
-export default OrderDetails; 
+export default OrderDetails;

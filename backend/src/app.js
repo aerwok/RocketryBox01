@@ -133,11 +133,26 @@ if (!MONGODB_URI) {
 logger.info('Connecting to MongoDB...');
 
 mongoose.connect(MONGODB_URI, {
+  dbName: 'RocketryBox',  // Force connection to RocketryBox database
   serverSelectionTimeoutMS: 30000, // Increased from 5000ms to 30000ms (30s)
   socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
 })
   .then(async () => {
     logger.info('Connected to MongoDB successfully');
+
+    // Initialize tracking job service for real-time updates
+    try {
+      const { trackingJobService } = await import('./services/trackingJob.service.js');
+      if (process.env.NODE_ENV === 'production' || process.env.ENABLE_TRACKING_JOBS === 'true') {
+        trackingJobService.start();
+        logger.info('✅ Tracking job service initialized');
+      } else {
+        logger.info('🔧 Tracking job service available (not auto-started in development)');
+      }
+    } catch (error) {
+      logger.error('❌ Failed to initialize tracking job service:', error);
+    }
+
     // Sync mobile and phone fields on startup
     if (process.env.NODE_ENV === 'development') {
       try {
@@ -186,7 +201,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {

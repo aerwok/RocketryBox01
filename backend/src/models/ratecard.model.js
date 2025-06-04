@@ -1,54 +1,54 @@
 import mongoose from 'mongoose';
 
 const rateCardSchema = new mongoose.Schema({
-  courier: { 
-    type: String, 
-    required: true, 
-    index: true 
+  courier: {
+    type: String,
+    required: true,
+    index: true
   },
-  productName: { 
-    type: String, 
-    required: true 
+  productName: {
+    type: String,
+    required: true
   },
-  mode: { 
-    type: String, 
+  mode: {
+    type: String,
     required: true,
     enum: ['Surface', 'Air']
   },
-  zone: { 
-    type: String, 
-    required: true, 
+  zone: {
+    type: String,
+    required: true,
     index: true,
     enum: ['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone']
   },
-  baseRate: { 
-    type: Number, 
+  baseRate: {
+    type: Number,
     required: true,
     min: 0
   },
-  addlRate: { 
-    type: Number, 
+  addlRate: {
+    type: Number,
     required: true,
     min: 0
   },
-  codAmount: { 
-    type: Number, 
+  codAmount: {
+    type: Number,
     default: 0,
     min: 0
   },
-  codPercent: { 
-    type: Number, 
+  codPercent: {
+    type: Number,
     default: 0,
     min: 0,
     max: 100
   },
-  rtoCharges: { 
-    type: Number, 
+  rtoCharges: {
+    type: Number,
     default: 0,
     min: 0
   },
-  minimumBillableWeight: { 
-    type: Number, 
+  minimumBillableWeight: {
+    type: Number,
     required: true,
     min: 0
   },
@@ -65,7 +65,7 @@ rateCardSchema.index({ courier: 1, zone: 1, mode: 1 });
 rateCardSchema.index({ zone: 1, isActive: 1 });
 
 // Add a method to find rates by zone and courier
-rateCardSchema.statics.findByZoneAndCourier = function(zone, courier = null) {
+rateCardSchema.statics.findByZoneAndCourier = function (zone, courier = null) {
   const query = { zone, isActive: true };
   if (courier) {
     query.courier = courier;
@@ -74,7 +74,7 @@ rateCardSchema.statics.findByZoneAndCourier = function(zone, courier = null) {
 };
 
 // Add a method to get all active couriers
-rateCardSchema.statics.getActiveCouriers = function() {
+rateCardSchema.statics.getActiveCouriers = function () {
   return this.distinct('courier', { isActive: true });
 };
 

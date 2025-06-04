@@ -68,7 +68,7 @@ export const orderService = {
 
   // Get order by ID
   getOrderById: async (orderId: string): Promise<{ data: any }> => {
-    const response = await apiClient.get(`/api/v2/customer/orders/awb/${orderId}`);
+    const response = await apiClient.get(`/api/v2/customer/orders/${orderId}`);
     return response;
   },
 
@@ -89,4 +89,4 @@ export const orderService = {
     const response = await apiClient.get(`/api/v2/customer/orders/${orderId}/track`);
     return response;
   }
-}; 
+};

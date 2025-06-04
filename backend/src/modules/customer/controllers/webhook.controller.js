@@ -1,12 +1,14 @@
 import crypto from 'crypto';
 import { AppError } from '../../../middleware/errorHandler.js';
-import Order from '../models/order.model.js';
+import OrderBookingService from '../../../services/orderBooking.service.js';
 import { sendEmail } from '../../../utils/email.js';
+import { logger } from '../../../utils/logger.js';
 import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
+import Order from '../models/order.model.js';
 import Payment from '../models/payment.model.js';
 
 // Verify webhook signature
-const verifyWebhookSignature = (payload, signature) => {
+const verifyGenericWebhookSignature = (payload, signature) => {
   const hmac = crypto.createHmac('sha256', process.env.WEBHOOK_SECRET);
   const calculatedSignature = hmac.update(JSON.stringify(payload)).digest('hex');
   return crypto.timingSafeEqual(
@@ -23,7 +25,7 @@ export const handleTrackingWebhook = async (req, res, next) => {
       return next(new AppError('Missing webhook signature', 401));
     }
 
-    if (!verifyWebhookSignature(req.body, signature)) {
+    if (!verifyGenericWebhookSignature(req.body, signature)) {
       return next(new AppError('Invalid webhook signature', 401));
     }
 
@@ -127,33 +129,33 @@ class WebhookController {
       }
 
       const { event, payload } = req.body;
-      
+
       // Handle different webhook events
       switch (event) {
         case 'payment.captured':
           await WebhookController.handlePaymentCaptured(payload.payment.entity);
           break;
-          
+
         case 'payment.failed':
           await WebhookController.handlePaymentFailed(payload.payment.entity);
           break;
-          
+
         case 'payment.authorized':
           await WebhookController.handlePaymentAuthorized(payload.payment.entity);
           break;
-          
+
         case 'order.paid':
           await WebhookController.handleOrderPaid(payload.order.entity, payload.payment.entity);
           break;
-          
+
         case 'refund.created':
           await WebhookController.handleRefundCreated(payload.refund.entity);
           break;
-          
+
         case 'refund.processed':
           await WebhookController.handleRefundProcessed(payload.refund.entity);
           break;
-          
+
         default:
           console.log(`ℹ️ Unhandled webhook event: ${event}`);
       }
@@ -166,7 +168,7 @@ class WebhookController {
 
     } catch (error) {
       console.error('❌ Webhook processing error:', error);
-      
+
       // Still return 200 to avoid webhook retries for application errors
       res.status(200).json({
         success: false,
@@ -185,7 +187,7 @@ class WebhookController {
         .createHmac('sha256', secret)
         .update(JSON.stringify(payload))
         .digest('hex');
-      
+
       return crypto.timingSafeEqual(
         Buffer.from(signature, 'utf8'),
         Buffer.from(expectedSignature, 'utf8')
@@ -202,11 +204,11 @@ class WebhookController {
   static async handlePaymentCaptured(paymentEntity) {
     try {
       console.log('✅ Processing payment.captured:', paymentEntity.id);
-      
-      const payment = await Payment.findOne({ 
-        razorpayOrderId: paymentEntity.order_id 
+
+      const payment = await Payment.findOne({
+        razorpayOrderId: paymentEntity.order_id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for order:', paymentEntity.order_id);
         return;
@@ -256,11 +258,11 @@ class WebhookController {
   static async handlePaymentFailed(paymentEntity) {
     try {
       console.log('❌ Processing payment.failed:', paymentEntity.id);
-      
-      const payment = await Payment.findOne({ 
-        razorpayOrderId: paymentEntity.order_id 
+
+      const payment = await Payment.findOne({
+        razorpayOrderId: paymentEntity.order_id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for order:', paymentEntity.order_id);
         return;
@@ -304,11 +306,11 @@ class WebhookController {
   static async handlePaymentAuthorized(paymentEntity) {
     try {
       console.log('🔄 Processing payment.authorized:', paymentEntity.id);
-      
-      const payment = await Payment.findOne({ 
-        razorpayOrderId: paymentEntity.order_id 
+
+      const payment = await Payment.findOne({
+        razorpayOrderId: paymentEntity.order_id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for order:', paymentEntity.order_id);
         return;
@@ -343,12 +345,12 @@ class WebhookController {
   static async handleOrderPaid(orderEntity, paymentEntity) {
     try {
       console.log('💰 Processing order.paid:', orderEntity.id);
-      
+
       // This is a backup handler in case payment.captured wasn't processed
-      const payment = await Payment.findOne({ 
-        razorpayOrderId: orderEntity.id 
+      const payment = await Payment.findOne({
+        razorpayOrderId: orderEntity.id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for order:', orderEntity.id);
         return;
@@ -392,11 +394,11 @@ class WebhookController {
   static async handleRefundCreated(refundEntity) {
     try {
       console.log('💸 Processing refund.created:', refundEntity.id);
-      
-      const payment = await Payment.findOne({ 
-        razorpayPaymentId: refundEntity.payment_id 
+
+      const payment = await Payment.findOne({
+        razorpayPaymentId: refundEntity.payment_id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for refund:', refundEntity.payment_id);
         return;
@@ -432,11 +434,11 @@ class WebhookController {
   static async handleRefundProcessed(refundEntity) {
     try {
       console.log('✅ Processing refund.processed:', refundEntity.id);
-      
-      const payment = await Payment.findOne({ 
-        refundId: refundEntity.id 
+
+      const payment = await Payment.findOne({
+        refundId: refundEntity.id
       });
-      
+
       if (!payment) {
         console.error('❌ Payment not found for refund:', refundEntity.id);
         return;
@@ -513,4 +515,389 @@ class WebhookController {
   }
 }
 
-export default WebhookController; 
+export default WebhookController;
+
+/**
+ * Comprehensive Webhook Controller for Courier Partner Tracking Updates
+ */
+
+// Webhook signature verification functions for each courier
+const courierWebhookVerifiers = {
+  delhivery: (payload, signature, secret) => {
+    const computedHash = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+    return computedHash === signature;
+  },
+
+  bluedart: (payload, signature, secret) => {
+    const computedHash = crypto.createHmac('sha1', secret).update(JSON.stringify(payload)).digest('hex');
+    return `sha1=${computedHash}` === signature;
+  },
+
+  xpressbees: (payload, signature, secret) => {
+    const computedHash = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+    return computedHash === signature;
+  },
+
+  ecomexpress: (payload, signature, secret) => {
+    const computedHash = crypto.createHmac('md5', secret).update(JSON.stringify(payload)).digest('hex');
+    return computedHash === signature;
+  },
+
+  // Generic verification for other couriers
+  generic: (payload, signature, secret) => {
+    const computedHash = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+    return computedHash === signature;
+  }
+};
+
+/**
+ * Delhivery Webhook Handler
+ */
+export const handleDelhiveryWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 Delhivery webhook received', {
+      headers: req.headers,
+      bodyType: typeof req.body
+    });
+
+    const signature = req.headers['x-delhivery-signature'];
+    const secret = process.env.DELHIVERY_WEBHOOK_SECRET;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const isValid = courierWebhookVerifiers.delhivery(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid Delhivery webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { waybill, status, location, timestamp, remarks } = req.body;
+
+    if (!waybill) {
+      return res.status(400).json({ error: 'AWB number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(waybill, {
+      status: status,
+      location: location || 'Unknown',
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      description: remarks || status,
+      courier: 'Delhivery'
+    });
+
+    logger.info('✅ Delhivery tracking updated', {
+      awb: waybill,
+      status,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ Delhivery webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * BlueDart Webhook Handler
+ */
+export const handleBlueDartWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 BlueDart webhook received', {
+      headers: req.headers,
+      bodyType: typeof req.body
+    });
+
+    const signature = req.headers['x-hub-signature'];
+    const secret = process.env.BLUEDART_WEBHOOK_SECRET;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const isValid = courierWebhookVerifiers.bluedart(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid BlueDart webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { AWBNumber, Status, Location, StatusDate, StatusDescription } = req.body;
+
+    if (!AWBNumber) {
+      return res.status(400).json({ error: 'AWB number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(AWBNumber, {
+      status: Status,
+      location: Location || 'Unknown',
+      timestamp: StatusDate ? new Date(StatusDate) : new Date(),
+      description: StatusDescription || Status,
+      courier: 'BlueDart'
+    });
+
+    logger.info('✅ BlueDart tracking updated', {
+      awb: AWBNumber,
+      status: Status,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ BlueDart webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * XpressBees Webhook Handler
+ */
+export const handleXpressBeesWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 XpressBees webhook received', {
+      headers: req.headers,
+      bodyType: typeof req.body
+    });
+
+    const signature = req.headers['x-xpressbees-signature'];
+    const secret = process.env.XPRESSBEES_WEBHOOK_SECRET;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const isValid = courierWebhookVerifiers.xpressbees(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid XpressBees webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { awb_number, status, location, updated_time, remarks } = req.body;
+
+    if (!awb_number) {
+      return res.status(400).json({ error: 'AWB number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(awb_number, {
+      status: status,
+      location: location || 'Unknown',
+      timestamp: updated_time ? new Date(updated_time) : new Date(),
+      description: remarks || status,
+      courier: 'XpressBees'
+    });
+
+    logger.info('✅ XpressBees tracking updated', {
+      awb: awb_number,
+      status,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ XpressBees webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * Ecom Express Webhook Handler
+ */
+export const handleEcomExpressWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 Ecom Express webhook received', {
+      headers: req.headers,
+      bodyType: typeof req.body
+    });
+
+    const signature = req.headers['x-ecom-signature'];
+    const secret = process.env.ECOMEXPRESS_WEBHOOK_SECRET;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const isValid = courierWebhookVerifiers.ecomexpress(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid Ecom Express webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { awb, status, location, timestamp, reason } = req.body;
+
+    if (!awb) {
+      return res.status(400).json({ error: 'AWB number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(awb, {
+      status: status,
+      location: location || 'Unknown',
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      description: reason || status,
+      courier: 'Ecom Express'
+    });
+
+    logger.info('✅ Ecom Express tracking updated', {
+      awb,
+      status,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ Ecom Express webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * DTDC Webhook Handler
+ */
+export const handleDTDCWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 DTDC webhook received', {
+      headers: req.headers,
+      bodyType: typeof req.body
+    });
+
+    const signature = req.headers['x-dtdc-signature'];
+    const secret = process.env.DTDC_WEBHOOK_SECRET;
+
+    // Verify signature if secret is configured
+    if (secret && signature) {
+      const isValid = courierWebhookVerifiers.generic(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid DTDC webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { refno, status, location, date, remarks } = req.body;
+
+    if (!refno) {
+      return res.status(400).json({ error: 'Reference number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(refno, {
+      status: status,
+      location: location || 'Unknown',
+      timestamp: date ? new Date(date) : new Date(),
+      description: remarks || status,
+      courier: 'DTDC'
+    });
+
+    logger.info('✅ DTDC tracking updated', {
+      awb: refno,
+      status,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ DTDC webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * Generic Tracking Webhook Handler (for testing or unknown couriers)
+ */
+export const handleGenericTrackingWebhook = async (req, res, next) => {
+  try {
+    logger.info('📨 Generic tracking webhook received', {
+      headers: req.headers,
+      body: req.body
+    });
+
+    const signature = req.headers['x-webhook-signature'];
+    const secret = process.env.GENERIC_WEBHOOK_SECRET || 'default-secret';
+
+    // Verify signature if provided
+    if (signature) {
+      const isValid = courierWebhookVerifiers.generic(req.body, signature, secret);
+      if (!isValid) {
+        logger.warn('❌ Invalid webhook signature');
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+
+    const { awb, status, location, timestamp, description, courier } = req.body;
+
+    if (!awb) {
+      return res.status(400).json({ error: 'AWB number required' });
+    }
+
+    // Update order tracking
+    const result = await OrderBookingService.updateOrderTracking(awb, {
+      status: status || 'Status Update',
+      location: location || 'Unknown',
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      description: description || status || 'Tracking update received',
+      courier: courier || 'Unknown Courier'
+    });
+
+    logger.info('✅ Generic tracking updated', {
+      awb,
+      status,
+      courier,
+      success: result.success
+    });
+
+    res.status(200).json({ success: true, message: 'Webhook processed' });
+
+  } catch (error) {
+    logger.error('❌ Generic webhook error:', error);
+    next(new AppError('Webhook processing failed', 500));
+  }
+};
+
+/**
+ * Manual tracking update endpoint (for admin/internal use)
+ */
+export const handleManualTrackingUpdate = async (req, res, next) => {
+  try {
+    // Only allow admin or internal API calls
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'internal')) {
+      return next(new AppError('Unauthorized', 401));
+    }
+
+    const { awb, status, location, description, courier } = req.body;
+
+    if (!awb || !status) {
+      return res.status(400).json({ error: 'AWB and status are required' });
+    }
+
+    const result = await OrderBookingService.updateOrderTracking(awb, {
+      status,
+      location: location || 'Manual Update',
+      timestamp: new Date(),
+      description: description || `Manual update: ${status}`,
+      courier: courier || 'Manual Update',
+      isManualUpdate: true,
+      updatedBy: req.user.id
+    });
+
+    logger.info('✅ Manual tracking update completed', {
+      awb,
+      status,
+      updatedBy: req.user.id,
+      success: result.success
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Tracking updated manually',
+      result
+    });
+
+  } catch (error) {
+    logger.error('❌ Manual tracking update error:', error);
+    next(new AppError('Manual update failed', 500));
+  }
+};

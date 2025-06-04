@@ -1308,27 +1308,44 @@ export const calculateRates = async (req, res, next) => {
   try {
     const { weight, pickupPincode, deliveryPincode, serviceType } = req.body;
 
+    // Add debugging
+    console.log('🔍 calculateRates called with:', {
+      weight,
+      pickupPincode,
+      deliveryPincode,
+      serviceType,
+      bodyKeys: Object.keys(req.body)
+    });
+
     // Validate required fields
     if (!weight || !pickupPincode || !deliveryPincode || !serviceType) {
+      console.log('❌ Validation failed - missing required fields');
       throw new AppError('Missing required fields: weight, pickupPincode, deliveryPincode, and serviceType are required', 400);
     }
 
     // Validate weight
     if (weight < 0.1) {
+      console.log('❌ Weight validation failed:', weight);
       throw new AppError('Weight must be at least 0.1 kg', 400);
     }
 
     // Validate pincodes
     if (!/^\d{6}$/.test(pickupPincode) || !/^\d{6}$/.test(deliveryPincode)) {
+      console.log('❌ Pincode validation failed:', { pickupPincode, deliveryPincode });
       throw new AppError('Invalid pincode format. Pincodes must be 6 digits', 400);
     }
 
     // Validate service type (only standard and express allowed for customers)
     if (!['standard', 'express', 'cod'].includes(serviceType)) {
+      console.log('❌ Service type validation failed:', serviceType);
       throw new AppError('Invalid service type. Must be standard, express, or cod', 400);
     }
 
+    console.log('✅ All validations passed, calculating rates...');
+
     // Get rates for BOTH Surface and Air modes to give customers all options
+    console.log('🔄 Calling rate service for Surface and Air modes...');
+
     const [surfaceResult, airResult] = await Promise.all([
       // Surface/Standard rates
       rateCardService.calculateShippingRate({
@@ -1341,7 +1358,7 @@ export const calculateRates = async (req, res, next) => {
         codCollectableAmount: 0,
         includeRTO: false
       }),
-      // Air/Express rates
+      // Air/Express rates (changed back to Air since database now has Air mode)
       rateCardService.calculateShippingRate({
         fromPincode: pickupPincode,
         toPincode: deliveryPincode,
@@ -1354,6 +1371,21 @@ export const calculateRates = async (req, res, next) => {
       })
     ]);
 
+    console.log('📊 Rate service results:', {
+      surfaceResult: {
+        success: surfaceResult.success,
+        error: surfaceResult.error,
+        calculationsCount: surfaceResult.calculations?.length || 0,
+        zone: surfaceResult.zone
+      },
+      airResult: {
+        success: airResult.success,
+        error: airResult.error,
+        calculationsCount: airResult.calculations?.length || 0,
+        zone: airResult.zone
+      }
+    });
+
     // Combine all calculations from both modes
     let allCalculations = [];
     let zone = 'Rest of India';
@@ -1361,6 +1393,7 @@ export const calculateRates = async (req, res, next) => {
     let deliveryEstimate = '4-6 days';
 
     if (surfaceResult.success) {
+      console.log('✅ Surface result successful, adding calculations...');
       allCalculations.push(...surfaceResult.calculations.map(calc => ({
         ...calc,
         serviceMode: 'Surface',
@@ -1369,9 +1402,12 @@ export const calculateRates = async (req, res, next) => {
       zone = surfaceResult.zone;
       billedWeight = surfaceResult.billedWeight;
       deliveryEstimate = surfaceResult.deliveryEstimate;
+    } else {
+      console.log('❌ Surface result failed:', surfaceResult.error);
     }
 
     if (airResult.success) {
+      console.log('✅ Air result successful, adding calculations...');
       allCalculations.push(...airResult.calculations.map(calc => ({
         ...calc,
         serviceMode: 'Air',
@@ -1381,9 +1417,18 @@ export const calculateRates = async (req, res, next) => {
       if (airResult.deliveryEstimate && airResult.deliveryEstimate !== '4-6 days') {
         deliveryEstimate = airResult.deliveryEstimate;
       }
+    } else {
+      console.log('❌ Air result failed:', airResult.error);
     }
 
+    console.log('📋 Final calculations summary:', {
+      totalCalculations: allCalculations.length,
+      zone: zone,
+      billedWeight: billedWeight
+    });
+
     if (allCalculations.length === 0) {
+      console.log('❌ No calculations found, throwing error');
       throw new AppError('No shipping rates available for the given parameters', 404);
     }
 
