@@ -18,23 +18,48 @@
  * Contact: business@delhivery.com | Phone: 1800-209-0032
  */
 
-// Environment variables with fallback values
+// Load environment variables from .env file
+import 'dotenv/config';
+
+// Environment variables - now properly loaded from .env file
 const {
   // B2C Configuration
-  DELHIVERY_API_URL = 'https://track.delhivery.com',
-  DELHIVERY_STAGING_API_URL = 'https://staging-express.delhivery.com',
-  DELHIVERY_API_TOKEN = 'your_delhivery_api_token',
-  DELHIVERY_CLIENT_NAME = 'your_client_name',
+  DELHIVERY_API_URL,
+  DELHIVERY_STAGING_API_URL,
+  DELHIVERY_API_TOKEN,
+  DELHIVERY_CLIENT_NAME,
 
   // B2B Configuration
-  DELHIVERY_B2B_API_URL = 'https://ltl-clients-api.delhivery.com',
-  DELHIVERY_B2B_STAGING_API_URL = 'https://ltl-clients-api-dev.delhivery.com',
-  DELHIVERY_B2B_USERNAME = 'your_b2b_username',
-  DELHIVERY_B2B_PASSWORD = 'your_b2b_password',
+  DELHIVERY_B2B_API_URL,
+  DELHIVERY_B2B_STAGING_API_URL,
+  DELHIVERY_B2B_USERNAME,
+  DELHIVERY_B2B_PASSWORD,
 
-  DELHIVERY_API_VERSION = 'v1',
-  NODE_ENV = 'development'
+  // General Configuration
+  DELHIVERY_API_VERSION,
+  NODE_ENV
 } = process.env;
+
+// Validate required environment variables
+const validateRequiredEnvVars = () => {
+  const requiredVars = {
+    'DELHIVERY_API_TOKEN': DELHIVERY_API_TOKEN,
+    'DELHIVERY_CLIENT_NAME': DELHIVERY_CLIENT_NAME,
+    'DELHIVERY_API_URL': DELHIVERY_API_URL,
+    'DELHIVERY_STAGING_API_URL': DELHIVERY_STAGING_API_URL
+  };
+
+  const missingVars = Object.entries(requiredVars)
+    .filter(([key, value]) => !value || value === '')
+    .map(([key]) => key);
+
+  if (missingVars.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingVars.join(', ')}\nPlease check your .env file.`);
+  }
+};
+
+// Validate environment variables on import
+validateRequiredEnvVars();
 
 // Determine base URLs based on environment
 const B2C_BASE_URL = NODE_ENV === 'production' ? DELHIVERY_API_URL : DELHIVERY_STAGING_API_URL;
@@ -416,41 +441,46 @@ export const DELHIVERY_CONFIG = {
   ]
 };
 
-// Validation functions
+// Enhanced validation function
 export const validateDelhiveryConfig = () => {
-  const requiredB2CFields = [
-    'DELHIVERY_API_TOKEN',
-    'DELHIVERY_CLIENT_NAME'
-  ];
+  // Log configuration status
+  console.log('🚚 Delhivery Configuration Status:');
 
-  const requiredB2BFields = [
-    'DELHIVERY_B2B_USERNAME',
-    'DELHIVERY_B2B_PASSWORD'
-  ];
+  // Check B2C Configuration
+  const b2cConfigured = DELHIVERY_API_TOKEN && DELHIVERY_CLIENT_NAME;
+  console.log(`   B2C Service: ${b2cConfigured ? '✅ Configured' : '❌ Missing credentials'}`);
 
-  const missingB2CFields = requiredB2CFields.filter(field => {
-    const value = process.env[field];
-    return !value || value === `your_${field.toLowerCase().replace('delhivery_', '')}`;
-  });
+  // Check B2B Configuration
+  const b2bConfigured = DELHIVERY_B2B_USERNAME && DELHIVERY_B2B_PASSWORD;
+  console.log(`   B2B Service: ${b2bConfigured ? '✅ Configured' : '⚠️ Optional - Missing credentials'}`);
 
-  const missingB2BFields = requiredB2BFields.filter(field => {
-    const value = process.env[field];
-    return !value || value === `your_${field.toLowerCase().replace('delhivery_', '')}`;
-  });
+  // Check Environment
+  console.log(`   Environment: ${NODE_ENV || 'development'}`);
+  console.log(`   Base URL: ${B2C_BASE_URL}`);
 
-  if (missingB2CFields.length > 0) {
-    console.warn(`⚠️ Delhivery B2C Configuration Warning: Missing or default values for: ${missingB2CFields.join(', ')}`);
+  if (b2bConfigured) {
+    console.log(`   B2B Base URL: ${B2B_BASE_URL}`);
   }
 
-  if (missingB2BFields.length > 0) {
-    console.warn(`⚠️ Delhivery B2B Configuration Warning: Missing or default values for: ${missingB2BFields.join(', ')}`);
-  }
-
-  return missingB2CFields.length === 0 && missingB2BFields.length === 0;
+  // Return configuration status
+  return {
+    b2cReady: b2cConfigured,
+    b2bReady: b2bConfigured,
+    environment: NODE_ENV || 'development',
+    baseUrl: B2C_BASE_URL,
+    b2bBaseUrl: B2B_BASE_URL
+  };
 };
 
 // Export configuration and validation
 export default {
   ...DELHIVERY_CONFIG,
-  validateConfig: validateDelhiveryConfig
+  validateConfig: validateDelhiveryConfig,
+
+  // Additional helper methods
+  isB2CReady: () => !!(DELHIVERY_API_TOKEN && DELHIVERY_CLIENT_NAME),
+  isB2BReady: () => !!(DELHIVERY_B2B_USERNAME && DELHIVERY_B2B_PASSWORD),
+  getEnvironment: () => NODE_ENV || 'development',
+  getBaseUrl: () => B2C_BASE_URL,
+  getB2BBaseUrl: () => B2B_BASE_URL
 };
