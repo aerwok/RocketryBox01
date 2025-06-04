@@ -25,32 +25,32 @@ export const getCourierHandler = async (courierCode) => {
   try {
     // Standardize courier code
     const normalizedCode = courierCode.toUpperCase();
-    
+
     // Get partner configuration from database
     const partnerDetails = await getPartnerDetails(courierCode);
-    
+
     if (!partnerDetails) {
       throw new Error(`Partner configuration not found for ${courierCode}`);
     }
-    
+
     // Check if courier module exists
     const courierModule = courierModules[normalizedCode];
-    
+
     if (!courierModule) {
       throw new Error(`Courier module not found for ${courierCode}`);
     }
-    
+
     // Return a handler with methods that use the partner details
     return {
-      calculateRate: (packageDetails, deliveryDetails) => 
+      calculateRate: (packageDetails, deliveryDetails) =>
         courierModule.calculateRate(packageDetails, deliveryDetails, partnerDetails),
-      
-      bookShipment: (shipmentDetails) => 
+
+      bookShipment: (shipmentDetails) =>
         courierModule.bookShipment(shipmentDetails, partnerDetails),
-      
-      trackShipment: (trackingNumber) => 
+
+      trackShipment: (trackingNumber) =>
         courierModule.trackShipment(trackingNumber, partnerDetails),
-      
+
       partnerDetails: {
         id: partnerDetails.id,
         name: partnerDetails.name,
@@ -74,11 +74,11 @@ export const getCourierHandler = async (courierCode) => {
 export const bookShipment = async (courierCode, shipmentDetails) => {
   try {
     const courierHandler = await getCourierHandler(courierCode);
-    
+
     if (!courierHandler) {
       throw new Error(`Could not initialize handler for ${courierCode}`);
     }
-    
+
     return await courierHandler.bookShipment(shipmentDetails);
   } catch (error) {
     logger.error(`Error booking shipment with ${courierCode}: ${error.message}`);
@@ -123,7 +123,7 @@ export const bookOrderWithCourier = async (order, courierCode) => {
       cod: order.paymentMethod === 'COD',
       codAmount: order.paymentMethod === 'COD' ? order.total : 0
     };
-    
+
     // Book the shipment
     return await bookShipment(courierCode, shipmentDetails);
   } catch (error) {
@@ -140,4 +140,4 @@ export default {
   getCourierHandler,
   bookShipment,
   bookOrderWithCourier
-}; 
+};

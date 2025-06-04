@@ -14,7 +14,14 @@
     "import:ecomexpress": "node src/scripts/import-partner.js src/data/partners/ecomexpress.json",
     "import-ratecards": "node src/scripts/import-ratecards.js",
     "check-partners": "node src/scripts/check-partners.js",
-    "test-partners-api": "node src/scripts/test-partners-api.js"
+    "test-partners-api": "node src/scripts/test-partners-api.js",
+    "test:ekart": "node test_ekart_integration.js",
+    "test:ekart:quick": "node test_ekart_quick.js",
+    "test:ekart:no-redis": "node test_ekart_no_redis.js",
+    "test:ekart:auth": "node -e \"import('./src/utils/ekart.js').then(m => m.authenticate().then(token => console.log('✅ Auth successful, token length:', token.length)).catch(err => console.error('❌ Auth failed:', err.message)))\"",
+    "test:redis": "node test_redis_connection.js",
+    "test:delhivery": "node test_delhivery_integration.js",
+    "test:delhivery:simple": "node test_delhivery_simple.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.810.0",

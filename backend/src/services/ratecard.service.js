@@ -7,7 +7,7 @@ import RateCard from '../models/ratecard.model.js';
 
 class RateCardService {
   constructor() {
-    console.log('🔧 RateCard Service initialized');
+    // console.log('🔧 RateCard Service initialized');
   }
 
   /**
@@ -77,9 +77,9 @@ class RateCardService {
    */
   async getRateCardsByCourier(courier) {
     try {
-      const rateCards = await RateCard.find({ 
-        courier, 
-        isActive: true 
+      const rateCards = await RateCard.find({
+        courier,
+        isActive: true
       }).sort({ zone: 1, mode: 1 });
 
       console.log('🚚 Rate cards by courier fetched:', {
@@ -137,77 +137,77 @@ class RateCardService {
     const pincodeMapping = {
       // Delhi
       '110': { city: 'Delhi', state: 'Delhi', isMetro: true },
-      
+
       // Mumbai (Maharashtra)
       '400': { city: 'Mumbai', state: 'Maharashtra', isMetro: true },
       '401': { city: 'Mumbai', state: 'Maharashtra', isMetro: true },
-      
+
       // Bangalore (Karnataka)
       '560': { city: 'Bangalore', state: 'Karnataka', isMetro: true },
       '561': { city: 'Bangalore', state: 'Karnataka', isMetro: true },
-      
+
       // Chennai (Tamil Nadu)
       '600': { city: 'Chennai', state: 'Tamil Nadu', isMetro: true },
       '601': { city: 'Chennai', state: 'Tamil Nadu', isMetro: true },
       '602': { city: 'Chennai', state: 'Tamil Nadu', isMetro: true },
       '603': { city: 'Chennai', state: 'Tamil Nadu', isMetro: true },
-      
+
       // Kolkata (West Bengal)
       '700': { city: 'Kolkata', state: 'West Bengal', isMetro: true },
       '701': { city: 'Kolkata', state: 'West Bengal', isMetro: true },
-      
+
       // Hyderabad (Telangana)
       '500': { city: 'Hyderabad', state: 'Telangana', isMetro: true },
       '501': { city: 'Hyderabad', state: 'Telangana', isMetro: true },
-      
+
       // Pune (Maharashtra)
       '411': { city: 'Pune', state: 'Maharashtra', isMetro: true },
       '412': { city: 'Pune', state: 'Maharashtra', isMetro: true },
-      
+
       // Ahmedabad (Gujarat)
       '380': { city: 'Ahmedabad', state: 'Gujarat', isMetro: true },
       '382': { city: 'Ahmedabad', state: 'Gujarat', isMetro: true },
-      
+
       // Jaipur (Rajasthan)
       '302': { city: 'Jaipur', state: 'Rajasthan', isMetro: true },
       '303': { city: 'Jaipur', state: 'Rajasthan', isMetro: true },
-      
+
       // Surat (Gujarat)
       '395': { city: 'Surat', state: 'Gujarat', isMetro: true },
-      
+
       // Kochi (Kerala)
       '682': { city: 'Kochi', state: 'Kerala', isMetro: true },
-      
+
       // Lucknow (Uttar Pradesh)
       '226': { city: 'Lucknow', state: 'Uttar Pradesh', isMetro: true },
-      
+
       // Kanpur (Uttar Pradesh)
       '208': { city: 'Kanpur', state: 'Uttar Pradesh', isMetro: true },
-      
+
       // Nagpur (Maharashtra)
       '440': { city: 'Nagpur', state: 'Maharashtra', isMetro: true },
-      
+
       // Indore (Madhya Pradesh)
       '452': { city: 'Indore', state: 'Madhya Pradesh', isMetro: true },
-      
+
       // Bhopal (Madhya Pradesh)
       '462': { city: 'Bhopal', state: 'Madhya Pradesh', isMetro: true },
-      
+
       // Visakhapatnam (Andhra Pradesh)
       '530': { city: 'Visakhapatnam', state: 'Andhra Pradesh', isMetro: true },
-      
+
       // Gurgaon (Haryana)
       '122': { city: 'Gurgaon', state: 'Haryana', isMetro: false },
-      
+
       // Noida (Uttar Pradesh)
       '201': { city: 'Noida', state: 'Uttar Pradesh', isMetro: false },
-      
+
       // Faridabad (Haryana)
       '121': { city: 'Faridabad', state: 'Haryana', isMetro: false },
-      
+
       // Ghaziabad (Uttar Pradesh)
       '201': { city: 'Ghaziabad', state: 'Uttar Pradesh', isMetro: false },
-      
+
       // Other major state mappings
       // Uttar Pradesh
       '200': { city: 'Other', state: 'Uttar Pradesh', isMetro: false },
@@ -289,7 +289,7 @@ class RateCardService {
       '283': { city: 'Other', state: 'Uttar Pradesh', isMetro: false },
       '284': { city: 'Other', state: 'Uttar Pradesh', isMetro: false },
       '285': { city: 'Other', state: 'Uttar Pradesh', isMetro: false },
-      
+
       // Haryana
       '120': { city: 'Other', state: 'Haryana', isMetro: false },
       '123': { city: 'Other', state: 'Haryana', isMetro: false },
@@ -306,7 +306,7 @@ class RateCardService {
       '134': { city: 'Other', state: 'Haryana', isMetro: false },
       '135': { city: 'Other', state: 'Haryana', isMetro: false },
       '136': { city: 'Other', state: 'Haryana', isMetro: false },
-      
+
       // Rajasthan
       '301': { city: 'Other', state: 'Rajasthan', isMetro: false },
       '304': { city: 'Other', state: 'Rajasthan', isMetro: false },
@@ -335,7 +335,7 @@ class RateCardService {
       '343': { city: 'Other', state: 'Rajasthan', isMetro: false },
       '344': { city: 'Other', state: 'Rajasthan', isMetro: false },
       '345': { city: 'Other', state: 'Rajasthan', isMetro: false },
-      
+
       // Gujarat
       '360': { city: 'Other', state: 'Gujarat', isMetro: false },
       '361': { city: 'Other', state: 'Gujarat', isMetro: false },
@@ -362,7 +362,7 @@ class RateCardService {
       '394': { city: 'Other', state: 'Gujarat', isMetro: false },
       '396': { city: 'Other', state: 'Gujarat', isMetro: false },
       '397': { city: 'Other', state: 'Gujarat', isMetro: false },
-      
+
       // Maharashtra
       '402': { city: 'Other', state: 'Maharashtra', isMetro: false },
       '403': { city: 'Other', state: 'Maharashtra', isMetro: false },
@@ -385,7 +385,7 @@ class RateCardService {
       '443': { city: 'Other', state: 'Maharashtra', isMetro: false },
       '444': { city: 'Other', state: 'Maharashtra', isMetro: false },
       '445': { city: 'Other', state: 'Maharashtra', isMetro: false },
-      
+
       // West Bengal
       '711': { city: 'Other', state: 'West Bengal', isMetro: false },
       '712': { city: 'Other', state: 'West Bengal', isMetro: false },
@@ -403,7 +403,7 @@ class RateCardService {
       '743': { city: 'Other', state: 'West Bengal', isMetro: false },
       '744': { city: 'Other', state: 'West Bengal', isMetro: false },
       '751': { city: 'Other', state: 'West Bengal', isMetro: false },
-      
+
       // Tamil Nadu
       '604': { city: 'Other', state: 'Tamil Nadu', isMetro: false },
       '605': { city: 'Other', state: 'Tamil Nadu', isMetro: false },
@@ -439,7 +439,7 @@ class RateCardService {
       '642': { city: 'Other', state: 'Tamil Nadu', isMetro: false },
       '643': { city: 'Other', state: 'Tamil Nadu', isMetro: false },
       '691': { city: 'Other', state: 'Tamil Nadu', isMetro: false },
-      
+
       // Karnataka
       '562': { city: 'Other', state: 'Karnataka', isMetro: false },
       '563': { city: 'Other', state: 'Karnataka', isMetro: false },
@@ -460,7 +460,7 @@ class RateCardService {
       '586': { city: 'Other', state: 'Karnataka', isMetro: false },
       '587': { city: 'Other', state: 'Karnataka', isMetro: false },
       '591': { city: 'Other', state: 'Karnataka', isMetro: false },
-      
+
       // Andhra Pradesh / Telangana
       '502': { city: 'Other', state: 'Telangana', isMetro: false },
       '503': { city: 'Other', state: 'Telangana', isMetro: false },
@@ -484,7 +484,7 @@ class RateCardService {
       '533': { city: 'Other', state: 'Andhra Pradesh', isMetro: false },
       '534': { city: 'Other', state: 'Andhra Pradesh', isMetro: false },
       '535': { city: 'Other', state: 'Andhra Pradesh', isMetro: false },
-      
+
       // Kerala
       '670': { city: 'Other', state: 'Kerala', isMetro: false },
       '671': { city: 'Other', state: 'Kerala', isMetro: false },
@@ -503,7 +503,7 @@ class RateCardService {
       '695': { city: 'Other', state: 'Kerala', isMetro: false },
       '696': { city: 'Other', state: 'Kerala', isMetro: false },
       '697': { city: 'Other', state: 'Kerala', isMetro: false },
-      
+
       // North Eastern States (Special Zone)
       '781': { city: 'Guwahati', state: 'Assam', isMetro: false, isSpecial: true },
       '782': { city: 'Other', state: 'Assam', isMetro: false, isSpecial: true },
@@ -520,7 +520,7 @@ class RateCardService {
       '796': { city: 'Other', state: 'Manipur', isMetro: false, isSpecial: true },
       '797': { city: 'Other', state: 'Nagaland', isMetro: false, isSpecial: true },
       '798': { city: 'Other', state: 'Nagaland', isMetro: false, isSpecial: true },
-      
+
       // Jammu & Kashmir (Special Zone)
       '180': { city: 'Other', state: 'Jammu & Kashmir', isMetro: false, isSpecial: true },
       '181': { city: 'Other', state: 'Jammu & Kashmir', isMetro: false, isSpecial: true },
@@ -534,7 +534,7 @@ class RateCardService {
       '193': { city: 'Other', state: 'Jammu & Kashmir', isMetro: false, isSpecial: true },
       '194': { city: 'Other', state: 'Jammu & Kashmir', isMetro: false, isSpecial: true },
       '196': { city: 'Other', state: 'Jammu & Kashmir', isMetro: false, isSpecial: true },
-      
+
       // Himachal Pradesh (Special Zone)
       '171': { city: 'Other', state: 'Himachal Pradesh', isMetro: false, isSpecial: true },
       '172': { city: 'Other', state: 'Himachal Pradesh', isMetro: false, isSpecial: true },
@@ -543,7 +543,7 @@ class RateCardService {
       '175': { city: 'Other', state: 'Himachal Pradesh', isMetro: false, isSpecial: true },
       '176': { city: 'Other', state: 'Himachal Pradesh', isMetro: false, isSpecial: true },
       '177': { city: 'Other', state: 'Himachal Pradesh', isMetro: false, isSpecial: true },
-      
+
       // Punjab
       '140': { city: 'Other', state: 'Punjab', isMetro: false },
       '141': { city: 'Other', state: 'Punjab', isMetro: false },
@@ -564,7 +564,7 @@ class RateCardService {
       '156': { city: 'Other', state: 'Punjab', isMetro: false },
       '160': { city: 'Chandigarh', state: 'Chandigarh', isMetro: true }, // UT
       '161': { city: 'Other', state: 'Punjab', isMetro: false },
-      
+
       // Uttarakhand (part of UP range but separate state)
       '244': { city: 'Other', state: 'Uttarakhand', isMetro: false },
       '245': { city: 'Other', state: 'Uttarakhand', isMetro: false },
@@ -574,7 +574,7 @@ class RateCardService {
       '249': { city: 'Other', state: 'Uttarakhand', isMetro: false },
       '263': { city: 'Other', state: 'Uttarakhand', isMetro: false },
       '264': { city: 'Other', state: 'Uttarakhand', isMetro: false },
-      
+
       // Madhya Pradesh (comprehensive)
       '450': { city: 'Other', state: 'Madhya Pradesh', isMetro: false },
       '451': { city: 'Other', state: 'Madhya Pradesh', isMetro: false },
@@ -613,7 +613,7 @@ class RateCardService {
       '486': { city: 'Other', state: 'Madhya Pradesh', isMetro: false },
       '487': { city: 'Other', state: 'Madhya Pradesh', isMetro: false },
       '488': { city: 'Other', state: 'Madhya Pradesh', isMetro: false },
-      
+
       // Chhattisgarh
       '490': { city: 'Other', state: 'Chhattisgarh', isMetro: false },
       '491': { city: 'Other', state: 'Chhattisgarh', isMetro: false },
@@ -623,10 +623,10 @@ class RateCardService {
       '495': { city: 'Other', state: 'Chhattisgarh', isMetro: false },
       '496': { city: 'Other', state: 'Chhattisgarh', isMetro: false },
       '497': { city: 'Other', state: 'Chhattisgarh', isMetro: false },
-      
+
       // Goa
       '403': { city: 'Panaji', state: 'Goa', isMetro: false },
-      
+
       // Bihar
       '800': { city: 'Patna', state: 'Bihar', isMetro: true },
       '801': { city: 'Other', state: 'Bihar', isMetro: false },
@@ -655,7 +655,7 @@ class RateCardService {
       '853': { city: 'Other', state: 'Bihar', isMetro: false },
       '854': { city: 'Other', state: 'Bihar', isMetro: false },
       '855': { city: 'Other', state: 'Bihar', isMetro: false },
-      
+
       // Jharkhand
       '814': { city: 'Other', state: 'Jharkhand', isMetro: false },
       '815': { city: 'Other', state: 'Jharkhand', isMetro: false },
@@ -669,7 +669,7 @@ class RateCardService {
       '833': { city: 'Other', state: 'Jharkhand', isMetro: false },
       '834': { city: 'Other', state: 'Jharkhand', isMetro: false },
       '835': { city: 'Other', state: 'Jharkhand', isMetro: false },
-      
+
       // Odisha
       '751': { city: 'Bhubaneswar', state: 'Odisha', isMetro: true },
       '752': { city: 'Other', state: 'Odisha', isMetro: false },
@@ -691,51 +691,51 @@ class RateCardService {
       '768': { city: 'Other', state: 'Odisha', isMetro: false },
       '769': { city: 'Other', state: 'Odisha', isMetro: false },
       '770': { city: 'Other', state: 'Odisha', isMetro: false },
-      
+
       // Tripura (Special Zone)
       '799': { city: 'Agartala', state: 'Tripura', isMetro: false, isSpecial: true },
-      
-      // Mizoram (Special Zone)  
+
+      // Mizoram (Special Zone)
       '796': { city: 'Aizawl', state: 'Mizoram', isMetro: false, isSpecial: true },
-      
+
       // Arunachal Pradesh (Special Zone)
       '790': { city: 'Itanagar', state: 'Arunachal Pradesh', isMetro: false, isSpecial: true },
       '791': { city: 'Other', state: 'Arunachal Pradesh', isMetro: false, isSpecial: true },
       '792': { city: 'Other', state: 'Arunachal Pradesh', isMetro: false, isSpecial: true },
-      
+
       // Sikkim (Special Zone)
       '737': { city: 'Gangtok', state: 'Sikkim', isMetro: false, isSpecial: true },
-      
+
       // Union Territories
       // Andaman and Nicobar Islands
       '744': { city: 'Port Blair', state: 'Andaman and Nicobar Islands', isMetro: false, isSpecial: true },
-      
+
       // Dadra and Nagar Haveli and Daman and Diu
       '396': { city: 'Silvassa', state: 'Dadra and Nagar Haveli and Daman and Diu', isMetro: false },
       '362': { city: 'Daman', state: 'Dadra and Nagar Haveli and Daman and Diu', isMetro: false },
-      
+
       // Lakshadweep
       '682': { city: 'Kavaratti', state: 'Lakshadweep', isMetro: false, isSpecial: true },
-      
+
       // Puducherry
       '605': { city: 'Puducherry', state: 'Puducherry', isMetro: false },
       '609': { city: 'Karaikal', state: 'Puducherry', isMetro: false },
       '533': { city: 'Yanam', state: 'Puducherry', isMetro: false },
       '673': { city: 'Mahe', state: 'Puducherry', isMetro: false },
-      
+
       // Ladakh (Special Zone)
       '194': { city: 'Leh', state: 'Ladakh', isMetro: false, isSpecial: true }
     };
-    
+
     // Get first 3 digits for lookup
     const prefix = pincode.substring(0, 3);
-    
+
     // Return info or default
-    return pincodeMapping[prefix] || { 
-      city: 'Unknown', 
-      state: 'Unknown', 
-      isMetro: false, 
-      isSpecial: false 
+    return pincodeMapping[prefix] || {
+      city: 'Unknown',
+      state: 'Unknown',
+      isMetro: false,
+      isSpecial: false
     };
   }
 
@@ -746,7 +746,7 @@ class RateCardService {
     try {
       const fromInfo = this.getPincodeInfo(fromPincode);
       const toInfo = this.getPincodeInfo(toPincode);
-      
+
       console.log(`📍 Zone determination:`, {
         from: `${fromPincode} (${fromInfo.city}, ${fromInfo.state})`,
         to: `${toPincode} (${toInfo.city}, ${toInfo.state})`
@@ -771,13 +771,13 @@ class RateCardService {
       if (fromInfo.isMetro && toInfo.isMetro) {
         const fromRegion = this.getRegionFromState(fromInfo.state);
         const toRegion = this.getRegionFromState(toInfo.state);
-        
+
         // Metro to Metro for major corridors:
         // 1. Same region metros
         if (fromRegion === toRegion) {
           return 'Metro to Metro';
         }
-        
+
         // 2. Major inter-regional metro corridors (good connectivity)
         const majorMetroCorridors = [
           // North-West corridor (Delhi-Mumbai, etc.)
@@ -793,17 +793,17 @@ class RateCardService {
           // East-North corridor (Kolkata-Delhi, etc.)
           ['East', 'North']
         ];
-        
+
         // Check if this is a major corridor (bidirectional)
-        const isCorridorRoute = majorMetroCorridors.some(([region1, region2]) => 
-          (fromRegion === region1 && toRegion === region2) || 
+        const isCorridorRoute = majorMetroCorridors.some(([region1, region2]) =>
+          (fromRegion === region1 && toRegion === region2) ||
           (fromRegion === region2 && toRegion === region1)
         );
-        
+
         if (isCorridorRoute) {
           return 'Metro to Metro';
         }
-        
+
         // 3. All other metro pairs go to Rest of India
         // (e.g., very distant routes like Northeast to South, etc.)
       }
@@ -811,7 +811,7 @@ class RateCardService {
       // 5. Within Region - Check if states are in same region (non-metro)
       const fromRegion = this.getRegionFromState(fromInfo.state);
       const toRegion = this.getRegionFromState(toInfo.state);
-      
+
       if (fromRegion === toRegion && fromRegion !== 'Unknown') {
         return 'Within Region';
       }
@@ -840,14 +840,14 @@ class RateCardService {
       'Jammu & Kashmir': 'North',
       'Chandigarh': 'North', // UT
       'Ladakh': 'North', // UT
-      
+
       // West India
       'Maharashtra': 'West',
       'Gujarat': 'West',
       'Rajasthan': 'West',
       'Goa': 'West',
       'Dadra and Nagar Haveli and Daman and Diu': 'West', // UT
-      
+
       // South India
       'Karnataka': 'South',
       'Tamil Nadu': 'South',
@@ -856,18 +856,18 @@ class RateCardService {
       'Telangana': 'South',
       'Puducherry': 'South', // UT
       'Lakshadweep': 'South', // UT
-      
+
       // East India
       'West Bengal': 'East',
       'Odisha': 'East',
       'Jharkhand': 'East',
       'Bihar': 'East',
       'Sikkim': 'East',
-      
+
       // Central India
       'Madhya Pradesh': 'Central',
       'Chhattisgarh': 'Central',
-      
+
       // Northeast India
       'Assam': 'Northeast',
       'Meghalaya': 'Northeast',
@@ -876,11 +876,11 @@ class RateCardService {
       'Tripura': 'Northeast',
       'Mizoram': 'Northeast',
       'Arunachal Pradesh': 'Northeast',
-      
+
       // Island Territories
       'Andaman and Nicobar Islands': 'Islands' // UT
     };
-    
+
     return regionMapping[state] || 'Unknown';
   }
 
@@ -959,10 +959,10 @@ class RateCardService {
       const calculations = rateCards.map(rate => {
         // Step 1: Calculate final weight considering minimum billable weight
         const finalWeight = Math.max(billedWeight, rate.minimumBillableWeight || 0.5);
-        
+
         // Step 2: Calculate weight multiplier (exactly as in script.js)
         const weightMultiplier = Math.ceil(finalWeight / 0.5);
-        
+
         // Step 3: Calculate shipping cost (exactly as in script.js)
         const shippingCost = rate.baseRate + (rate.addlRate * (weightMultiplier - 1));
 
@@ -988,8 +988,8 @@ class RateCardService {
           }
 
           // Calculate the COD based on whichever is higher between codAmount or codPercent of codCollectableAmount
-          const percentBasedCOD = rate.codPercent && !isNaN(rate.codPercent) && codCollectableAmount > 0 
-            ? (rate.codPercent / 100) * codCollectableAmount 
+          const percentBasedCOD = rate.codPercent && !isNaN(rate.codPercent) && codCollectableAmount > 0
+            ? (rate.codPercent / 100) * codCollectableAmount
             : 0;
 
           // Ensure codCharges is the higher value between codAmount and codPercent-based COD
@@ -1001,7 +1001,7 @@ class RateCardService {
 
         // Step 6: Calculate GST (exactly as in script.js)
         const gst = 0.18 * (shippingCost + rtoCharges + codCharges);
-        
+
         // Step 7: Calculate total (exactly as in script.js)
         const total = shippingCost + rtoCharges + codCharges + gst;
 
@@ -1109,7 +1109,7 @@ class RateCardService {
   async getStatistics() {
     try {
       const totalRateCards = await RateCard.countDocuments({ isActive: true });
-      
+
       const courierStats = await RateCard.aggregate([
         { $match: { isActive: true } },
         { $group: { _id: '$courier', count: { $sum: 1 } } },
@@ -1197,7 +1197,7 @@ class RateCardService {
           },
           { new: true }
         );
-        
+
         console.log('✏️ Rate card updated:', {
           id: rateCard._id,
           courier: rateCard.courier,
@@ -1206,7 +1206,7 @@ class RateCardService {
       } else {
         // Create new rate card
         rateCard = await RateCard.create(rateCardData);
-        
+
         console.log('✅ Rate card created:', {
           id: rateCard._id,
           courier: rateCard.courier,
@@ -1304,4 +1304,4 @@ class RateCardService {
 
 // Export singleton instance
 export const rateCardService = new RateCardService();
-export default rateCardService; 
+export default rateCardService;

@@ -3,28 +3,43 @@
  * It's a simple proxy to avoid circular dependencies between modules.
  */
 
-import { getIO } from './utils/socketio.js';
 import { logger } from './utils/logger.js';
+import { getIO } from './utils/socketio.js';
 
-// Export the io instance with error handling
-let io;
-try {
-  io = getIO();
-  logger.debug('Successfully obtained Socket.IO instance in server.js');
-} catch (error) {
-  logger.warn(`Error getting Socket.IO instance: ${error.message}`);
-  // Provide fallback mock implementation
-  io = {
-    to: () => ({ emit: () => {} }),
-    emit: () => {},
-    on: () => {}
-  };
-}
+// Export a function that gets the io instance when needed (lazy loading)
+export const getSocketIO = () => {
+  try {
+    return getIO();
+  } catch (error) {
+    logger.warn(`Error getting Socket.IO instance: ${error.message}`);
+    // Provide fallback mock implementation
+    return {
+      to: () => ({ emit: () => { } }),
+      emit: () => { },
+      on: () => { }
+    };
+  }
+};
 
-// Export the io instance
-export { io };
+// Create a lazy-loaded io object that gets the instance when accessed
+const ioProxy = {};
+Object.defineProperty(ioProxy, 'to', {
+  get() { return getSocketIO().to; }
+});
+Object.defineProperty(ioProxy, 'emit', {
+  get() { return getSocketIO().emit; }
+});
+Object.defineProperty(ioProxy, 'on', {
+  get() { return getSocketIO().on; }
+});
+
+// Export the lazy io instance for backward compatibility
+export const io = ioProxy;
 
 // Export other server-related utilities as needed
 export default {
-  io
-}; 
+  getSocketIO,
+  get io() {
+    return getSocketIO();
+  }
+};

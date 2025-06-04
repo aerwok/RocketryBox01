@@ -1,5 +1,5 @@
-import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import Razorpay from 'razorpay';
 import Payment from '../modules/customer/models/payment.model.js';
 
 /**
@@ -15,9 +15,9 @@ class RazorpayService {
       key_secret: process.env.RAZORPAY_KEY_SECRET || '41gQuFZj7FeltDpKcHBRGho9'
     });
 
-    console.log('🔧 Razorpay Service initialized with key:', 
-      process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y'
-    );
+    // console.log('🔧 Razorpay Service initialized with key:',
+    //   process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y'
+    // );
   }
 
   /**
@@ -333,7 +333,7 @@ class RazorpayService {
         color: '#2563eb' // RocketryBox blue theme
       },
       modal: {
-        ondismiss: function() {
+        ondismiss: function () {
           console.log('Payment modal closed');
         }
       }
@@ -379,4 +379,4 @@ class RazorpayService {
 
 // Export singleton instance
 export const razorpayService = new RazorpayService();
-export default razorpayService; 
+export default razorpayService;
