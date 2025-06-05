@@ -1,196 +1,195 @@
-import { ApiService } from './api.service';
-import { ApiResponse } from '@/types/api';
-import { AuthService } from './auth.service';
+import { ApiResponse, Seller } from '@/types/api';
 import { AdminService } from './admin.service';
-import { UploadService } from './upload.service';
+import { ApiService } from './api.service';
+import { AuthService } from './auth.service';
 import { NotificationService } from './notification.service';
-import { WebSocketService } from './websocket.service';
 import { PoliciesService } from "./policies.service";
-import { ProfileService, DocumentType as ProfileDocumentType, CompanyDetails as ProfileCompanyDetails } from './profile.service';
-import { Seller } from '@/types/api';
+import { CompanyDetails as ProfileCompanyDetails, DocumentType as ProfileDocumentType, ProfileService } from './profile.service';
+import { UploadService } from './upload.service';
+import { WebSocketService } from './websocket.service';
 
 interface WalletTransaction {
-    id: number;
-    date: string;
-    referenceNumber: string;
-    orderId: string;
-    type: string;
-    amount: string;
-    codCharge: string;
-    igst: string;
-    subTotal: string;
-    closingBalance: string;
-    remark: string;
+  id: number;
+  date: string;
+  referenceNumber: string;
+  orderId: string;
+  type: string;
+  amount: string;
+  codCharge: string;
+  igst: string;
+  subTotal: string;
+  closingBalance: string;
+  remark: string;
 }
 
 interface WalletSummary {
-    totalRecharge: number;
-    totalUsed: number;
-    lastRecharge: string;
-    codToWallet: number;
-    closingBalance: string;
+  totalRecharge: number;
+  totalUsed: number;
+  lastRecharge: string;
+  codToWallet: number;
+  closingBalance: string;
 }
 
 interface WalletTransactionParams {
-    page: number;
-    limit: number;
-    date?: string;
-    referenceNumber?: string;
-    orderId?: string;
-    paymentType?: string;
-    creditDebit?: string;
-    amount?: string;
-    remark?: string;
-    sortBy?: string;
-    sortDirection?: 'asc' | 'desc';
+  page: number;
+  limit: number;
+  date?: string;
+  referenceNumber?: string;
+  orderId?: string;
+  paymentType?: string;
+  creditDebit?: string;
+  amount?: string;
+  remark?: string;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
 }
 
 interface RemittanceSummary {
-    totalCOD: string;
-    remittedTillDate: string;
-    lastRemittance: string;
-    totalRemittanceDue: string;
-    nextRemittance: string;
+  totalCOD: string;
+  remittedTillDate: string;
+  lastRemittance: string;
+  totalRemittanceDue: string;
+  nextRemittance: string;
 }
 
 interface RemittanceData {
-    remittanceId: string;
-    status: "Pending" | "Completed" | "Failed";
-    paymentDate: string;
-    remittanceAmount: string;
-    freightDeduction: string;
-    convenienceFee: string;
-    total: string;
-    paymentRef: string;
+  remittanceId: string;
+  status: "Pending" | "Completed" | "Failed";
+  paymentDate: string;
+  remittanceAmount: string;
+  freightDeduction: string;
+  convenienceFee: string;
+  total: string;
+  paymentRef: string;
 }
 
 interface DisputeData {
-    awbNumber: string;
-    disputeDate: string;
-    orderId: string;
-    given: string;
-    applied: string;
-    revised: string;
-    accepted: string;
-    difference: string;
-    status: "Active" | "Inactive";
+  awbNumber: string;
+  disputeDate: string;
+  orderId: string;
+  given: string;
+  applied: string;
+  revised: string;
+  accepted: string;
+  difference: string;
+  status: "Active" | "Inactive";
 }
 
 interface DisputeDetails {
-    orderNo: string;
-    orderPlaced: string;
-    paymentType: string;
+  orderNo: string;
+  orderPlaced: string;
+  paymentType: string;
+  status: string;
+  estimatedDelivery: string;
+  currentLocation: {
+    lat: number;
+    lng: number;
+  };
+  trackingEvents: {
+    date: string;
+    time: string;
+    activity: string;
+    location: string;
     status: string;
-    estimatedDelivery: string;
-    currentLocation: {
-        lat: number;
-        lng: number;
-    };
-    trackingEvents: {
-        date: string;
-        time: string;
-        activity: string;
-        location: string;
-        status: string;
-    }[];
-    weight: string;
-    dimensions: {
-        length: number;
-        width: number;
-        height: number;
-    };
-    volumetricWeight: string;
-    chargedWeight: string;
-    customerDetails: {
-        name: string;
-        address1: string;
-        address2: string;
-        city: string;
-        state: string;
-        pincode: string;
-        country: string;
-        phone: string;
-    };
-    warehouseDetails: {
-        name: string;
-        address1: string;
-        city: string;
-        state: string;
-        pincode: string;
-        country: string;
-        phone: string;
-    };
-    products: {
-        name: string;
-        sku: string;
-        quantity: number;
-        price: number;
-        image: string;
-    }[];
+  }[];
+  weight: string;
+  dimensions: {
+    length: number;
+    width: number;
+    height: number;
+  };
+  volumetricWeight: string;
+  chargedWeight: string;
+  customerDetails: {
+    name: string;
+    address1: string;
+    address2: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country: string;
+    phone: string;
+  };
+  warehouseDetails: {
+    name: string;
+    address1: string;
+    city: string;
+    state: string;
+    pincode: string;
+    country: string;
+    phone: string;
+  };
+  products: {
+    name: string;
+    sku: string;
+    quantity: number;
+    price: number;
+    image: string;
+  }[];
 }
 
 interface ManifestData {
-    manifestId: string;
-    date: string;
-    courier: string;
-    orders: string;
-    pickupStatus: string;
-    warehouse: string;
-    status: string;
+  manifestId: string;
+  date: string;
+  courier: string;
+  orders: string;
+  pickupStatus: string;
+  warehouse: string;
+  status: string;
 }
 
 interface ManifestDetails {
-    manifestId: string;
-    date: string;
-    courier: string;
-    orders: string;
-    pickupStatus: string;
-    warehouse: string;
-    status: string;
-    orderDetails: Array<{
-        orderId: string;
-        customerName: string;
-        address: string;
-        items: string;
-        weight: string;
-    }>;
+  manifestId: string;
+  date: string;
+  courier: string;
+  orders: string;
+  pickupStatus: string;
+  warehouse: string;
+  status: string;
+  orderDetails: Array<{
+    orderId: string;
+    customerName: string;
+    address: string;
+    items: string;
+    weight: string;
+  }>;
 }
 
 interface CreateManifestData {
-    courier: string;
-    warehouse: string;
-    orderIds: string[];
+  courier: string;
+  warehouse: string;
+  orderIds: string[];
 }
 
 interface NDRData {
-    awb: string;
-    status: string;
-    actionRequired: string;
-    actionRequested: string;
-    open: string;
-    closed: string;
+  awb: string;
+  status: string;
+  actionRequired: string;
+  actionRequested: string;
+  open: string;
+  closed: string;
 }
 
 interface NDRDetails {
-    awb: string;
-    status: string;
-    actionRequired: string;
-    actionRequested: string;
-    open: string;
-    closed: string;
-    details: string;
+  awb: string;
+  status: string;
+  actionRequired: string;
+  actionRequested: string;
+  open: string;
+  closed: string;
+  details: string;
 }
 
 interface Product {
-    id: string;
-    name: string;
-    sku: string;
-    category: string;
-    price: number;
-    stock: number;
-    status: "Active" | "Inactive";
-    lastUpdated: string;
-    image?: string;
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  price: number;
+  stock: number;
+  status: "Active" | "Inactive";
+  lastUpdated: string;
+  image?: string;
 }
 
 /**
@@ -248,7 +247,7 @@ export class ServiceFactory {
   getWebSocketService(): WebSocketService {
     return this.webSocketService;
   }
-  
+
   /**
    * Shipping Services
    */
@@ -395,7 +394,7 @@ export class ServiceFactory {
       return apiService.post(`/shipping/shipments/${id}/book`);
     }
   };
-  
+
   /**
    * Partners Services
    */
@@ -404,27 +403,27 @@ export class ServiceFactory {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.get('/admin/partners', { params: filters });
     },
-    
+
     async getPartnerById(id: string): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.get(`/admin/partners/${id}`);
     },
-    
+
     async createPartner(partnerData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.post('/admin/partners', partnerData);
     },
-    
+
     async updatePartner(id: string, partnerData: any): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.put(`/admin/partners/${id}`, partnerData);
     },
-    
+
     async refreshPartnerAPIs(ids: string[]): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.post('/admin/partners/refresh-api', { ids });
     },
-    
+
     async deleteManyPartners(ids: string[]): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.post('/admin/partners/batch-delete', { ids });
@@ -454,7 +453,7 @@ export class ServiceFactory {
       type?: string;
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      
+
       // Route to appropriate endpoint based on type
       let endpoint = '/admin/users';
       if (params?.type === 'seller') {
@@ -462,11 +461,11 @@ export class ServiceFactory {
       } else if (params?.type === 'customer') {
         endpoint = '/admin/users/customers';
       }
-      
+
       // Clean up params to remove 'type' since it's not needed in the query
       const cleanParams = { ...params };
       delete cleanParams.type;
-      
+
       return apiService.get(endpoint, cleanParams);
     },
 
@@ -482,7 +481,7 @@ export class ServiceFactory {
       sortOrder?: 'asc' | 'desc';
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
-      
+
       // Filter out unsupported parameters for the backend validator
       const supportedParams: any = {};
       if (params?.page) supportedParams.page = params.page;
@@ -491,7 +490,7 @@ export class ServiceFactory {
       if (params?.role) supportedParams.role = params.role;
       if (params?.status) supportedParams.status = params.status;
       if (params?.department) supportedParams.department = params.department;
-      
+
       return apiService.get('/admin/team', { params: supportedParams });
     },
 
@@ -595,7 +594,7 @@ export class ServiceFactory {
     async getTickets(page: number, pageSize: number): Promise<ApiResponse<any>> {
       // Import the tickets API
       const { getAllTickets } = await import('@/lib/api/support-tickets');
-      
+
       try {
         const result = await getAllTickets(page, pageSize);
         return {
@@ -612,7 +611,7 @@ export class ServiceFactory {
     async updateTicketStatus(id: string, status: string): Promise<ApiResponse<any>> {
       // Import the tickets API
       const { updateTicketStatus } = await import('@/lib/api/support-tickets');
-      
+
       try {
         const updatedTicket = await updateTicketStatus(id, status as any);
         return {
@@ -650,10 +649,10 @@ export class ServiceFactory {
             cleanParams[key] = String(value);
           }
         });
-        
+
         const queryString = new URLSearchParams(cleanParams).toString();
         const endpoint = queryString ? `/customer/orders?${queryString}` : '/customer/orders';
-        
+
         return ServiceFactory.callApi(endpoint, 'GET');
       },
       getStatusCounts: async (): Promise<ApiResponse<any>> => {
@@ -662,10 +661,10 @@ export class ServiceFactory {
       downloadLabel: async (awb: string): Promise<ApiResponse<Blob>> => {
         try {
           console.log('ServiceFactory: Downloading shipping label for AWB:', awb);
-          
+
           // Call the updated backend endpoint that uses PDFKit
           const response = await ServiceFactory.callApi<Blob>(`/customer/orders/awb/${awb}/label`, 'GET', undefined, 'blob');
-          
+
           console.log('ServiceFactory: API response received:', {
             success: response.success,
             status: response.status,
@@ -673,10 +672,10 @@ export class ServiceFactory {
             hasData: !!response.data,
             dataType: response.data ? typeof response.data : 'no data'
           });
-          
+
           if (response.success && response.data) {
             console.log('ServiceFactory: PDF label downloaded successfully');
-            
+
             // Validate that we received a valid PDF
             const blob = response.data;
             if (blob.type === 'application/pdf' || blob.size > 0) {
@@ -707,10 +706,10 @@ export class ServiceFactory {
             response: error?.response,
             name: error?.name
           });
-          
+
           // Enhanced error handling with better default messages
           let errorMessage = 'Failed to download shipping label. Please try again.';
-          
+
           if (error?.message) {
             errorMessage = error.message;
           } else if (error?.response?.data?.message) {
@@ -722,7 +721,7 @@ export class ServiceFactory {
           } else if (error?.status >= 500) {
             errorMessage = 'Server error occurred. Please try again later.';
           }
-          
+
           return {
             success: false,
             data: null as unknown as Blob,
@@ -759,11 +758,11 @@ export class ServiceFactory {
         const queryParams = new URLSearchParams();
         if (params.from) queryParams.append('startDate', params.from);
         if (params.to) queryParams.append('endDate', params.to);
-        
+
         const response = await ServiceFactory.callApi<any[]>(
           `/seller/invoices?${queryParams.toString()}`
         );
-        
+
         // Transform response to match expected format
         if (response.success) {
           return {
@@ -776,7 +775,7 @@ export class ServiceFactory {
       getInvoiceSummary: async (params: { from: string; to: string }) => {
         // Since summary endpoint doesn't exist, we'll calculate from invoices
         const invoicesResponse = await ServiceFactory.seller.billing.getInvoices(params);
-        
+
         if (invoicesResponse.success) {
           const invoices = (invoicesResponse.data as { invoices: any[] }).invoices;
           const summary = {
@@ -786,7 +785,7 @@ export class ServiceFactory {
             totalPaid: `₹${invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`,
             totalOutstanding: `₹${invoices.filter((inv: any) => inv.status !== 'paid').reduce((sum: number, inv: any) => sum + (inv.total || 0), 0).toFixed(2)}`
           };
-          
+
           return {
             success: true,
             data: { summary },
@@ -794,7 +793,7 @@ export class ServiceFactory {
             status: 200
           };
         }
-        
+
         return invoicesResponse;
       },
       downloadInvoice: async (invoiceId: string) => {
@@ -811,7 +810,7 @@ export class ServiceFactory {
         );
       },
       getRateCard: async () => {
-        return await ServiceFactory.callApi<{ 
+        return await ServiceFactory.callApi<{
           lastUpdated: string;
           rates: any[];
         }>('/seller/rate-card');
@@ -986,10 +985,10 @@ export class ServiceFactory {
             cleanParams[key] = String(value);
           }
         });
-        
+
         const queryString = new URLSearchParams(cleanParams).toString();
         const endpoint = queryString ? `/seller/orders?${queryString}` : '/seller/orders';
-        
+
         return ServiceFactory.callApi(endpoint);
       },
       updateStatus: async (id: string, status: string): Promise<ApiResponse<void>> => {
@@ -1012,7 +1011,20 @@ export class ServiceFactory {
       updateCompanyDetails: (data: ProfileCompanyDetails) => ServiceFactory.getInstance().profileService.updateCompanyDetails(data),
       updateBankDetails: (data: any) => ServiceFactory.getInstance().profileService.updateBankDetails(data),
       updateProfileImage: (file: File) => ServiceFactory.getInstance().profileService.updateProfileImage(file),
-      updateStoreLinks: (links: Seller['storeLinks']) => ServiceFactory.getInstance().profileService.updateStoreLinks(links)
+      updateStoreLinks: (links: Seller['storeLinks']) => ServiceFactory.getInstance().profileService.updateStoreLinks(links),
+      // Agreement related methods
+      getAgreements: async (): Promise<ApiResponse<any[]>> => {
+        return ServiceFactory.callApi('/seller/agreements', 'GET');
+      },
+      acceptAgreement: async (agreementId: string): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi(`/seller/agreements/${agreementId}/accept`, 'POST');
+      },
+      rejectAgreement: async (agreementId: string): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi(`/seller/agreements/${agreementId}/reject`, 'POST');
+      },
+      downloadAgreement: async (agreementId: string): Promise<ApiResponse<Blob>> => {
+        return ServiceFactory.callApi(`/seller/agreements/${agreementId}/download`, 'GET', undefined, 'blob');
+      }
     }
   };
 
@@ -1024,7 +1036,7 @@ export class ServiceFactory {
         try {
           const { sellerAuthService } = await import('@/services/seller-auth.service');
           const currentUser = await sellerAuthService.getCurrentUser();
-          
+
           if (currentUser?.userType === 'team_member') {
             const hasPermission = await sellerAuthService.hasPermission(permissionRequired);
             if (!hasPermission) {
@@ -1066,18 +1078,18 @@ export class ServiceFactory {
       return response;
     } catch (error: any) {
       console.error('ServiceFactory.callApi error:', error);
-      
+
       // For blob responses, try a direct fetch fallback if the main call fails
       if (responseType === 'blob' && method.toUpperCase() === 'GET') {
         try {
           console.log('ServiceFactory: Attempting direct fetch fallback for PDF download...');
           const { secureStorage } = await import('@/utils/secureStorage');
           const authToken = await secureStorage.getItem('auth_token');
-          
+
           if (!authToken) {
             throw new Error('No authentication token found. Please log in again.');
           }
-          
+
           const fallbackResponse = await fetch(`/api/v2${endpoint}`, {
             method: 'GET',
             headers: {
@@ -1085,22 +1097,22 @@ export class ServiceFactory {
               'Content-Type': 'application/json'
             }
           });
-          
+
           if (fallbackResponse.ok) {
             const blob = await fallbackResponse.blob();
-            
+
             // Additional validation for PDF downloads
             if (endpoint.includes('/label') && blob.size > 0) {
               console.log('ServiceFactory: Fallback PDF download successful', {
                 size: blob.size,
                 type: blob.type
               });
-              
+
               // Ensure the blob has the correct MIME type
-              const pdfBlob = blob.type === 'application/pdf' 
-                ? blob 
+              const pdfBlob = blob.type === 'application/pdf'
+                ? blob
                 : new Blob([blob], { type: 'application/pdf' });
-              
+
               return {
                 success: true,
                 data: pdfBlob as unknown as T,
@@ -1124,13 +1136,13 @@ export class ServiceFactory {
           }
         } catch (fallbackError: any) {
           console.error('ServiceFactory fallback error:', fallbackError);
-          
+
           // Enhanced error messages for PDF downloads
           let errorMessage = fallbackError.message || 'Failed to download shipping label';
           if (endpoint.includes('/label')) {
             errorMessage = 'Unable to download shipping label. This may be due to network issues or the label not being ready yet. Please try again in a few moments.';
           }
-          
+
           return {
             success: false,
             data: null as unknown as T,
@@ -1139,7 +1151,7 @@ export class ServiceFactory {
           };
         }
       }
-      
+
       return {
         success: false,
         data: null as unknown as T,
@@ -1233,4 +1245,4 @@ export class ServiceFactory {
   }
 }
 
-export const serviceFactory = ServiceFactory.getInstance(); 
+export const serviceFactory = ServiceFactory.getInstance();

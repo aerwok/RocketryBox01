@@ -5,6 +5,7 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
     Table,
     TableBody,
@@ -13,11 +14,10 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { Search, Plus, Package, Boxes, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Boxes, CheckCircle2, Package, Plus, Search } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 interface WarehouseItem {
     id: string;
@@ -29,53 +29,7 @@ interface WarehouseItem {
     lastUpdated: string;
 }
 
-const mockWarehouseItems: WarehouseItem[] = [
-    {
-        id: "1",
-        name: "Premium Laptop",
-        sku: "LAP001",
-        quantity: 50,
-        location: "A-123",
-        status: "In Stock",
-        lastUpdated: "2024-03-25"
-    },
-    {
-        id: "2",
-        name: "Wireless Mouse",
-        sku: "MOU001",
-        quantity: 5,
-        location: "B-456",
-        status: "Low Stock",
-        lastUpdated: "2024-03-25"
-    },
-    {
-        id: "3",
-        name: "Mechanical Keyboard",
-        sku: "KEY001",
-        quantity: 0,
-        location: "C-789",
-        status: "Out of Stock",
-        lastUpdated: "2024-03-24"
-    },
-    {
-        id: "4",
-        name: "4K Monitor",
-        sku: "MON001",
-        quantity: 20,
-        location: "D-012",
-        status: "In Stock",
-        lastUpdated: "2024-03-23"
-    },
-    {
-        id: "5",
-        name: "USB-C Hub",
-        sku: "HUB001",
-        quantity: 75,
-        location: "E-345",
-        status: "In Stock",
-        lastUpdated: "2024-03-22"
-    }
-];
+const warehouseItems: WarehouseItem[] = [];
 
 const SellerWarehousePage = () => {
     const [searchQuery, setSearchQuery] = useState("");
@@ -105,7 +59,7 @@ const SellerWarehousePage = () => {
         toast.info("Transfer functionality coming soon!");
     };
 
-    const filteredItems = mockWarehouseItems.filter(item =>
+    const filteredItems = warehouseItems.filter(item =>
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.location.toLowerCase().includes(searchQuery.toLowerCase())
@@ -163,7 +117,7 @@ const SellerWarehousePage = () => {
                         <Package className="size-4 text-gray-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{mockWarehouseItems.length}</div>
+                        <div className="text-2xl font-bold">{warehouseItems.length}</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -175,7 +129,7 @@ const SellerWarehousePage = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {mockWarehouseItems.filter(item => item.status === "Low Stock").length}
+                            {warehouseItems.filter(item => item.status === "Low Stock").length}
                         </div>
                     </CardContent>
                 </Card>
@@ -188,7 +142,7 @@ const SellerWarehousePage = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {mockWarehouseItems.filter(item => item.status === "Out of Stock").length}
+                            {warehouseItems.filter(item => item.status === "Out of Stock").length}
                         </div>
                     </CardContent>
                 </Card>
@@ -344,4 +298,4 @@ const SellerWarehousePage = () => {
     );
 };
 
-export default SellerWarehousePage; 
+export default SellerWarehousePage;

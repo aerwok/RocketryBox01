@@ -1,4 +1,5 @@
 import express from 'express';
+import agreementRoutes from './routes/agreement.routes.js';
 import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
 import codRemittanceRoutes from './routes/codRemittance.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
@@ -33,6 +34,9 @@ router.use('/', sellerRoutes);
 
 // Support (always accessible)
 router.use('/support', supportRoutes);
+
+// Agreements (always accessible)
+router.use('/agreements', agreementRoutes);
 
 // ==============================================================================
 // PROGRESSIVE ACCESS ROUTES (Require basic profile completion)

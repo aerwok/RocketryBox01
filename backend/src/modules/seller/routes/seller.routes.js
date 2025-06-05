@@ -5,7 +5,7 @@ import { authLimiter } from '../../../middleware/rateLimiter.js';
 import { validationHandler as validateRequest } from '../../../middleware/validator.js';
 import { login, logout, refreshToken, register, resetPassword, sendOTP, verifyOTP } from '../controllers/auth.controller.js';
 import { calculateRateCard, getSellerRateCard } from '../controllers/billing.controller.js';
-import { getDocuments, getProfile, updateBankDetails, updateCompanyDetails, updateDocument, updateProfile } from '../controllers/profile.controller.js';
+import { getDocuments, getProfile, updateBankDetails, updateCompanyDetails, updateDocument, updateProfile, updateStoreLinks } from '../controllers/profile.controller.js';
 import {
   bankDetailsSchema,
   companyDetailsSchema,
@@ -34,6 +34,7 @@ router.get('/profile', authenticateSeller, getProfile);
 router.patch('/profile', authenticateSeller, validateRequest(profileUpdateSchema), updateProfile);
 router.patch('/profile/company-details', authenticateSeller, validateRequest(companyDetailsSchema), updateCompanyDetails);
 router.patch('/profile/bank-details', authenticateSeller, validateRequest(bankDetailsSchema), updateBankDetails);
+router.put('/profile/store-links', authenticateSeller, updateStoreLinks);
 
 // Document Routes
 router.get('/documents', authenticateSeller, getDocuments);

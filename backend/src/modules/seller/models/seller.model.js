@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { generateUserId } from '../../../utils/userIdGenerator.js';
 
 const addressSchema = new mongoose.Schema({
   address1: { type: String },
@@ -51,6 +52,14 @@ const sellerSchema = new mongoose.Schema({
   supportEmail: { type: String },
   operationsEmail: { type: String },
   financeEmail: { type: String },
+
+  // Store Links
+  storeLinks: {
+    website: { type: String },
+    amazon: { type: String },
+    shopify: { type: String },
+    opencart: { type: String }
+  },
 
   // Address
   address: addressSchema,
@@ -205,7 +214,7 @@ sellerSchema.methods.updateSafe = async function (updates) {
     'name', 'firstName', 'lastName', 'phone', 'businessName',
     'companyCategory', 'brandName', 'website', 'monthlyShipments',
     'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail',
-    'address', 'documents', 'bankDetails'
+    'address', 'documents', 'bankDetails', 'storeLinks'
   ];
 
   Object.keys(updates).forEach(key => {
