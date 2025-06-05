@@ -53,6 +53,14 @@ const sellerSchema = new mongoose.Schema({
   operationsEmail: { type: String },
   financeEmail: { type: String },
 
+  // Store Links
+  storeLinks: {
+    website: { type: String },
+    amazon: { type: String },
+    shopify: { type: String },
+    opencart: { type: String }
+  },
+
   // Address
   address: addressSchema,
 
@@ -206,7 +214,7 @@ sellerSchema.methods.updateSafe = async function (updates) {
     'name', 'firstName', 'lastName', 'phone', 'businessName',
     'companyCategory', 'brandName', 'website', 'monthlyShipments',
     'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail',
-    'address', 'documents', 'bankDetails'
+    'address', 'documents', 'bankDetails', 'storeLinks'
   ];
 
   Object.keys(updates).forEach(key => {

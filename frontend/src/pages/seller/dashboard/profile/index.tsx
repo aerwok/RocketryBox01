@@ -3,27 +3,138 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TeamMemberProfile } from "@/services/profile.service";
 import { ServiceFactory } from "@/services/service-factory";
 import { Seller } from "@/types/api";
-import { Building2, CreditCard, FileText, Link2Icon, Mail, MapPin, Phone, ScrollText, Shield, User, Users } from "lucide-react";
+import { Building2, Check, CreditCard, Edit2, FileText, Link2Icon, Mail, MapPin, Phone, ScrollText, Shield, User, Users, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { z } from "zod";
 import Agreement from "./components/agreement";
 
 const STORE_LINKS = [
-  { icon: "/icons/web.svg", label: "Website", placeholder: "Enter website URL" },
-  { icon: "/icons/amazon.svg", label: "Amazon Store", placeholder: "Enter Amazon store URL" },
-  { icon: "/icons/shopify.svg", label: "Shopify Store", placeholder: "Enter Shopify store URL" },
-  { icon: "/icons/opencart.svg", label: "OpenCart Store", placeholder: "Enter OpenCart store URL" },
+  { icon: "/icons/web.svg", label: "Website", key: "website", placeholder: "Enter website URL" },
+  { icon: "/icons/amazon.svg", label: "Amazon Store", key: "amazon", placeholder: "Enter Amazon store URL" },
+  { icon: "/icons/shopify.svg", label: "Shopify Store", key: "shopify", placeholder: "Enter Shopify store URL" },
+  { icon: "/icons/opencart.svg", label: "OpenCart Store", key: "opencart", placeholder: "Enter OpenCart store URL" },
 ];
+
+// Store Links validation schema
+const storeLinksSchema = z.object({
+  website: z.string().optional().refine(val => !val || val === '' || /^https?:\/\/.+/.test(val), {
+    message: "Website URL must be valid (starting with http:// or https://)"
+  }),
+  amazon: z.string().optional().refine(val => !val || val === '' || /^https?:\/\/.+/.test(val), {
+    message: "Amazon Store URL must be valid (starting with http:// or https://)"
+  }),
+  shopify: z.string().optional().refine(val => !val || val === '' || /^https?:\/\/.+/.test(val), {
+    message: "Shopify Store URL must be valid (starting with http:// or https://)"
+  }),
+  opencart: z.string().optional().refine(val => !val || val === '' || /^https?:\/\/.+/.test(val), {
+    message: "OpenCart Store URL must be valid (starting with http:// or https://)"
+  }),
+});
+
+type StoreLinksInput = z.infer<typeof storeLinksSchema>;
 
 const SellerProfilePage = () => {
   const [activeTab, setActiveTab] = useState("company-details");
   const [profile, setProfile] = useState<Seller | TeamMemberProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditingStoreLinks, setIsEditingStoreLinks] = useState(false);
+  const [storeLinksLoading, setStoreLinksLoading] = useState(false);
+  const [storeLinksForm, setStoreLinksForm] = useState<StoreLinksInput>({
+    website: "",
+    amazon: "",
+    shopify: "",
+    opencart: ""
+  });
+  const [storeLinksErrors, setStoreLinksErrors] = useState<Partial<StoreLinksInput>>({});
 
   // Type guard to check if profile is a team member
   const isTeamMemberProfile = (profile: Seller | TeamMemberProfile): profile is TeamMemberProfile => {
     return 'isTeamMember' in profile && profile.isTeamMember === true;
+  };
+
+  // Store Links functions
+  const validateUrl = (url: string): boolean => {
+    if (!url || url.trim() === '') return true; // Empty URLs are allowed
+    return /^https?:\/\/.+/.test(url);
+  };
+
+  const handleStoreLinksEdit = () => {
+    if (profile && !isTeamMemberProfile(profile)) {
+      setStoreLinksForm({
+        website: profile.storeLinks?.website || "",
+        amazon: profile.storeLinks?.amazon || "",
+        shopify: profile.storeLinks?.shopify || "",
+        opencart: profile.storeLinks?.opencart || ""
+      });
+      setStoreLinksErrors({});
+      setIsEditingStoreLinks(true);
+    }
+  };
+
+  const handleStoreLinksCancel = () => {
+    setIsEditingStoreLinks(false);
+    setStoreLinksForm({
+      website: "",
+      amazon: "",
+      shopify: "",
+      opencart: ""
+    });
+    setStoreLinksErrors({});
+  };
+
+  const handleStoreLinksSubmit = async () => {
+    // Validate all URLs
+    const errors: Partial<StoreLinksInput> = {};
+
+    if (storeLinksForm.website && !validateUrl(storeLinksForm.website)) {
+      errors.website = "Website URL must be valid (starting with http:// or https://)";
+    }
+    if (storeLinksForm.amazon && !validateUrl(storeLinksForm.amazon)) {
+      errors.amazon = "Amazon Store URL must be valid (starting with http:// or https://)";
+    }
+    if (storeLinksForm.shopify && !validateUrl(storeLinksForm.shopify)) {
+      errors.shopify = "Shopify Store URL must be valid (starting with http:// or https://)";
+    }
+    if (storeLinksForm.opencart && !validateUrl(storeLinksForm.opencart)) {
+      errors.opencart = "OpenCart Store URL must be valid (starting with http:// or https://)";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setStoreLinksErrors(errors);
+      return;
+    }
+
+        try {
+      setStoreLinksLoading(true);
+
+      // Prepare the links object, including empty strings to clear existing links
+      const linksToUpdate = {
+        website: storeLinksForm.website?.trim() || "",
+        amazon: storeLinksForm.amazon?.trim() || "",
+        shopify: storeLinksForm.shopify?.trim() || "",
+        opencart: storeLinksForm.opencart?.trim() || ""
+      };
+
+      await ServiceFactory.seller.profile.updateStoreLinks(linksToUpdate);
+
+      // Update the local profile state
+      if (profile && !isTeamMemberProfile(profile)) {
+        setProfile({
+          ...profile,
+          storeLinks: linksToUpdate
+        });
+      }
+
+      setIsEditingStoreLinks(false);
+      toast.success('Store links updated successfully!');
+    } catch (error) {
+      console.error('Error updating store links:', error);
+      toast.error('Failed to update store links. Please try again.');
+    } finally {
+      setStoreLinksLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -190,26 +301,116 @@ const SellerProfilePage = () => {
           {/* Store Links Card (only for main sellers) */}
           {!isTeamMemberProfile(profile) && (
             <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm border">
-              <h3 className="text-lg font-semibold mb-4">Store Links</h3>
-              <div className="space-y-4">
-                {STORE_LINKS.map((store) => (
-                  <div key={store.label} className="flex items-center gap-3 px-3 py-2 bg-[#F8F7FF] rounded-lg">
-                    <img
-                      src={store.icon}
-                      alt={store.label}
-                      width={20}
-                      height={20}
-                      className="size-5"
-                    />
-                    <div className="flex-1">
-                      <span className="text-sm text-gray-600">
-                        {profile.storeLinks?.[store.label.toLowerCase() as keyof typeof profile.storeLinks] || "Not provided"}
-                      </span>
-                    </div>
-                    <Link2Icon className="w-4 h-4 text-gray-400" />
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Store Links</h3>
+                {!isEditingStoreLinks && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStoreLinksEdit}
+                    className="text-sm"
+                  >
+                    <Edit2 className="w-3 h-3 mr-1" />
+                    Update
+                  </Button>
+                )}
               </div>
+
+              {isEditingStoreLinks ? (
+                <div className="space-y-4">
+                  {STORE_LINKS.map((store) => (
+                    <div key={store.key} className="space-y-1">
+                      <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <img
+                          src={store.icon}
+                          alt={store.label}
+                          width={16}
+                          height={16}
+                          className="size-4"
+                        />
+                        {store.label}
+                      </label>
+                      <input
+                        type="url"
+                        placeholder={store.placeholder}
+                        value={storeLinksForm[store.key as keyof StoreLinksInput] || ""}
+                        onChange={(e) => {
+                          setStoreLinksForm(prev => ({
+                            ...prev,
+                            [store.key]: e.target.value
+                          }));
+                          // Clear error when user starts typing
+                          if (storeLinksErrors[store.key as keyof StoreLinksInput]) {
+                            setStoreLinksErrors(prev => ({
+                              ...prev,
+                              [store.key]: undefined
+                            }));
+                          }
+                        }}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          storeLinksErrors[store.key as keyof StoreLinksInput]
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-gray-300'
+                        }`}
+                      />
+                      {storeLinksErrors[store.key as keyof StoreLinksInput] && (
+                        <p className="text-red-500 text-xs">{storeLinksErrors[store.key as keyof StoreLinksInput]}</p>
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      onClick={handleStoreLinksSubmit}
+                      disabled={storeLinksLoading}
+                      size="sm"
+                      className="text-sm"
+                    >
+                      {storeLinksLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3 h-3 mr-1" />
+                          Save
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleStoreLinksCancel}
+                      disabled={storeLinksLoading}
+                      size="sm"
+                      className="text-sm"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {STORE_LINKS.map((store) => (
+                    <div key={store.label} className="flex items-center gap-3 px-3 py-2 bg-[#F8F7FF] rounded-lg">
+                      <img
+                        src={store.icon}
+                        alt={store.label}
+                        width={20}
+                        height={20}
+                        className="size-5"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm text-gray-600">
+                          {profile.storeLinks?.[store.key as keyof typeof profile.storeLinks] || "Not provided"}
+                        </span>
+                      </div>
+                      <Link2Icon className="w-4 h-4 text-gray-400" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
