@@ -17,7 +17,8 @@ const initializeSESClient = () => {
   try {
     // Check if required environment variables are present
     if (!process.env.AWS_REGION || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.SES_FROM_EMAIL) {
-      logger.error('Missing required AWS environment variables');
+      // Don't log error - AWS email is optional
+      logger.info('AWS Email service not configured (optional). Email functionality will be disabled.');
       return false;
     }
 
@@ -73,7 +74,7 @@ const initializeSESClient = () => {
     logger.info('AWS SES client initialized successfully');
     return true;
   } catch (error) {
-    logger.error('Failed to initialize AWS SES client:', { 
+    logger.error('Failed to initialize AWS SES client:', {
       error: error.message,
       stack: error.stack,
       region: process.env.AWS_REGION
@@ -168,8 +169,8 @@ export const sendEmail = async ({ to, subject, text, html, templateId, variables
 
     const command = new SendEmailCommand(params);
     const result = await sesClient.send(command);
-    
-    console.log('Email sent successfully:', { 
+
+    console.log('Email sent successfully:', {
       messageId: result.MessageId,
       recipient: to
     });
@@ -265,4 +266,4 @@ export const EMAIL_TEMPLATES = {
     `,
     text: `Payment of ₹{{amount}} received for order #{{orderId}}. Thank you for using RocketryBox!`
   }
-}; 
+};

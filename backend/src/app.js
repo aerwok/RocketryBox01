@@ -55,6 +55,11 @@ import marketingRoutes from './modules/marketing/index.js';
 import sellerRoutes from './modules/seller/index.js';
 import shippingRoutes from './modules/shipping/index.js';
 
+// NEW: Import AWS routes for S3 and Email functionality
+import emailRoutes from './routes/email.routes.js';
+import otpRoutes from './routes/otp.routes.js';
+import s3Routes from './routes/s3.routes.js';
+
 // Dashboard update configuration with dynamic adjustment
 const DASHBOARD_UPDATE_CONFIG = {
   initialInterval: parseInt(process.env.DASHBOARD_UPDATE_INTERVAL || 30) * 1000, // Default 30 seconds
@@ -263,6 +268,11 @@ app.use('/api/v2/seller', sellerRoutes);
 app.use('/api/v2/admin', adminRoutes);
 app.use('/api/v2/shipping', shippingRoutes);
 app.use('/api/v2/pincodes', pincodeRoutes);
+
+// NEW: Mount AWS routes
+app.use('/api/v2/s3', s3Routes);
+app.use('/api/v2/email', emailRoutes);
+app.use('/api/v2/otp', otpRoutes);
 
 // Mount webhook routes at root level (no version prefix)
 app.use('/api/webhooks', webhookRoutes);

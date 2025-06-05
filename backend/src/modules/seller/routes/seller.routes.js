@@ -1,21 +1,22 @@
 import express from 'express';
-import { login, sendOTP, verifyOTP, resetPassword, refreshToken, register, logout } from '../controllers/auth.controller.js';
-import { validationHandler as validateRequest } from '../../../middleware/validator.js';
-import { 
-  loginSchema, 
-  sendOTPSchema, 
-  verifyOTPSchema, 
-  resetPasswordSchema, 
-  registerSchema,
-  companyDetailsSchema,
-  bankDetailsSchema,
-  profileUpdateSchema,
-  documentUpdateSchema
-} from '../validators/seller.validator.js';
-import { getSellerRateCard, calculateRateCard } from '../controllers/billing.controller.js';
-import { authLimiter } from '../../../middleware/rateLimiter.js';
-import { getProfile, updateProfile, getDocuments, updateDocument, updateCompanyDetails, updateBankDetails } from '../controllers/profile.controller.js';
 import { authenticateSeller } from '../../../middleware/auth.js';
+import { getDocumentUploadStatus } from '../../../middleware/documentVerification.js';
+import { authLimiter } from '../../../middleware/rateLimiter.js';
+import { validationHandler as validateRequest } from '../../../middleware/validator.js';
+import { login, logout, refreshToken, register, resetPassword, sendOTP, verifyOTP } from '../controllers/auth.controller.js';
+import { calculateRateCard, getSellerRateCard } from '../controllers/billing.controller.js';
+import { getDocuments, getProfile, updateBankDetails, updateCompanyDetails, updateDocument, updateProfile } from '../controllers/profile.controller.js';
+import {
+  bankDetailsSchema,
+  companyDetailsSchema,
+  documentUpdateSchema,
+  loginSchema,
+  profileUpdateSchema,
+  registerSchema,
+  resetPasswordSchema,
+  sendOTPSchema,
+  verifyOTPSchema
+} from '../validators/seller.validator.js';
 
 const router = express.Router();
 
@@ -38,8 +39,53 @@ router.patch('/profile/bank-details', authenticateSeller, validateRequest(bankDe
 router.get('/documents', authenticateSeller, getDocuments);
 router.post('/documents', authenticateSeller, validateRequest(documentUpdateSchema), updateDocument);
 
+// Document Status Route - Shows upload requirements and progress
+router.get('/document-status', authenticateSeller, (req, res) => {
+  try {
+    const documentStatus = getDocumentUploadStatus(req.user);
+
+    res.json({
+      success: true,
+      data: {
+        ...documentStatus,
+        businessFeatures: {
+          available: documentStatus.isComplete,
+          blockedFeatures: documentStatus.isComplete ? [] : [
+            'Order Management',
+            'Shipment Processing',
+            'Bulk Orders',
+            'Financial Operations',
+            'Rate Card Management',
+            'Store & Product Management',
+            'Team Management'
+          ],
+          allowedFeatures: [
+            'Profile Management',
+            'Document Upload',
+            'Support Access',
+            'Basic Dashboard'
+          ]
+        },
+        kycStatus: {
+          documentsUploaded: documentStatus.isComplete,
+          adminVerification: 'pending', // Will be updated by admin KYC process
+          message: documentStatus.isComplete ?
+            'Documents uploaded successfully! Admin verification in progress.' :
+            'Please upload all required documents to enable business features.'
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get document status',
+      message: error.message
+    });
+  }
+});
+
 // Rate Card Routes
 router.get('/rate-card', authenticateSeller, getSellerRateCard);
 router.post('/rate-card/calculate', authenticateSeller, calculateRateCard);
 
-export default router; 
+export default router;

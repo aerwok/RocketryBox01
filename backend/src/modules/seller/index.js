@@ -1,71 +1,84 @@
 import express from 'express';
-import sellerRoutes from './routes/seller.routes.js';
-import orderRoutes from './routes/order.routes.js';
-import shipmentRoutes from './routes/shipment.routes.js';
-import ndrRoutes from './routes/ndr.routes.js';
-import walletRoutes from './routes/wallet.routes.js';
+import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
+import codRemittanceRoutes from './routes/codRemittance.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import ledgerRoutes from './routes/ledger.routes.js';
-import weightDisputeRoutes from './routes/weightDispute.routes.js';
-import codRemittanceRoutes from './routes/codRemittance.routes.js';
-import warehouseRoutes from './routes/warehouse.routes.js';
-import serviceCheckRoutes from './routes/serviceCheck.routes.js';
-import supportRoutes from './routes/support.routes.js';
+import ndrRoutes from './routes/ndr.routes.js';
+import orderRoutes from './routes/order.routes.js';
 import productRoutes from './routes/product.routes.js';
-import storeRoutes from './routes/store.routes.js';
-import settingsRoutes from './routes/settings.routes.js';
 import rateCardRoutes from './routes/ratecard.routes.js';
+import sellerRoutes from './routes/seller.routes.js';
+import serviceCheckRoutes from './routes/serviceCheck.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
+import shipmentRoutes from './routes/shipment.routes.js';
+import storeRoutes from './routes/store.routes.js';
+import supportRoutes from './routes/support.routes.js';
 import teamUserRoutes from './routes/teamUser.routes.js';
-import dashboardRoutes from './routes/dashboard.routes.js';
-import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+import warehouseRoutes from './routes/warehouse.routes.js';
+import weightDisputeRoutes from './routes/weightDispute.routes.js';
+
+// Import document requirement middleware
+import {
+  progressiveDocumentAccess,
+  requireBasicProfile,
+  requireDocumentUpload
+} from '../../middleware/documentVerification.js';
 
 const router = express.Router();
 
-// Auth and basic seller routes
+// Auth and basic seller routes (always accessible for profile/document management)
 router.use('/', sellerRoutes);
 
-// Order management
-router.use('/orders', orderRoutes);
-
-// Shipment management
-router.use('/shipments', shipmentRoutes);
-
-// NDR management
-router.use('/ndr', ndrRoutes);
-
-// Financial management
-router.use('/wallet', walletRoutes);
-router.use('/invoices', invoiceRoutes);
-router.use('/ledger', ledgerRoutes);
-router.use('/weight-disputes', weightDisputeRoutes);
-router.use('/cod-remittance', codRemittanceRoutes);
-
-// Tools and utilities
-router.use('/warehouse', warehouseRoutes);
-router.use('/service-check', serviceCheckRoutes);
-
-// Support
+// Support (always accessible)
 router.use('/support', supportRoutes);
 
-// Product management
-router.use('/products', productRoutes);
+// ==============================================================================
+// PROGRESSIVE ACCESS ROUTES (Require basic profile completion)
+// ==============================================================================
 
-// Store management
-router.use('/stores', storeRoutes);
+// Dashboard - Require basic profile completion (50% document completion)
+router.use('/dashboard', requireBasicProfile, progressiveDocumentAccess(50), dashboardRoutes);
 
-// Settings
-router.use('/settings', settingsRoutes);
+// Settings - Require basic profile completion
+router.use('/settings', requireBasicProfile, settingsRoutes);
 
-// Rate Card
-router.use('/rate-card', rateCardRoutes);
+// Warehouse and service checks - Basic tools, require profile completion
+router.use('/warehouse', requireBasicProfile, warehouseRoutes);
+router.use('/service-check', requireBasicProfile, serviceCheckRoutes);
 
-// Team Management
-router.use('/team', teamUserRoutes);
+// ==============================================================================
+// CRITICAL BUSINESS OPERATIONS (Require 100% document upload)
+// ==============================================================================
 
-// Dashboard
-router.use('/dashboard', dashboardRoutes);
+// Order management - REQUIRES ALL DOCUMENTS
+router.use('/orders', requireDocumentUpload, orderRoutes);
 
-// Bulk Orders
-router.use('/bulk-orders', bulkOrdersRoutes);
+// Shipment management - REQUIRES ALL DOCUMENTS
+router.use('/shipments', requireDocumentUpload, shipmentRoutes);
 
-export default router; 
+// Bulk Orders - REQUIRES ALL DOCUMENTS
+router.use('/bulk-orders', requireDocumentUpload, bulkOrdersRoutes);
+
+// Financial management - REQUIRES ALL DOCUMENTS
+router.use('/wallet', requireDocumentUpload, walletRoutes);
+router.use('/invoices', requireDocumentUpload, invoiceRoutes);
+router.use('/ledger', requireDocumentUpload, ledgerRoutes);
+router.use('/cod-remittance', requireDocumentUpload, codRemittanceRoutes);
+
+// Rate Card management - REQUIRES ALL DOCUMENTS
+router.use('/rate-card', requireDocumentUpload, rateCardRoutes);
+
+// Business operations - REQUIRES ALL DOCUMENTS
+router.use('/ndr', requireDocumentUpload, ndrRoutes);
+router.use('/weight-disputes', requireDocumentUpload, weightDisputeRoutes);
+
+// Store and product management - REQUIRES ALL DOCUMENTS
+router.use('/stores', requireDocumentUpload, storeRoutes);
+router.use('/products', requireDocumentUpload, productRoutes);
+
+// Team Management - REQUIRES ALL DOCUMENTS
+router.use('/team', requireDocumentUpload, teamUserRoutes);
+
+export default router;

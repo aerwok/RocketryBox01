@@ -1,122 +1,247 @@
 import axios from 'axios';
 import { logger } from './logger.js';
 
-// Create Fast2SMS client
-const fast2smsClient = axios.create({
-  baseURL: 'https://www.fast2sms.com/dev/bulkV2',
-  headers: {
-    'content-type': 'application/json',
-    'cache-control': 'no-cache'
-  }
-});
-
 /**
- * Send SMS using Fast2SMS
+ * Send SMS using Fast2SMS DLT route with approved templates
  * @param {Object} params
  * @param {string} params.to - Phone number to send SMS to
- * @param {string} params.message - Message text (for non-template messages)
- * @param {string} [params.templateId] - Template ID for template-based messages
- * @param {Object} [params.variables] - Variables for template-based messages
+ * @param {string} params.message - Message text to send (for custom messages)
+ * @param {string} params.type - Message type: 'otp', 'log', or 'ads'
+ * @param {string} [params.variables] - Variables for DLT template (pipe-separated)
+ * @returns {Promise<Object>} SMS sending result
  */
-export const sendSMS = async ({ to, message, templateId, variables }) => {
+export const sendSMS = async ({ to, message, type, variables }) => {
   try {
+    // Validate required parameters
+    if (!to || !type) {
+      throw new Error('Missing required parameters: to and type are required');
+    }
+
+    // Validate type
+    const validTypes = ['otp', 'log', 'ads'];
+    if (!validTypes.includes(type)) {
+      throw new Error(`Invalid SMS type: ${type}. Valid types are: ${validTypes.join(', ')}`);
+    }
+
     // In development mode, bypass actual SMS sending
     if (process.env.NODE_ENV === 'development') {
       logger.info('Development mode: Bypassing actual SMS sending', {
         to: '***' + to.toString().slice(-4),
-        message: message || (templateId ? `Template: ${templateId}` : 'No message provided'),
-        variables
+        type,
+        variables: variables || 'none'
       });
-      
+
       return {
         success: true,
         requestId: 'dev-mode-' + Date.now(),
-        message: 'SMS sending bypassed in development mode'
+        message: 'SMS sending bypassed in development mode',
+        route: 'dlt'
       };
     }
-    
+
+    // Validate API key
+    if (!process.env.FAST2SMS_API_KEY) {
+      throw new Error('FAST2SMS_API_KEY environment variable is not set');
+    }
+
+    // Get DLT configuration
+    const dltConfig = getDLTConfig(type);
+    if (!dltConfig) {
+      throw new Error(`DLT template not available for type: ${type}. Available types: otp, log`);
+    }
+
     // Format phone number (remove +91 if present)
     const phoneNumber = to.toString().replace('+91', '');
 
-    // Prepare message based on template or direct message
-    let finalMessage = message;
-    if (templateId && SMS_TEMPLATES[templateId]) {
-      finalMessage = SMS_TEMPLATES[templateId].message;
-      // Replace variables in template
-      if (variables) {
-        Object.keys(variables).forEach(key => {
-          finalMessage = finalMessage.replace(`{{${key}}}`, variables[key]);
-        });
-      }
-    }
-
-    // New Fast2SMS API format
+    // Prepare DLT request
     const requestBody = {
-      route: "dlt", // Use DLT route for transactional messages
-      sender_id: "TXTIND", // Default sender ID
-      message: finalMessage,
-      variables_values: variables ? Object.values(variables).join("|") : "",
-      language: "english",
+      route: 'dlt',
+      sender_id: dltConfig.sender_id,
+      message: dltConfig.message_id,
+      variables_values: variables || '',
       numbers: phoneNumber
     };
 
-    // Log request details for debugging
-    logger.info('Sending SMS request', {
-      url: fast2smsClient.defaults.baseURL,
-      headers: {
-        'content-type': 'application/json',
-        'Authorization': process.env.FAST2SMS_API_KEY ? 'Present' : 'Missing'
-      },
-      body: { ...requestBody, numbers: '***' + phoneNumber.slice(-4) }
+    // Log request details for debugging (without sensitive data)
+    logger.info('Sending DLT SMS request', {
+      url: 'https://www.fast2sms.com/dev/bulkV2',
+      type,
+      senderId: dltConfig.sender_id,
+      messageId: dltConfig.message_id,
+      phoneNumber: '***' + phoneNumber.slice(-4),
+      hasApiKey: !!process.env.FAST2SMS_API_KEY
     });
 
-    // Make the request with updated headers and body
+    // Make the API request to Fast2SMS
     const response = await axios({
       method: 'POST',
-      url: fast2smsClient.defaults.baseURL,
+      url: 'https://www.fast2sms.com/dev/bulkV2',
       headers: {
-        'content-type': 'application/json',
-        'Authorization': process.env.FAST2SMS_API_KEY
+        'Content-Type': 'application/json',
+        'authorization': process.env.FAST2SMS_API_KEY
       },
       data: requestBody
     });
-    
+
+    // Check if SMS was sent successfully
     if (response.data.return === true) {
-      logger.info('SMS sent successfully', { 
+      logger.info('DLT SMS sent successfully', {
         requestId: response.data.request_id,
-        mobileNumber: '***' + phoneNumber.slice(-4)
+        phoneNumber: '***' + phoneNumber.slice(-4),
+        type,
+        senderId: dltConfig.sender_id
       });
+
       return {
         success: true,
         requestId: response.data.request_id,
-        message: 'SMS sent successfully'
+        message: 'DLT SMS sent successfully',
+        route: 'dlt',
+        senderId: dltConfig.sender_id
       };
     } else {
-      throw new Error(response.data.message || 'Failed to send SMS');
+      throw new Error(response.data.message || 'Failed to send DLT SMS');
     }
+
   } catch (error) {
-    logger.error('Error sending SMS', { 
+    logger.error('Error sending DLT SMS', {
       error: error.response?.data || error.message,
-      mobileNumber: '***' + to.toString().slice(-4),
-      stack: error.stack,
-      headers: {
-        'content-type': 'application/json',
-        'Authorization': process.env.FAST2SMS_API_KEY ? 'Present' : 'Missing'
-      }
+      phoneNumber: '***' + to.toString().slice(-4),
+      type,
+      stack: error.stack
     });
-    
+
     // For development mode, bypass SMS sending error
     if (process.env.NODE_ENV === 'development') {
       logger.info('Development mode: Bypassing SMS sending failure');
       return {
         success: true,
         requestId: 'dev-mode-' + Date.now(),
-        message: 'SMS sending bypassed in development mode'
+        message: 'SMS sending bypassed in development mode',
+        route: 'dlt'
       };
     }
-    
-    throw new Error('Failed to send SMS: ' + (error.response?.data?.message || error.message));
+
+    throw new Error('Failed to send DLT SMS: ' + (error.response?.data?.message || error.message));
   }
+};
+
+/**
+ * Get DLT configuration for message type
+ * @param {string} type - Message type
+ * @returns {Object|null} DLT configuration
+ */
+const getDLTConfig = (type) => {
+  // DLT configurations with REAL Message IDs from Fast2SMS dashboard
+  const dltConfigs = {
+    'otp': {
+      sender_id: 'RBXOTP',
+      message_id: '184297', // ✅ WORKING Message ID from Fast2SMS dashboard
+      template: 'Your OTP for {#VAR#} is {#VAR#}. It is valid for {#VAR#} minutes. Please do not share this OTP with anyone.',
+      description: 'OTP verification template - DLT Compliant'
+    },
+    'log': {
+      sender_id: 'RBXLOG',
+      message_id: '184296', // ✅ WORKING Message ID from Fast2SMS dashboard
+      template: 'Welcome to Rocketry Box! Your account has been successfully activated. User Name:{#VAR#} Password:{#VAR#}',
+      description: 'Account activation template - DLT Compliant'
+    }
+    // Note: 'ads' type disabled due to "Invalid Language" error with Message ID 184295
+  };
+
+  return dltConfigs[type] || null;
+};
+
+/**
+ * Send OTP SMS using DLT template
+ * @param {string} to - Phone number
+ * @param {string} otp - OTP code
+ * @param {string} context - Context (e.g., 'Login', 'Registration')
+ * @param {number} [minutes=5] - Validity in minutes
+ * @returns {Promise<Object>} SMS result
+ */
+export const sendOTP = async (to, otp, context = 'verification', minutes = 5) => {
+  // Format variables for DLT template: context|otp|minutes
+  const variables = `RocketryBox ${context}|${otp}|${minutes}`;
+
+  return await sendSMS({
+    to,
+    type: 'otp',
+    variables
+  });
+};
+
+/**
+ * Send account activation SMS using DLT template
+ * @param {string} to - Phone number
+ * @param {string} username - Username
+ * @param {string} password - Password
+ * @returns {Promise<Object>} SMS result
+ */
+export const sendAccountActivation = async (to, username, password) => {
+  // Format variables for DLT template: username|password
+  const variables = `${username}|${password}`;
+
+  return await sendSMS({
+    to,
+    type: 'log',
+    variables
+  });
+};
+
+/**
+ * Send logistics update SMS (custom message since no DLT template available)
+ * @param {string} to - Phone number
+ * @param {string} trackingId - Tracking ID
+ * @param {string} status - Shipment status
+ * @param {string} [location] - Location (optional)
+ * @returns {Promise<Object>} SMS result
+ */
+export const sendLogisticsUpdate = async (to, trackingId, status, location = '') => {
+  // Since we don't have a logistics DLT template, use account activation template format
+  // Format: Welcome message with tracking info
+  let message = `Your RocketryBox shipment ${trackingId} has been ${status}`;
+  if (location) {
+    message += ` at ${location}`;
+  }
+
+  // Use the account activation template with custom variables
+  const variables = `Shipment Update|${trackingId} - ${status}`;
+
+  return await sendSMS({
+    to,
+    type: 'log',
+    variables
+  });
+};
+
+/**
+ * Get available SMS types and their configurations
+ * @returns {Array} Array of available SMS types
+ */
+export const getAvailableSMSTypes = () => {
+  return [
+    {
+      type: 'otp',
+      description: 'OTP and verification messages',
+      route: 'DLT Compliant (₹0.25/SMS)',
+      messageId: '184297',
+      senderId: 'RBXOTP',
+      template: 'Your OTP for {context} is {otp}. It is valid for {minutes} minutes.',
+      variables: 'context|otp|minutes',
+      cost: '₹0.25/SMS'
+    },
+    {
+      type: 'log',
+      description: 'Account activation and updates',
+      route: 'DLT Compliant (₹0.25/SMS)',
+      messageId: '184296',
+      senderId: 'RBXLOG',
+      template: 'Welcome to Rocketry Box! Account activated. User: {username} Pass: {password}',
+      variables: 'username|password',
+      cost: '₹0.25/SMS'
+    }
+  ];
 };
 
 // Predefined SMS templates
@@ -136,4 +261,4 @@ export const SMS_TEMPLATES = {
   PAYMENT_CONFIRMATION: {
     message: 'Payment of ₹{{amount}} received for order #{{orderId}}. Thank you for using RocketryBox!'
   }
-}; 
+};

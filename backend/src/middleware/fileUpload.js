@@ -1,19 +1,19 @@
+import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
-import { AppError } from './errorHandler.js';
 import { logger } from '../utils/logger.js';
+import { AppError } from './errorHandler.js';
 
 // Set up storage destination for multer
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = 'uploads/temp';
-    
+
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
-    
+
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
@@ -38,7 +38,7 @@ const fileFilter = (req, file, cb) => {
     'text/plain',
     'application/zip'
   ];
-  
+
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -67,15 +67,15 @@ export const handleMulterError = (err, req, res, next) => {
       return next(new AppError(`File upload error: ${err.message}`, 400));
     }
   }
-  
+
   next(err);
 };
 
 // Clean up temporary files after request
 export const cleanupTempFiles = (req, res, next) => {
   const originalEnd = res.end;
-  
-  res.end = function() {
+
+  res.end = function () {
     if (req.files) {
       req.files.forEach(file => {
         fs.unlink(file.path, err => {
@@ -83,9 +83,9 @@ export const cleanupTempFiles = (req, res, next) => {
         });
       });
     }
-    
+
     originalEnd.apply(this, arguments);
   };
-  
+
   next();
-}; 
+};
