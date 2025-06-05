@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 const addressSchema = new mongoose.Schema({
   address1: { type: String },
@@ -24,6 +24,13 @@ const bankDetailsSchema = new mongoose.Schema({
 }, { _id: false });
 
 const sellerSchema = new mongoose.Schema({
+  // RB User ID (short, readable ID)
+  rbUserId: {
+    type: String,
+    unique: true,
+    index: true,
+    // Will be auto-generated in pre-save hook
+  },
   // Basic Info
   name: { type: String, required: true, index: true },
   firstName: { type: String },  // For display purposes
@@ -31,23 +38,23 @@ const sellerSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, lowercase: true, index: true },
   phone: { type: String, required: true, unique: true, index: true },
   password: { type: String, required: true, select: false },
-  
+
   // Business Info
   businessName: { type: String, required: true, index: true },
   companyCategory: { type: String },
   brandName: { type: String },
   website: { type: String },
   monthlyShipments: { type: String, enum: ['0-100', '101-500', '501-1000', '1001-5000', '5000+'] },
-  
+
   // Contact Info
   supportContact: { type: String },
   supportEmail: { type: String },
   operationsEmail: { type: String },
   financeEmail: { type: String },
-  
+
   // Address
   address: addressSchema,
-  
+
   // Documents
   gstin: { type: String },
   documents: {
@@ -73,10 +80,10 @@ const sellerSchema = new mongoose.Schema({
       status: { type: String, enum: ['verified', 'pending', 'rejected'], default: 'pending' }
     }]
   },
-  
+
   // Bank Details
   bankDetails: bankDetailsSchema,
-  
+
   // System Fields
   status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending', index: true },
   otp: {
@@ -97,10 +104,10 @@ sellerSchema.index({ status: 1, lastActive: -1 });
 sellerSchema.index({ businessName: 'text', email: 'text', phone: 'text' });
 
 // Default filter to exclude suspended sellers
-sellerSchema.pre(/^find/, function(next) {
+sellerSchema.pre(/^find/, function (next) {
   // Check if this query should skip the default filter
   const skipDefaultFilter = this.getOptions().skipDefaultFilter;
-  
+
   // Apply default filter for normal queries
   if (!skipDefaultFilter && !this._conditions.status) {
     this.find({ status: { $ne: 'suspended' } });
@@ -109,7 +116,7 @@ sellerSchema.pre(/^find/, function(next) {
 });
 
 // Update lastActive and timestamps
-sellerSchema.pre('save', function(next) {
+sellerSchema.pre('save', function (next) {
   if (this.isModified('lastLogin')) {
     this.lastActive = new Date();
   }
@@ -141,6 +148,21 @@ sellerSchema.pre('save', async function (next) {
   }
 });
 
+// Auto-generate RB User ID for new sellers
+sellerSchema.pre('save', async function (next) {
+  // Only generate for new documents
+  if (this.isNew && !this.rbUserId) {
+    try {
+      this.rbUserId = await generateUserId('seller');
+      console.log('Generated RB User ID for seller:', this.rbUserId);
+    } catch (error) {
+      console.error('Error generating RB User ID for seller:', error);
+      // Continue without blocking save - user can function without RB ID
+    }
+  }
+  next();
+});
+
 // Compare password
 sellerSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
@@ -169,7 +191,7 @@ sellerSchema.methods.toJSON = function () {
 };
 
 // Static method to find a seller by ID safely
-sellerSchema.statics.findByIdSafe = async function(id) {
+sellerSchema.statics.findByIdSafe = async function (id) {
   try {
     return await this.findById(id).lean();
   } catch (error) {
@@ -178,23 +200,23 @@ sellerSchema.statics.findByIdSafe = async function(id) {
 };
 
 // Helper method for updating seller data safely
-sellerSchema.methods.updateSafe = async function(updates) {
+sellerSchema.methods.updateSafe = async function (updates) {
   const allowedFields = [
-    'name', 'firstName', 'lastName', 'phone', 'businessName', 
+    'name', 'firstName', 'lastName', 'phone', 'businessName',
     'companyCategory', 'brandName', 'website', 'monthlyShipments',
     'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail',
     'address', 'documents', 'bankDetails'
   ];
-  
+
   Object.keys(updates).forEach(key => {
     if (allowedFields.includes(key)) {
       this[key] = updates[key];
     }
   });
-  
+
   this.lastActive = new Date();
   this.updatedAt = new Date();
   return await this.save();
 };
 
-export default mongoose.model('Seller', sellerSchema); 
+export default mongoose.model('Seller', sellerSchema);

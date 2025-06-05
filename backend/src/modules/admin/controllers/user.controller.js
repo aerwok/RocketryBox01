@@ -5,6 +5,7 @@ import SellerRateCard from '../../../models/sellerRateCard.model.js';
 import { invalidateCachePattern } from '../../../utils/cache.js';
 import { logger } from '../../../utils/logger.js';
 import { getIO } from '../../../utils/socketio.js';
+import { getUserTypeFromRBId, isValidRBUserId } from '../../../utils/userIdGenerator.js';
 import Customer from '../../customer/models/customer.model.js';
 import { getCustomerProfile } from '../../customer/services/realtime.service.js';
 import Agreement from '../../seller/models/agreement.model.js';
@@ -57,32 +58,84 @@ export const getUserDetails = async (req, res, next) => {
 
     logger.info(`getUserDetails called with ID: "${id}"`);
     logger.info(`ID type: ${typeof id}, length: ${id ? id.length : 'null'}`);
-    logger.info(`ID characters: ${id ? id.split('').map(c => c.charCodeAt(0)).join(',') : 'null'}`);
 
-    // Validate ObjectId format - but be more lenient for debugging
+    // Basic validation
     if (!id || id === 'undefined' || id === 'null' || id.trim() === '') {
-      logger.warn(`Invalid user ID received: "${id}"`);
+      logger.warn(`Empty or invalid user ID received: "${id}"`);
       return next(new AppError('User ID is required', 400));
     }
 
-    // Clean the ID
-    const cleanId = id.trim();
+    // Clean and decode the ID (handle URL encoding)
+    let cleanId;
+    try {
+      cleanId = decodeURIComponent(id.trim());
+    } catch (decodeError) {
+      cleanId = id.trim();
+    }
+
     logger.info(`Cleaned ID: "${cleanId}"`);
 
-    // Check if it's a valid ObjectId format (24 character hex string)
-    if (!mongoose.Types.ObjectId.isValid(cleanId)) {
-      logger.warn(`Invalid ObjectId format: "${cleanId}"`);
-      logger.warn(`Is valid ObjectId: ${mongoose.Types.ObjectId.isValid(cleanId)}`);
+    // Check if it's a valid RB user ID format
+    if (isValidRBUserId(cleanId)) {
+      logger.info(`Valid RB User ID format detected: ${cleanId}`);
 
-      // Instead of throwing error, let's try to find by other fields for debugging
+      const userType = getUserTypeFromRBId(cleanId);
+      logger.info(`User type from RB ID: ${userType}`);
+
+      if (userType === 'seller') {
+        // Search for seller by RB user ID
+        try {
+          const seller = await Seller.findOne({ rbUserId: cleanId });
+          if (seller) {
+            logger.info(`Found seller with RB ID ${cleanId}: ${seller.name} (${seller.email})`);
+            logger.info(`Converting to MongoDB ID: ${seller._id.toString()}`);
+            req.params.id = seller._id.toString();
+            return getSellerDetails(req, res, next);
+          } else {
+            logger.warn(`No seller found with RB ID: ${cleanId}`);
+          }
+        } catch (sellerSearchError) {
+          logger.error(`Error searching for seller with RB ID ${cleanId}: ${sellerSearchError.message}`);
+          return next(new AppError('Error searching for seller', 500));
+        }
+      } else if (userType === 'customer') {
+        // Search for customer by RB user ID
+        try {
+          const customer = await Customer.findOne({ rbUserId: cleanId }, null, { skipDefaultFilter: true });
+          if (customer) {
+            logger.info(`Found customer with RB ID ${cleanId}: ${customer.name} (${customer.email})`);
+            logger.info(`Converting to MongoDB ID: ${customer._id.toString()}`);
+            req.params.id = customer._id.toString();
+            return getCustomerDetails(req, res, next);
+          } else {
+            logger.warn(`No customer found with RB ID: ${cleanId}`);
+          }
+        } catch (customerSearchError) {
+          logger.error(`Error searching for customer with RB ID ${cleanId}: ${customerSearchError.message}`);
+          return next(new AppError('Error searching for customer', 500));
+        }
+      }
+
+      logger.warn(`No user found with RB ID: ${cleanId}`);
+      return next(new AppError(`User not found with RB ID: ${cleanId}`, 404));
+    }
+
+    // Check if it's a valid ObjectId format (24 character hex string)
+    const isValidObjectId = mongoose.Types.ObjectId.isValid(cleanId) && cleanId.length === 24 && /^[0-9a-fA-F]{24}$/.test(cleanId);
+
+    if (!isValidObjectId) {
+      logger.warn(`Invalid ID format (not RB ID or ObjectId): "${cleanId}"`);
+
+      // Try to find by email or other identifier instead of throwing error immediately
       logger.info('Attempting to find user by email or other identifier...');
 
       try {
-        // Try to find seller by email or business name
+        // Try to find seller by email or business name (more flexible search)
         const sellerByEmail = await Seller.findOne({
           $or: [
-            { email: cleanId },
-            { businessName: { $regex: cleanId, $options: 'i' } }
+            { email: { $regex: `^${cleanId}$`, $options: 'i' } },
+            { businessName: { $regex: cleanId, $options: 'i' } },
+            { name: { $regex: cleanId, $options: 'i' } }
           ]
         });
 
@@ -92,10 +145,10 @@ export const getUserDetails = async (req, res, next) => {
           return getSellerDetails(req, res, next);
         }
 
-        // Try to find customer by email or name
+        // Try to find customer by email or name (more flexible search)
         const customerByEmail = await Customer.findOne({
           $or: [
-            { email: cleanId },
+            { email: { $regex: `^${cleanId}$`, $options: 'i' } },
             { name: { $regex: cleanId, $options: 'i' } }
           ]
         }, null, { skipDefaultFilter: true });
@@ -105,12 +158,19 @@ export const getUserDetails = async (req, res, next) => {
           req.params.id = customerByEmail._id.toString();
           return getCustomerDetails(req, res, next);
         }
-      } catch (searchError) {
-        logger.warn(`Error searching by email/name: ${searchError.message}`);
-      }
 
-      return next(new AppError('Invalid user ID format', 400));
+        // If no user found by email/name, return a more helpful error
+        logger.warn(`No user found with identifier: ${cleanId}`);
+        return next(new AppError(`User not found with identifier: ${cleanId}. Please check the user ID or email.`, 404));
+
+      } catch (searchError) {
+        logger.error(`Error searching by email/name: ${searchError.message}`);
+        return next(new AppError('Error searching for user. Please check the user identifier.', 500));
+      }
     }
+
+    // If we have a valid ObjectId, proceed with normal lookup
+    logger.info(`Valid ObjectId format detected: ${cleanId}`);
 
     // Try to find as seller first
     let seller;
@@ -126,7 +186,7 @@ export const getUserDetails = async (req, res, next) => {
       return getSellerDetails(req, res, next);
     }
 
-    // Try to find as customer
+    // Try to find as customer with proper error handling
     let customer;
     try {
       customer = await Customer.findById(cleanId, null, { skipDefaultFilter: true });
@@ -140,12 +200,14 @@ export const getUserDetails = async (req, res, next) => {
       return getCustomerDetails(req, res, next);
     }
 
-    logger.warn(`User not found with ID: ${cleanId}`);
-    return next(new AppError('User not found', 404));
+    // If no user found by ID, provide helpful error message
+    logger.warn(`No user found with ID: ${cleanId}`);
+    return next(new AppError(`User not found with ID: ${cleanId}`, 404));
+
   } catch (error) {
     logger.error(`Error in getUserDetails: ${error.message}`);
     logger.error(`Stack trace: ${error.stack}`);
-    next(new AppError('Failed to fetch user details', 500));
+    next(new AppError('Failed to fetch user details. Please try again.', 500));
   }
 };
 
@@ -303,7 +365,7 @@ export const getAllSellers = async (req, res, next) => {
     // Transform sellers to match frontend expectations
     const transformedSellers = sellers.map(seller => ({
       id: seller._id ? seller._id.toString() : '',
-      userId: seller._id ? seller._id.toString() : '', // Use _id as userId and ensure it's a string
+      userId: seller.rbUserId || seller._id.toString(), // Use RB ID if available, fallback to ObjectId
       name: seller.name || '',
       email: seller.email || '',
       status: seller.status || 'Active',
@@ -340,6 +402,14 @@ export const getAllSellers = async (req, res, next) => {
 export const getSellerDetails = async (req, res, next) => {
   try {
     const { id: sellerId } = req.params;
+
+    // Validate and convert to ObjectId safely
+    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+      logger.warn(`Invalid ObjectId for seller details: ${sellerId}`);
+      return next(new AppError('Invalid seller ID format', 400));
+    }
+
+    logger.info(`Getting seller details for ID: ${sellerId}`);
 
     // Use MongoDB to find the seller with comprehensive details
     const sellerDetails = await Seller.aggregate([
@@ -465,6 +535,7 @@ export const getSellerDetails = async (req, res, next) => {
       {
         $project: {
           _id: 1,
+          rbUserId: 1, // Include RB User ID in response
           name: 1,
           email: 1,
           phone: 1,
@@ -478,6 +549,8 @@ export const getSellerDetails = async (req, res, next) => {
           financeEmail: 1,
           gstin: 1,
           documents: 1,
+          bankDetails: 1, // Add bank details to projection
+          address: 1, // Add address to projection
           status: 1,
           walletBalance: 1,
           lastLogin: 1,
@@ -496,8 +569,11 @@ export const getSellerDetails = async (req, res, next) => {
     ]);
 
     if (!sellerDetails || sellerDetails.length === 0) {
+      logger.warn(`Seller not found with ID: ${sellerId}`);
       return next(new AppError('Seller not found', 404));
     }
+
+    logger.info(`Found seller: ${sellerDetails[0].name} (${sellerDetails[0].email})`);
 
     // Extract KYC details from the seller model for backward compatibility
     const kycDetails = {
@@ -526,6 +602,7 @@ export const getSellerDetails = async (req, res, next) => {
     });
   } catch (error) {
     logger.error(`Error in getSellerDetails: ${error.message}`);
+    logger.error(`Stack trace: ${error.stack}`);
     next(new AppError('Failed to fetch seller details', 500));
   }
 };
@@ -932,13 +1009,14 @@ export const getAllCustomers = async (req, res, next) => {
 
     logger.info(`Using sort field: ${actualSortField}, direction: ${sortOrder}`);
 
-    // Build query
+    // Build query - explicitly handle all statuses for admin
     const query = {};
 
     // Add status filter if provided
     if (status && status !== 'all') {
       query.status = status;
     }
+    // For admin, don't apply default status filter - get all customers
 
     // Add search filter if provided
     if (search) {
@@ -957,24 +1035,34 @@ export const getAllCustomers = async (req, res, next) => {
 
     logger.info(`Pagination: skip=${skip}, limit=${limit}, sort={${actualSortField}: ${sortDirection}}`);
 
-    // Use skipDefaultFilter option to get all customers regardless of status
-    const customers = await Customer.find(query, null, { skipDefaultFilter: true })
-      .sort({ [actualSortField]: sortDirection })
-      .skip(skip)
-      .limit(parseInt(limit))
-      .lean(); // Add lean() for better performance
+    // Use aggregate to bypass pre-find middleware issues
+    const pipeline = [
+      { $match: query },
+      { $sort: { [actualSortField]: sortDirection } },
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    ];
 
-    logger.info(`Found ${customers.length} customers`);
+    // Get customers using aggregation to avoid middleware issues
+    const customers = await Customer.aggregate(pipeline);
 
-    // Get total count for pagination (also skip default filter)
-    const totalCustomers = await Customer.countDocuments(query);
+    logger.info(`Found ${customers.length} customers via aggregation`);
+
+    // Get total count using aggregation
+    const countPipeline = [
+      { $match: query },
+      { $count: "total" }
+    ];
+
+    const countResult = await Customer.aggregate(countPipeline);
+    const totalCustomers = countResult.length > 0 ? countResult[0].total : 0;
 
     logger.info(`Total customers count: ${totalCustomers}`);
 
     // Transform customers to match frontend expectations
     const transformedCustomers = customers.map(customer => ({
       id: customer._id ? customer._id.toString() : '',
-      userId: customer._id ? customer._id.toString() : '', // Use _id as userId and ensure it's a string
+      userId: customer.rbUserId || customer._id.toString(), // Use RB ID if available, fallback to ObjectId
       name: customer.name || '',
       email: customer.email || '',
       status: customer.status || 'active',
@@ -1015,6 +1103,14 @@ export const getCustomerDetails = async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      logger.warn(`Invalid ObjectId for customer details: ${id}`);
+      return next(new AppError('Invalid customer ID format', 400));
+    }
+
+    logger.info(`Getting customer details for ID: ${id}`);
+
     // Get real-time customer profile data
     let customerProfile;
     try {
@@ -1026,11 +1122,14 @@ export const getCustomerDetails = async (req, res, next) => {
     }
 
     // Get customer details from database if not available from real-time service
-    const customer = customerProfile || await Customer.findById(id);
+    const customer = customerProfile || await Customer.findById(id, null, { skipDefaultFilter: true });
 
     if (!customer) {
+      logger.warn(`Customer not found with ID: ${id}`);
       return next(new AppError('Customer not found', 404));
     }
+
+    logger.info(`Found customer: ${customer.name} (${customer.email})`);
 
     // Get addresses if they exist and weren't included in profile
     let addresses = [];
@@ -1051,6 +1150,7 @@ export const getCustomerDetails = async (req, res, next) => {
     });
   } catch (error) {
     logger.error(`Error in getCustomerDetails: ${error.message}`);
+    logger.error(`Stack trace: ${error.stack}`);
     next(new AppError('Failed to fetch customer details', 500));
   }
 };
@@ -1066,7 +1166,7 @@ export const updateCustomerStatus = async (req, res, next) => {
     const { status, reason } = req.body;
 
     // Find and update customer
-    const customer = await Customer.findById(id);
+    const customer = await Customer.findById(id, null, { skipDefaultFilter: true });
 
     if (!customer) {
       return next(new AppError('Customer not found', 404));

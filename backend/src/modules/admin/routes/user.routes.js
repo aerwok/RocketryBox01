@@ -26,12 +26,7 @@ const upload = multer({
 router.use(protect);
 router.use(restrictTo('Admin', 'Manager'));
 
-// Users routes
-router.get('/', userController.getAllUsers);
-router.get('/:id', userController.getUserDetails);
-router.patch('/:id/status', userController.updateUserStatus);
-router.patch('/:id/permissions', userController.updateUserPermissions);
-
+// Specific routes MUST come before generic /:id route
 // Sellers routes
 router.get('/sellers', userController.getAllSellers);
 router.get('/sellers/:id', userController.getSellerDetails);
@@ -51,5 +46,11 @@ router.patch('/customers/:id/status', userController.updateCustomerStatus);
 
 // Real-time user data
 router.post('/realtime', userController.getRealtimeUserData);
+
+// Generic user routes (MUST come after specific routes)
+router.get('/', userController.getAllUsers);
+router.get('/:id', userController.getUserDetails);
+router.patch('/:id/status', userController.updateUserStatus);
+router.patch('/:id/permissions', userController.updateUserPermissions);
 
 export default router;

@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 const addressSchema = new mongoose.Schema({
   name: {
@@ -40,6 +40,12 @@ const addressSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 const customerSchema = new mongoose.Schema({
+  rbUserId: {
+    type: String,
+    unique: true,
+    index: true,
+    // Will be auto-generated in pre-save hook
+  },
   name: {
     type: String,
     required: [true, 'Name is required'],
@@ -139,19 +145,32 @@ customerSchema.index({ status: 1, lastActive: -1 });
 customerSchema.index({ name: 'text', email: 'text', mobile: 'text' });
 
 // Default filter to exclude inactive and suspended customers
-customerSchema.pre(/^find/, function(next) {
+customerSchema.pre(/^find/, function (next) {
   // Check if this query should skip the default filter
   const skipDefaultFilter = this.getOptions().skipDefaultFilter;
-  
-  // Apply default filter for normal queries
-  if (!skipDefaultFilter && !this._conditions.status) {
+
+  // Apply default filter for normal queries only if:
+  // 1. skipDefaultFilter is not set to true
+  // 2. status is not already specified in the query
+  // 3. This is not an admin query (indicated by skipDefaultFilter)
+  if (!skipDefaultFilter && !this._conditions.status && !this.getQuery().status) {
+    this.find({ status: 'active' });
+  }
+  next();
+});
+
+// Also handle countDocuments and other operations
+customerSchema.pre(['countDocuments', 'count'], function (next) {
+  const skipDefaultFilter = this.getOptions().skipDefaultFilter;
+
+  if (!skipDefaultFilter && !this._conditions.status && !this.getQuery().status) {
     this.find({ status: 'active' });
   }
   next();
 });
 
 // Update lastActive field for login operations
-customerSchema.pre('save', function(next) {
+customerSchema.pre('save', function (next) {
   if (this.isModified('lastLogin')) {
     this.lastActive = new Date();
   }
@@ -159,9 +178,9 @@ customerSchema.pre('save', function(next) {
 });
 
 // Hash password before saving
-customerSchema.pre('save', async function(next) {
+customerSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  
+
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
@@ -171,8 +190,22 @@ customerSchema.pre('save', async function(next) {
   }
 });
 
+// Auto-generate RB User ID for new customers
+customerSchema.pre('save', async function (next) {
+  // Only generate for new documents
+  if (this.isNew && !this.rbUserId) {
+    try {
+      this.rbUserId = await generateUserId('customer');
+    } catch (error) {
+      console.error('Error generating RB User ID for customer:', error);
+      // Continue without blocking save - user can function without RB ID
+    }
+  }
+  next();
+});
+
 // Compare password method
-customerSchema.methods.comparePassword = async function(candidatePassword) {
+customerSchema.methods.comparePassword = async function (candidatePassword) {
   try {
     return await bcrypt.compare(candidatePassword, this.password);
   } catch (error) {
@@ -181,7 +214,7 @@ customerSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 // Generate JWT token
-customerSchema.methods.generateAuthToken = function() {
+customerSchema.methods.generateAuthToken = function () {
   return jwt.sign(
     { id: this._id, role: 'customer' },
     process.env.JWT_SECRET,
@@ -190,7 +223,7 @@ customerSchema.methods.generateAuthToken = function() {
 };
 
 // Generate refresh token
-customerSchema.methods.generateRefreshToken = function() {
+customerSchema.methods.generateRefreshToken = function () {
   return jwt.sign(
     { id: this._id, role: 'customer' },
     process.env.JWT_REFRESH_SECRET,
@@ -199,7 +232,7 @@ customerSchema.methods.generateRefreshToken = function() {
 };
 
 // Remove sensitive data when converting to JSON
-customerSchema.methods.toJSON = function() {
+customerSchema.methods.toJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.__v;
@@ -207,7 +240,7 @@ customerSchema.methods.toJSON = function() {
 };
 
 // Static method to find a customer by ID safely
-customerSchema.statics.findByIdSafe = async function(id) {
+customerSchema.statics.findByIdSafe = async function (id) {
   try {
     return await this.findById(id).lean();
   } catch (error) {
@@ -216,21 +249,21 @@ customerSchema.statics.findByIdSafe = async function(id) {
 };
 
 // Helper method for updating customer data safely
-customerSchema.methods.updateSafe = async function(updates) {
+customerSchema.methods.updateSafe = async function (updates) {
   const allowedFields = [
     'name', 'mobile', 'preferences', 'addresses'
   ];
-  
+
   Object.keys(updates).forEach(key => {
     if (allowedFields.includes(key)) {
       this[key] = updates[key];
     }
   });
-  
+
   this.lastActive = new Date();
   return await this.save();
 };
 
 const Customer = mongoose.model('Customer', customerSchema);
 
-export default Customer; 
+export default Customer;
