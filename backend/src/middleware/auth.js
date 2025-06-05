@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
-import { AppError } from './errorHandler.js';
-import { getSession, setSession } from '../utils/redis.js';
 import { logger } from '../utils/logger.js';
+import { getSession, setSession } from '../utils/redis.js';
+import { AppError } from './errorHandler.js';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -67,7 +67,7 @@ export const protect = async (req, res, next) => {
         throw redisError;
       }
     }
-    
+
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -80,15 +80,37 @@ export const protect = async (req, res, next) => {
 export const restrictTo = (...roles) => {
   return (req, res, next) => {
     // Convert both the user's role and the allowed roles to lowercase for case-insensitive comparison
-    const userRole = req.user.role?.toLowerCase();
+    const userRole = req.user.role?.toLowerCase?.()?.trim?.();
     const allowedRoles = roles.map(role => role.toLowerCase());
-    
-    // Allow super admin to bypass role checks
-    if (userRole === 'super admin') {
+
+    // Debug logging for super admin access issues
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 RestrictTo Debug:', {
+        userRole,
+        allowedRoles,
+        isSuperAdmin: req.user.isSuperAdmin,
+        originalRole: req.user.role
+      });
+    }
+
+    // Allow super admin to bypass role checks - check multiple variants
+    const isSuperAdmin = req.user.isSuperAdmin === true ||
+      userRole === 'super admin' ||
+      userRole === 'superadmin' ||
+      userRole === 'super_admin' ||
+      req.user.role === 'Super Admin';
+
+    if (isSuperAdmin) {
+      console.log('✅ Super admin access granted');
       return next();
     }
-    
+
     if (!userRole || !allowedRoles.includes(userRole)) {
+      console.error('❌ Access denied:', {
+        userRole,
+        allowedRoles,
+        user: req.user
+      });
       return next(new AppError('You do not have permission to perform this action', 403));
     }
     next();
@@ -152,7 +174,7 @@ export const authenticateSeller = async (req, res, next) => {
         throw redisError;
       }
     }
-    
+
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -227,7 +249,7 @@ export const authenticateAdmin = async (req, res, next) => {
         throw redisError;
       }
     }
-    
+
     next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -238,4 +260,4 @@ export const authenticateAdmin = async (req, res, next) => {
 };
 
 // Alias for protect function to match expected import
-export const authenticateToken = protect; 
+export const authenticateToken = protect;

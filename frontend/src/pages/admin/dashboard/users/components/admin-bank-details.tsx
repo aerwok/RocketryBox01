@@ -66,17 +66,11 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
           if (sellerData && sellerData.bankDetails) {
             console.log('💳 Found bankDetails:', sellerData.bankDetails);
 
-            // Get the first (primary) bank account
-            let bankAccount = null;
-            if (Array.isArray(sellerData.bankDetails) && sellerData.bankDetails.length > 0) {
-              bankAccount = sellerData.bankDetails[0]; // Get first bank account
-            } else if (sellerData.bankDetails && typeof sellerData.bankDetails === 'object') {
-              bankAccount = sellerData.bankDetails; // Direct object
-            }
-
+            // bankDetails is now a single object, not an array
+            const bankAccount = sellerData.bankDetails;
             console.log('🏧 Bank account to use:', bankAccount);
 
-            if (bankAccount) {
+            if (bankAccount && typeof bankAccount === 'object') {
               const formData = {
                 bankName: bankAccount.bankName || "",
                 accountName: bankAccount.accountHolderName || bankAccount.accountName || "",
@@ -114,20 +108,20 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
     try {
       console.log('💾 Saving bank details:', data);
 
-      // Create bank details in the format expected by the seller schema
+      // Create bank details in the format expected by the seller schema (single object)
       const bankDetailsUpdate = {
-        bankDetails: [{
+        bankDetails: {
           accountType: "Current Account", // Default for business accounts
           bankName: data.bankName,
           accountNumber: data.accountNumber,
           ifscCode: data.ifscCode,
           accountHolderName: data.accountName,
           branchName: data.branchName,
-          isPrimary: true,
-          isVerified: true,
-          verifiedAt: new Date(),
-          verifiedBy: 'Admin Team'
-        }]
+          cancelledCheque: {
+            status: 'verified',
+            url: '/documents/admin-updated-bank-details.pdf'
+          }
+        }
       };
 
       console.log('📝 Bank update payload:', bankDetailsUpdate);

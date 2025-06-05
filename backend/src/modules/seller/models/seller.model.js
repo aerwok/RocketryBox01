@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { generateUserId } from '../../../utils/userIdGenerator.js';
 
 const addressSchema = new mongoose.Schema({
   address1: { type: String },

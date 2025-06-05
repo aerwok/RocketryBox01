@@ -1,23 +1,24 @@
 import express from 'express';
-import sellerRoutes from './routes/seller.routes.js';
-import orderRoutes from './routes/order.routes.js';
-import shipmentRoutes from './routes/shipment.routes.js';
-import ndrRoutes from './routes/ndr.routes.js';
-import walletRoutes from './routes/wallet.routes.js';
+import agreementRoutes from './routes/agreement.routes.js';
+import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
+import codRemittanceRoutes from './routes/codRemittance.routes.js';
+import dashboardRoutes from './routes/dashboard.routes.js';
 import invoiceRoutes from './routes/invoice.routes.js';
 import ledgerRoutes from './routes/ledger.routes.js';
-import weightDisputeRoutes from './routes/weightDispute.routes.js';
-import codRemittanceRoutes from './routes/codRemittance.routes.js';
-import warehouseRoutes from './routes/warehouse.routes.js';
-import serviceCheckRoutes from './routes/serviceCheck.routes.js';
-import supportRoutes from './routes/support.routes.js';
+import ndrRoutes from './routes/ndr.routes.js';
+import orderRoutes from './routes/order.routes.js';
 import productRoutes from './routes/product.routes.js';
-import storeRoutes from './routes/store.routes.js';
-import settingsRoutes from './routes/settings.routes.js';
 import rateCardRoutes from './routes/ratecard.routes.js';
+import sellerRoutes from './routes/seller.routes.js';
+import serviceCheckRoutes from './routes/serviceCheck.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
+import shipmentRoutes from './routes/shipment.routes.js';
+import storeRoutes from './routes/store.routes.js';
+import supportRoutes from './routes/support.routes.js';
 import teamUserRoutes from './routes/teamUser.routes.js';
-import dashboardRoutes from './routes/dashboard.routes.js';
-import bulkOrdersRoutes from './routes/bulkOrders.routes.js';
+import walletRoutes from './routes/wallet.routes.js';
+import warehouseRoutes from './routes/warehouse.routes.js';
+import weightDisputeRoutes from './routes/weightDispute.routes.js';
 
 const router = express.Router();
 
@@ -68,4 +69,7 @@ router.use('/dashboard', dashboardRoutes);
 // Bulk Orders
 router.use('/bulk-orders', bulkOrdersRoutes);
 
-export default router; 
+// Agreements
+router.use('/agreements', agreementRoutes);
+
+export default router;
