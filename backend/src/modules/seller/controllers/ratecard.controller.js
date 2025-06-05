@@ -1,217 +1,257 @@
-import RateCard from '../../../models/ratecard.model.js';
-import rateCardService from '../../../services/ratecard.service.js';
 import { AppError } from '../../../middleware/errorHandler.js';
+import SellerRateCard from '../../../models/sellerRateCard.model.js';
+import rateCardService from '../../../services/ratecard.service.js';
 import { logger } from '../../../utils/logger.js';
 
-// Get available rate cards for seller
+// Get seller's effective rate cards (base + overrides)
 export const getSellerRateCard = async (req, res, next) => {
   try {
-    // Get all active rate cards (available to all sellers)
-    const result = await rateCardService.getAllRateCards({ isActive: true });
-    
-    if (!result.success) {
-      throw new AppError('Failed to fetch rate cards', 500);
+    const sellerId = req.user.id; // Get seller ID from authenticated user
+
+    // Get effective rate cards for this seller (base + overrides)
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
+
+    if (!effectiveRates || effectiveRates.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          rateCards: [],
+          rateCardsByCourier: {},
+          totalCount: 0,
+          message: 'No rate cards available. Please contact admin to set up your rates.'
+        }
+      });
     }
 
     // Group rate cards by courier for easier frontend consumption
     const rateCardsByCourier = {};
-    result.rateCards.forEach(card => {
+    effectiveRates.forEach(card => {
       if (!rateCardsByCourier[card.courier]) {
         rateCardsByCourier[card.courier] = [];
       }
       rateCardsByCourier[card.courier].push(card);
     });
 
+    // Count overrides for statistics
+    const overriddenRates = effectiveRates.filter(rate => rate.isOverride);
+    const hasCustomRates = overriddenRates.length > 0;
+
     res.status(200).json({
       success: true,
       data: {
-        rateCards: result.rateCards,
+        rateCards: effectiveRates,
         rateCardsByCourier,
-        totalCount: result.rateCards.length
+        totalCount: effectiveRates.length,
+        hasCustomRates,
+        statistics: {
+          totalRates: effectiveRates.length,
+          customRates: overriddenRates.length,
+          baseRates: effectiveRates.length - overriddenRates.length,
+          customizationPercentage: Math.round((overriddenRates.length / effectiveRates.length) * 100)
+        }
       }
     });
   } catch (error) {
-    logger.error(`Error in getSellerRateCard: ${error.message}`);
+    logger.error(`Error in getSellerRateCard for seller ${req.user.id}: ${error.message}`);
     next(error);
   }
 };
 
-// Calculate shipping rate for seller using unified rate card system
+// Calculate shipping rate using seller's effective rates
 export const calculateShippingRate = async (req, res, next) => {
   try {
+    const sellerId = req.user.id;
     const {
-      fromPincode,
-      toPincode,
+      pickupPincode,
+      deliveryPincode,
       weight,
-      length,
-      width,
-      height,
-      mode = 'Surface',
-      courier,
-      isCOD = false,
-      declaredValue = 0
+      paymentType,
+      purchaseAmount,
+      packageLength,
+      packageWidth,
+      packageHeight
     } = req.body;
 
-    // Validate required parameters
-    if (!fromPincode || !toPincode || !weight) {
-      throw new AppError('fromPincode, toPincode, and weight are required', 400);
+    // Validate required fields
+    if (!pickupPincode || !deliveryPincode || !weight || !paymentType) {
+      return next(new AppError('Pickup pincode, delivery pincode, weight, and payment type are required', 400));
     }
 
-    // Use the unified rate card service for calculation
-    const result = await rateCardService.calculateShippingRate({
-      fromPincode,
-      toPincode,
-      weight,
-      dimensions: length && width && height ? { length, width, height } : null,
-      mode,
-      courier,
-      orderType: isCOD ? 'cod' : 'prepaid',
-      codCollectableAmount: declaredValue || 0,
-      includeRTO: false
+    // Get seller's effective rate cards
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
+
+    if (!effectiveRates || effectiveRates.length === 0) {
+      return next(new AppError('No rate cards available for your account. Please contact admin.', 400));
+    }
+
+    // Use the rate calculation service with seller's effective rates
+    const calculationResult = await rateCardService.calculateShippingRate({
+      pickupPincode,
+      deliveryPincode,
+      weight: parseFloat(weight),
+      paymentType,
+      purchaseAmount: purchaseAmount ? parseFloat(purchaseAmount) : 0,
+      dimensions: {
+        length: packageLength ? parseFloat(packageLength) : 0,
+        width: packageWidth ? parseFloat(packageWidth) : 0,
+        height: packageHeight ? parseFloat(packageHeight) : 0
+      },
+      rateCards: effectiveRates // Pass seller's effective rates
     });
 
-    if (!result.success) {
-      throw new AppError(result.error, 400);
+    if (!calculationResult.success) {
+      return next(new AppError(calculationResult.error, 400));
     }
 
-    // Transform response for seller API compatibility
+    // Add seller-specific information to the response
     const response = {
-      success: true,
-      data: {
-        calculations: result.calculations,
-        bestOptions: result.bestOptions,
-        requestId: result.requestId,
-        zone: result.zone,
-        billedWeight: result.billedWeight,
-        deliveryEstimate: result.deliveryEstimate
+      ...calculationResult,
+      sellerInfo: {
+        hasCustomRates: effectiveRates.some(rate => rate.isOverride),
+        ratesLastUpdated: Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime()))
       }
     };
 
-    res.status(200).json(response);
+    res.status(200).json({
+      success: true,
+      data: response
+    });
+
   } catch (error) {
-    logger.error(`Error in calculateShippingRate: ${error.message}`);
+    logger.error(`Error in calculateShippingRate for seller ${req.user.id}: ${error.message}`);
     next(error);
   }
 };
 
-// Get rate comparison across multiple couriers
+// Get rate comparison across different couriers for seller
 export const getRateComparison = async (req, res, next) => {
   try {
+    const sellerId = req.user.id;
     const {
-      fromPincode,
-      toPincode,
+      pickupPincode,
+      deliveryPincode,
       weight,
-      dimensions,
-      isCOD = false,
-      declaredValue = 0
-    } = req.body;
+      paymentType = 'Prepaid'
+    } = req.query;
 
-    // Validate required parameters
-    if (!fromPincode || !toPincode || !weight) {
-      throw new AppError('fromPincode, toPincode, and weight are required', 400);
+    if (!pickupPincode || !deliveryPincode || !weight) {
+      return next(new AppError('Pickup pincode, delivery pincode, and weight are required', 400));
     }
 
-    // Get active couriers
-    const couriersResult = await rateCardService.getActiveCouriers();
-    if (!couriersResult.success) {
-      throw new AppError('Failed to fetch active couriers', 500);
+    // Get seller's effective rate cards
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
+
+    if (!effectiveRates || effectiveRates.length === 0) {
+      return next(new AppError('No rate cards available for comparison', 400));
     }
 
-    const comparisons = [];
-    const errors = [];
+    // Calculate rates using seller's effective rates
+    const calculationResult = await rateCardService.calculateShippingRate({
+      fromPincode: pickupPincode,
+      toPincode: deliveryPincode,
+      weight: parseFloat(weight),
+      orderType: paymentType.toLowerCase() === 'cod' ? 'cod' : 'prepaid',
+      rateCards: effectiveRates // Pass seller's effective rates
+    });
 
-    // Calculate rates for each courier
-    for (const courier of couriersResult.couriers) {
-      try {
-        const result = await rateCardService.calculateShippingRate({
-          fromPincode,
-          toPincode,
-          weight,
-          dimensions,
-          courier,
-          isCOD,
-          declaredValue
-        });
+    if (!calculationResult.success) {
+      return next(new AppError(calculationResult.error, 400));
+    }
 
-        if (result.success && result.calculations.length > 0) {
-          // Get the best option for this courier
-          const bestOption = result.calculations.reduce((best, current) => 
-            current.totalAmount < best.totalAmount ? current : best
-          );
-
-          comparisons.push({
-            courier,
-            ...bestOption,
-            zone: result.zone,
-            deliveryEstimate: result.deliveryEstimate
-          });
-        }
-      } catch (courierError) {
-        errors.push(`${courier}: ${courierError.message}`);
+    // Group calculations by courier for comparison
+    const courierComparison = {};
+    calculationResult.calculations.forEach(calc => {
+      if (!courierComparison[calc.courier]) {
+        courierComparison[calc.courier] = [];
       }
-    }
+      courierComparison[calc.courier].push(calc);
+    });
 
-    // Sort by total amount (cheapest first)
-    comparisons.sort((a, b) => a.totalAmount - b.totalAmount);
+    // Get best rate for each courier
+    const bestRatesByCourier = Object.entries(courierComparison).map(([courier, rates]) => {
+      const bestRate = rates.sort((a, b) => a.total - b.total)[0];
+      return {
+        courier,
+        mode: bestRate.mode,
+        rate: bestRate.total,
+        estimatedDelivery: calculationResult.deliveryEstimate,
+        isCustomRate: bestRate.isCustomRate || false,
+        breakdown: {
+          baseRate: bestRate.baseRate,
+          additionalCharges: (bestRate.addlRate * (bestRate.weightMultiplier - 1)),
+          codCharges: bestRate.codCharges,
+          gst: bestRate.gst,
+          total: bestRate.total
+        }
+      };
+    });
+
+    // Sort by rate (cheapest first)
+    bestRatesByCourier.sort((a, b) => a.rate - b.rate);
 
     res.status(200).json({
       success: true,
       data: {
-        comparisons,
-        cheapest: comparisons[0] || null,
-        errors: errors.length > 0 ? errors : undefined,
-        requestDetails: {
-          fromPincode,
-          toPincode,
-          weight,
-          dimensions,
-          isCOD,
-          declaredValue
+        zone: calculationResult.zone,
+        rates: bestRatesByCourier,
+        cheapestOption: bestRatesByCourier[0],
+        summary: {
+          totalCouriers: bestRatesByCourier.length,
+          cheapestRate: bestRatesByCourier[0]?.rate,
+          fastestDelivery: calculationResult.deliveryEstimate
+        },
+        metadata: {
+          sellerId,
+          hasCustomRates: effectiveRates.some(rate => rate.isOverride),
+          totalAvailableCouriers: [...new Set(effectiveRates.map(rate => rate.courier))].length,
+          customRatesUsed: calculationResult.calculations.filter(c => c.isCustomRate).length
         }
       }
     });
+
   } catch (error) {
-    logger.error(`Error in getRateComparison: ${error.message}`);
+    logger.error(`Error in getRateComparison for seller ${req.user.id}: ${error.message}`);
     next(error);
   }
 };
 
-// Get zone mapping for pincodes (updated to use unified system)
+// Get zone mapping information
 export const getZoneMapping = async (req, res, next) => {
   try {
-    const { pincodes, fromPincode } = req.query;
-    
-    if (!pincodes || !fromPincode) {
-      throw new AppError('Please provide fromPincode and pincodes', 400);
-    }
-
-    const pincodeList = pincodes.split(',').map(p => p.trim());
-    const zones = [];
-
-    for (const pincode of pincodeList) {
-      try {
-        const zone = await rateCardService.determineZone(fromPincode, pincode);
-        zones.push({ 
-          pincode, 
-          zone,
-          fromPincode 
-        });
-      } catch (error) {
-        zones.push({ 
-          pincode, 
-          zone: 'Unknown',
-          fromPincode,
-          error: error.message 
-        });
+    // Provide zone mapping information directly since the service method doesn't exist
+    const zoneMapping = {
+      zones: [
+        'Within City',
+        'Within State',
+        'Within Region',
+        'Metro to Metro',
+        'Rest of India',
+        'Special Zone',
+        'North East & Special Areas'
+      ],
+      description: {
+        'Within City': 'Same city delivery',
+        'Within State': 'Same state, different city',
+        'Within Region': 'Same region, different state',
+        'Metro to Metro': 'Between major metro cities',
+        'Rest of India': 'Standard domestic delivery',
+        'Special Zone': 'Remote areas, North East states',
+        'North East & Special Areas': 'North East India, J&K, Islands'
+      },
+      deliveryTimeEstimates: {
+        'Within City': { Surface: '2-3 days', Air: '1-2 days' },
+        'Within State': { Surface: '3-4 days', Air: '2-3 days' },
+        'Within Region': { Surface: '4-5 days', Air: '2-3 days' },
+        'Metro to Metro': { Surface: '3-5 days', Air: '2-3 days' },
+        'Rest of India': { Surface: '4-6 days', Air: '3-4 days' },
+        'Special Zone': { Surface: '6-8 days', Air: '4-5 days' },
+        'North East & Special Areas': { Surface: '6-8 days', Air: '4-5 days' }
       }
-    }
+    };
 
     res.status(200).json({
       success: true,
-      data: {
-        zones,
-        fromPincode
-      }
+      data: zoneMapping
     });
   } catch (error) {
     logger.error(`Error in getZoneMapping: ${error.message}`);
@@ -222,18 +262,54 @@ export const getZoneMapping = async (req, res, next) => {
 // Get rate card statistics for seller dashboard
 export const getRateCardStatistics = async (req, res, next) => {
   try {
-    const result = await rateCardService.getStatistics();
-    
-    if (!result.success) {
-      throw new AppError('Failed to fetch statistics', 500);
-    }
+    const sellerId = req.user.id;
+
+    // Get seller's effective rate cards
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
+
+    // Calculate seller-specific statistics
+    const courierStats = {};
+    const zoneStats = {};
+    const modeStats = {};
+    let customRatesCount = 0;
+
+    effectiveRates.forEach(rate => {
+      // Count by courier
+      courierStats[rate.courier] = (courierStats[rate.courier] || 0) + 1;
+
+      // Count by zone
+      zoneStats[rate.zone] = (zoneStats[rate.zone] || 0) + 1;
+
+      // Count by mode
+      modeStats[rate.mode] = (modeStats[rate.mode] || 0) + 1;
+
+      // Count custom rates
+      if (rate.isOverride) {
+        customRatesCount++;
+      }
+    });
+
+    const statistics = {
+      totalRateCards: effectiveRates.length,
+      customRates: customRatesCount,
+      baseRates: effectiveRates.length - customRatesCount,
+      customizationPercentage: effectiveRates.length > 0 ?
+        Math.round((customRatesCount / effectiveRates.length) * 100) : 0,
+      byCategory: {
+        courier: Object.entries(courierStats).map(([name, count]) => ({ name, count })),
+        zone: Object.entries(zoneStats).map(([name, count]) => ({ name, count })),
+        mode: Object.entries(modeStats).map(([name, count]) => ({ name, count }))
+      },
+      lastUpdated: effectiveRates.length > 0 ?
+        Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime())) : null
+    };
 
     res.status(200).json({
       success: true,
-      data: result.statistics
+      data: statistics
     });
   } catch (error) {
-    logger.error(`Error in getRateCardStatistics: ${error.message}`);
+    logger.error(`Error in getRateCardStatistics for seller ${req.user.id}: ${error.message}`);
     next(error);
   }
-}; 
+};

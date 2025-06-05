@@ -1,8 +1,8 @@
+import dotenv from 'dotenv';
 import fs from 'fs';
+import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import RateCard from '../models/ratecard.model.js';
 
 dotenv.config();
@@ -19,9 +19,11 @@ const MONGODB_URI = process.env.MONGODB_ATLAS_URI || 'mongodb://localhost:27017/
 console.log('Attempting to connect to MongoDB...');
 console.log(`Connection URI: ${MONGODB_URI}`);
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => {
+mongoose.connect(MONGODB_URI, {
+  dbName: 'RocketryBox'  // Force connection to RocketryBox database
+})
+  .then(() => console.log('Connected to MongoDB database: RocketryBox'))
+  .catch((err) => {
     console.error('MongoDB connection error:', err);
     process.exit(1);
   });
@@ -70,7 +72,7 @@ async function importRateCards() {
 
     for (let i = 0; i < rateCardsData.length; i++) {
       const item = rateCardsData[i];
-      
+
       try {
         // Convert codAmount from string to number if it's a string
         const processedItem = {
@@ -112,17 +114,17 @@ async function importRateCards() {
     // Insert in batches for better performance
     const batchSize = 50;
     let insertedCount = 0;
-    
+
     for (let i = 0; i < processedRateCards.length; i += batchSize) {
       const batch = processedRateCards.slice(i, i + batchSize);
-      
+
       try {
         await RateCard.insertMany(batch);
         insertedCount += batch.length;
         console.log(`Inserted batch: ${insertedCount}/${processedRateCards.length} rate cards`);
       } catch (error) {
         console.error(`Error inserting batch starting at index ${i}:`, error.message);
-        
+
         // Try inserting individual records in case of batch failure
         for (const record of batch) {
           try {
@@ -161,7 +163,7 @@ async function importRateCards() {
       { $group: { _id: '$courier', count: { $sum: 1 } } },
       { $sort: { _id: 1 } }
     ]);
-    
+
     console.log('Rate cards per courier:');
     courierStats.forEach(stat => {
       console.log(`  ${stat._id}: ${stat.count} rate cards`);
@@ -172,16 +174,16 @@ async function importRateCards() {
       { $group: { _id: '$zone', count: { $sum: 1 } } },
       { $sort: { _id: 1 } }
     ]);
-    
+
     console.log('\nRate cards per zone:');
     zoneStats.forEach(stat => {
       console.log(`  ${stat._id}: ${stat.count} rate cards`);
     });
-    
+
     // Close the database connection
     await mongoose.connection.close();
     console.log('\nDatabase connection closed');
-    
+
   } catch (error) {
     console.error('Error importing rate cards:', error);
     await mongoose.connection.close();
@@ -208,4 +210,4 @@ importRateCards()
     console.error('\n' + '='.repeat(50));
     console.error('Rate Card import process failed:', err);
     process.exit(1);
-  }); 
+  });

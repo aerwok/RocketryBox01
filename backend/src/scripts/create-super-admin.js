@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import Admin from '../modules/admin/models/admin.model.js';
 import { generateEmployeeId } from '../utils/employeeId.js';
 
@@ -8,10 +8,12 @@ dotenv.config();
 
 const createSuperAdmin = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to MongoDB with explicit database name
     const MONGODB_URI = process.env.MONGODB_ATLAS_URI || 'mongodb://localhost:27017/rocketrybox';
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
+    await mongoose.connect(MONGODB_URI, {
+      dbName: 'RocketryBox'  // Force connection to RocketryBox database
+    });
+    console.log('Connected to MongoDB database: RocketryBox');
 
     // Delete existing super admin if exists
     await Admin.deleteOne({ email: 'superadmin01@rocketrybox.com' });
@@ -64,4 +66,4 @@ const createSuperAdmin = async () => {
 };
 
 // Run the script
-createSuperAdmin(); 
+createSuperAdmin();

@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import Admin from '../modules/admin/models/admin.model.js';
 import { logger } from '../utils/logger.js';
 
@@ -15,10 +15,12 @@ const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGODB_ATLAS_URI;
 
 const createSuperAdmin = async () => {
   try {
-    // Connect to MongoDB
+    // Connect to MongoDB with explicit database name
     logger.info('Attempting to connect to MongoDB...');
-    await mongoose.connect(MONGODB_URI);
-    logger.info('Connected to MongoDB');
+    await mongoose.connect(MONGODB_URI, {
+      dbName: 'RocketryBox'  // Force connection to RocketryBox database
+    });
+    logger.info('Connected to MongoDB database: RocketryBox');
 
     // Check if super admin already exists
     const existingAdmin = await Admin.findOne({ email: 'superadmin@rocketrybox.com' });
@@ -58,4 +60,4 @@ const createSuperAdmin = async () => {
 };
 
 // Run the script
-createSuperAdmin(); 
+createSuperAdmin();

@@ -1,9 +1,8 @@
 import express from 'express';
-import { validationHandler as validate } from '../../../middleware/validator.js';
+import multer from 'multer';
 import { protect, restrictTo } from '../../../middleware/auth.js';
 import * as userController from '../controllers/user.controller.js';
 import { validateCreateRateCards } from '../validators/billing.validator.js';
-import multer from 'multer';
 
 const router = express.Router();
 
@@ -25,28 +24,32 @@ const upload = multer({
 
 // All user routes are protected for admins
 router.use(protect);
-router.use(restrictTo('Admin', 'Manager', 'Support'));
+router.use(restrictTo('Admin', 'Manager'));
 
-// Real-time user data
-router.post('/realtime', userController.getRealtimeUserData);
-
-// Generic user management routes (for frontend compatibility)
+// Users routes
 router.get('/', userController.getAllUsers);
 router.get('/:id', userController.getUserDetails);
 router.patch('/:id/status', userController.updateUserStatus);
 router.patch('/:id/permissions', userController.updateUserPermissions);
 
-// Seller routes
+// Sellers routes
 router.get('/sellers', userController.getAllSellers);
 router.get('/sellers/:id', userController.getSellerDetails);
 router.patch('/sellers/:id/status', userController.updateSellerStatus);
 router.patch('/sellers/:id/kyc', userController.updateSellerKYC);
-router.post('/sellers/:id/agreement', upload.single('document'), userController.createSellerAgreement);
-router.post('/sellers/:id/ratecard', validateCreateRateCards, userController.manageSellerRateCard);
+router.post('/sellers/:id/agreements', userController.createSellerAgreement);
 
-// Customer routes
+// Seller rate card management (new override system)
+router.get('/sellers/:id/ratecards', userController.getSellerRateCards);
+router.post('/sellers/:id/ratecards', validateCreateRateCards, userController.manageSellerRateCard);
+router.delete('/sellers/:id/ratecards/:overrideId', userController.removeSellerRateCardOverride);
+
+// Customers routes
 router.get('/customers', userController.getAllCustomers);
 router.get('/customers/:id', userController.getCustomerDetails);
 router.patch('/customers/:id/status', userController.updateCustomerStatus);
 
-export default router; 
+// Real-time user data
+router.post('/realtime', userController.getRealtimeUserData);
+
+export default router;

@@ -1,42 +1,52 @@
-import Seller from '../models/seller.model.js';
-import RateCard from '../../../models/ratecard.model.js';
+import { AppError } from '../../../middleware/errorHandler.js';
+import SellerRateCard from '../../../models/sellerRateCard.model.js';
 import rateCardService from '../../../services/ratecard.service.js';
 import { logger } from '../../../utils/logger.js';
-import { AppError } from '../../../middleware/errorHandler.js';
 
-// Get the rate card for the authenticated seller (now uses unified system)
+// Get the rate card for the authenticated seller (now uses seller-specific system)
 export const getSellerRateCard = async (req, res, next) => {
   try {
-    // Get all active rate cards available to sellers
-    const result = await rateCardService.getAllRateCards({ isActive: true });
-    
-    if (!result.success) {
-      throw new AppError('Failed to fetch rate cards', 500);
+    const sellerId = req.user.id;
+
+    // Get seller's effective rate cards (base + overrides)
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
+
+    if (!effectiveRates || effectiveRates.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          lastUpdated: new Date().toISOString(),
+          rates: [],
+          message: 'No rate cards available. Please contact admin to set up your rates.'
+        }
+      });
     }
 
     // Transform rate cards to frontend-expected format
     // Group rate cards by courier and mode for better organization
     const rateCardsByService = {};
-    
-    result.rateCards.forEach(card => {
+
+    effectiveRates.forEach(card => {
       const serviceKey = `${card.courier} ${card.mode.toLowerCase()}-${card.minimumBillableWeight || 0.5}`;
-      
+
       if (!rateCardsByService[serviceKey]) {
         rateCardsByService[serviceKey] = {
-          mode: serviceKey,
+          name: serviceKey,
+          cod: card.codAmount.toString(),
+          codPercent: card.codPercent.toString(),
           withinCity: { base: '0', additional: '0', rto: '0' },
           withinState: { base: '0', additional: '0', rto: '0' },
           metroToMetro: { base: '0', additional: '0', rto: '0' },
           restOfIndia: { base: '0', additional: '0', rto: '0' },
           northEastJK: { base: '0', additional: '0', rto: '0' },
-          cod: card.codAmount.toString(),
-          codPercent: card.codPercent.toString()
+          isCustom: card.isOverride || false,
+          lastUpdated: card.lastUpdated
         };
       }
-      
+
       const service = rateCardsByService[serviceKey];
-      
-      // Map zones to frontend format
+
+      // Map zones to the frontend expected format
       switch (card.zone) {
         case 'Within City':
           service.withinCity = {
@@ -68,6 +78,7 @@ export const getSellerRateCard = async (req, res, next) => {
           break;
         case 'Within Region':
         case 'Special Zone':
+        case 'North East & Special Areas':
           // Map special zones to North East & J&K for frontend compatibility
           service.northEastJK = {
             base: card.baseRate.toString(),
@@ -76,18 +87,32 @@ export const getSellerRateCard = async (req, res, next) => {
           };
           break;
       }
+
+      // Update isCustom flag if any rate is overridden
+      if (card.isOverride) {
+        service.isCustom = true;
+      }
     });
 
     // Get the most recent update time from rate cards
-    const lastUpdated = result.rateCards.length > 0 
-      ? result.rateCards[0].updatedAt || result.rateCards[0].createdAt
-      : new Date();
+    const lastUpdated = effectiveRates.length > 0
+      ? Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime()))
+      : new Date().getTime();
+
+    // Count custom rates for additional info
+    const customRatesCount = effectiveRates.filter(rate => rate.isOverride).length;
 
     res.status(200).json({
       success: true,
       data: {
-        lastUpdated: lastUpdated.toISOString(),
-        rates: Object.values(rateCardsByService)
+        lastUpdated: new Date(lastUpdated).toISOString(),
+        rates: Object.values(rateCardsByService),
+        statistics: {
+          totalRates: effectiveRates.length,
+          customRates: customRatesCount,
+          hasCustomRates: customRatesCount > 0,
+          customizationPercentage: Math.round((customRatesCount / effectiveRates.length) * 100)
+        }
       }
     });
   } catch (error) {
@@ -96,129 +121,76 @@ export const getSellerRateCard = async (req, res, next) => {
   }
 };
 
-// Calculate rates using the unified rate card system
+// Calculate rate card using seller's effective rates
 export const calculateRateCard = async (req, res, next) => {
   try {
-    const { 
-      weight, 
-      pickupPincode, 
-      deliveryPincode, 
+    const sellerId = req.user.id;
+    const {
+      pickupPincode,
+      deliveryPincode,
+      weight,
       paymentType,
-      purchaseAmount = 0,
+      purchaseAmount,
       packageLength,
       packageWidth,
-      packageHeight,
-      includeRTO = false
+      packageHeight
     } = req.body;
 
-    if (!weight || !pickupPincode || !deliveryPincode || !paymentType) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'weight, pickupPincode, deliveryPincode, and paymentType are required' 
-      });
+    // Validate required fields
+    if (!pickupPincode || !deliveryPincode || !weight || !paymentType) {
+      return next(new AppError('Pickup pincode, delivery pincode, weight, and payment type are required', 400));
     }
 
-    const isCOD = paymentType.toLowerCase() === 'cod';
-    const actualWeight = parseFloat(weight);
-    
-    // Calculate volumetric weight if dimensions provided
-    let volumetricWeight = 0;
-    if (packageLength && packageWidth && packageHeight) {
-      volumetricWeight = (parseFloat(packageLength) * parseFloat(packageWidth) * parseFloat(packageHeight)) / 5000;
-    }
-    
-    // Billed weight is the higher of actual or volumetric weight
-    const billedWeight = Math.max(actualWeight, volumetricWeight);
+    // Get seller's effective rate cards
+    const effectiveRates = await SellerRateCard.getSellerEffectiveRates(sellerId);
 
-    // Get pincode information and determine zone
-    const zone = await determineZoneFromPincodes(pickupPincode, deliveryPincode);
-    
-    // Get all active rate cards for the determined zone
-    const result = await rateCardService.getAllRateCards({ 
-      isActive: true,
-      zone: zone 
-    });
-
-    if (!result.success || result.rateCards.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `No rate cards found for zone: ${zone}`
-      });
+    if (!effectiveRates || effectiveRates.length === 0) {
+      return next(new AppError('No rate cards available for your account. Please contact admin.', 400));
     }
 
-    // Calculate rates for each applicable courier using the provided logic
-    const rates = result.rateCards.map(rateCard => {
-      // Determine final weight (minimum billable weight or billed weight, whichever is higher)
-      const finalWeight = Math.max(billedWeight, rateCard.minimumBillableWeight || 0.5);
-      
-      // Calculate weight multiplier (0.5 kg increments)
-      const weightMultiplier = Math.ceil(finalWeight / 0.5);
-      
-      // Calculate shipping cost: base rate + additional rate for extra weight
-      const shippingCost = rateCard.baseRate + (rateCard.addlRate * (weightMultiplier - 1));
-      
-      // Calculate RTO charges if requested
-      let rtoCharges = 0;
-      if (includeRTO && rateCard.rtoCharges) {
-        rtoCharges = rateCard.rtoCharges * weightMultiplier;
-      }
-      
-      // Calculate COD charges based on the provided logic
-      let codCharges = 0;
-      if (isCOD) {
-        const codCollectableAmount = parseFloat(purchaseAmount) || 0;
-        
-        // Option 1: Fixed COD Amount from rate card
-        let fixedCODAmount = 0;
-        if (rateCard.codAmount && !isNaN(rateCard.codAmount) && rateCard.codAmount > 0) {
-          fixedCODAmount = rateCard.codAmount;
-        }
-        
-        // Option 2: COD Percentage of COD Collectable Amount
-        let percentBasedCOD = 0;
-        if (rateCard.codPercent && !isNaN(rateCard.codPercent) && codCollectableAmount > 0) {
-          percentBasedCOD = (rateCard.codPercent / 100) * codCollectableAmount;
-        }
-        
-        // Use whichever is higher between fixed COD amount and percentage-based COD
-        codCharges = Math.max(fixedCODAmount, percentBasedCOD);
-      }
-      
-      // Calculate GST (18% on shipping + RTO + COD charges)
-      const gst = 0.18 * (shippingCost + rtoCharges + codCharges);
-      
-      // Calculate total
-      const total = shippingCost + rtoCharges + codCharges + gst;
-      
-      return {
-        name: `${rateCard.courier} ${rateCard.mode}`,
-        courier: rateCard.courier,
-        productName: rateCard.productName,
-        mode: rateCard.mode,
-        zone: zone,
-        volumetricWeight: volumetricWeight.toFixed(2),
-        finalWeight: finalWeight.toFixed(2),
-        weightMultiplier: weightMultiplier,
-        baseCharge: Math.round(shippingCost * 100) / 100,
-        codCharge: Math.round(codCharges * 100) / 100,
-        rtoCharges: Math.round(rtoCharges * 100) / 100,
-        gst: Math.round(gst * 100) / 100,
-        total: Math.round(total * 100) / 100,
-        rateCardId: rateCard._id
-      };
+    // Use the rate calculation service with seller's effective rates
+    const calculationResult = await rateCardService.calculateShippingRate({
+      pickupPincode,
+      deliveryPincode,
+      weight: parseFloat(weight),
+      paymentType,
+      purchaseAmount: purchaseAmount ? parseFloat(purchaseAmount) : 0,
+      dimensions: {
+        length: packageLength ? parseFloat(packageLength) : 0,
+        width: packageWidth ? parseFloat(packageWidth) : 0,
+        height: packageHeight ? parseFloat(packageHeight) : 0
+      },
+      rateCards: effectiveRates // Use seller's effective rates
     });
 
-    res.status(200).json({ 
-      success: true, 
-      data: {
-        zone: zone,
-        billedWeight: billedWeight.toFixed(2),
-        volumetricWeight: volumetricWeight.toFixed(2),
-        rates: rates
+    if (!calculationResult.success) {
+      return next(new AppError(calculationResult.error, 400));
+    }
+
+    // Add seller-specific information
+    const response = {
+      ...calculationResult,
+      sellerInfo: {
+        sellerId,
+        hasCustomRates: effectiveRates.some(rate => rate.isOverride),
+        customRatesUsed: calculationResult.rates ?
+          calculationResult.rates.filter(rate =>
+            effectiveRates.find(er =>
+              er.courier === rate.courier &&
+              er.mode === rate.mode &&
+              er.isOverride
+            )
+          ).length : 0
       }
+    };
+
+    res.status(200).json({
+      success: true,
+      data: response
     });
+
   } catch (error) {
-    logger.error(`Error in calculateRateCard: ${error.message}`);
+    logger.error(`Error in calculateRateCard for seller ${sellerId}: ${error.message}`);
     next(error);
   }
 };
@@ -229,49 +201,49 @@ async function determineZoneFromPincodes(pickupPincode, deliveryPincode) {
     // Use the ratecard service to get pincode information
     const pickupInfo = rateCardService.getPincodeInfo(pickupPincode);
     const deliveryInfo = rateCardService.getPincodeInfo(deliveryPincode);
-    
+
     if (!pickupInfo || !deliveryInfo) {
       return 'Rest of India'; // Default fallback
     }
-    
+
     // Special Zone Logic - North East, J&K, Himachal Pradesh, Andaman & Nicobar
     const specialZoneStates = [
-      'Assam', 'Nagaland', 'Sikkim', 'Arunachal Pradesh', 'Manipur', 
-      'Meghalaya', 'Mizoram', 'Tripura', 'Jammu And Kashmir', 
+      'Assam', 'Nagaland', 'Sikkim', 'Arunachal Pradesh', 'Manipur',
+      'Meghalaya', 'Mizoram', 'Tripura', 'Jammu And Kashmir',
       'Himachal Pradesh', 'Andaman And Nicobar'
     ];
-    
+
     if (specialZoneStates.includes(deliveryInfo.state)) {
       return 'Special Zone';
     }
-    
+
     // Within City - same city
     if (pickupInfo.city === deliveryInfo.city) {
       return 'Within City';
     }
-    
+
     // Within State - same state but different cities
     if (pickupInfo.state === deliveryInfo.state) {
       return 'Within State';
     }
-    
+
     // Within Region - same region but different states
     const pickupRegion = getRegionFromState(pickupInfo.state);
     const deliveryRegion = getRegionFromState(deliveryInfo.state);
-    
+
     if (pickupRegion === deliveryRegion) {
       return 'Within Region';
     }
-    
+
     // Metro to Metro - between major metro cities
     const metroCities = ['New Delhi', 'Mumbai', 'Kolkata', 'Chennai', 'Bangalore'];
     if (metroCities.includes(pickupInfo.city) && metroCities.includes(deliveryInfo.city)) {
       return 'Metro to Metro';
     }
-    
+
     // Default to Rest of India
     return 'Rest of India';
-    
+
   } catch (error) {
     logger.error(`Error determining zone: ${error.message}`);
     return 'Rest of India'; // Default fallback
@@ -290,7 +262,7 @@ function getRegionFromState(state) {
     'Uttar Pradesh': 'North',
     'Rajasthan': 'North',
     'Jammu And Kashmir': 'North',
-    
+
     // South Region
     'Karnataka': 'South',
     'Tamil Nadu': 'South',
@@ -298,24 +270,24 @@ function getRegionFromState(state) {
     'Andhra Pradesh': 'South',
     'Telangana': 'South',
     'Puducherry': 'South',
-    
+
     // West Region
     'Maharashtra': 'West',
     'Gujarat': 'West',
     'Goa': 'West',
     'Daman And Diu': 'West',
     'Dadra And Nagar Haveli': 'West',
-    
+
     // East Region
     'West Bengal': 'East',
     'Odisha': 'East',
     'Jharkhand': 'East',
     'Bihar': 'East',
-    
+
     // Central Region
     'Madhya Pradesh': 'Central',
     'Chhattisgarh': 'Central',
-    
+
     // Northeast Region
     'Assam': 'Northeast',
     'Arunachal Pradesh': 'Northeast',
@@ -326,6 +298,6 @@ function getRegionFromState(state) {
     'Sikkim': 'Northeast',
     'Tripura': 'Northeast'
   };
-  
+
   return regionMapping[state] || 'Other';
-} 
+}

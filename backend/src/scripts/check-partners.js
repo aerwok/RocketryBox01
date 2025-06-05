@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
 
 // Load environment variables
@@ -9,13 +9,15 @@ const checkPartners = async () => {
   try {
     // Connect to MongoDB
     const MONGODB_URI = process.env.MONGODB_ATLAS_URI || 'mongodb://localhost:27017/rocketrybox';
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
+    await mongoose.connect(MONGODB_URI, {
+      dbName: 'RocketryBox'  // Force connection to RocketryBox database
+    });
+    console.log('Connected to MongoDB database: RocketryBox');
 
     // Check for shipping partners
     const partners = await ShippingPartner.find({});
     console.log(`Found ${partners.length} shipping partners:`);
-    
+
     if (partners.length > 0) {
       partners.forEach((partner, index) => {
         console.log(`${index + 1}. ${partner.name} (${partner.apiStatus}) - ID: ${partner._id}`);
@@ -35,4 +37,4 @@ const checkPartners = async () => {
 };
 
 // Run the script
-checkPartners(); 
+checkPartners();

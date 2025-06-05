@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import Pincode from '../models/pincode.model.js';
 
 dotenv.config();
@@ -58,12 +58,12 @@ const samplePincodes = [
     taluk: "Hyderabad"
   },
   {
-    pincode: "560001", 
-    officeName: "GPO Bangalore", 
-    district: "Bangalore", 
-    state: "Karnataka", 
-    region: "Karnataka", 
-    circle: "Karnataka", 
+    pincode: "560001",
+    officeName: "GPO Bangalore",
+    district: "Bangalore",
+    state: "Karnataka",
+    region: "Karnataka",
+    circle: "Karnataka",
     taluk: "Bangalore"
   },
   {
@@ -106,9 +106,11 @@ const samplePincodes = [
 
 async function createSamplePincodes() {
   try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('Connected to MongoDB');
-    
+    await mongoose.connect(MONGODB_URI, {
+      dbName: 'RocketryBox'  // Force connection to RocketryBox database
+    });
+    console.log('Connected to MongoDB database: RocketryBox');
+
     // Check if we already have sample data
     const existingCount = await Pincode.countDocuments();
     if (existingCount > 0) {
@@ -123,21 +125,21 @@ async function createSamplePincodes() {
         await Pincode.deleteMany({});
       }
     }
-    
+
     // Insert sample data
     console.log('Inserting sample pincode data...');
     await Pincode.insertMany(samplePincodes);
-    
+
     console.log(`Successfully inserted ${samplePincodes.length} sample pincodes.`);
-    
+
     // Create index if it doesn't exist
     console.log('Creating index on pincode field...');
     await Pincode.collection.createIndex({ pincode: 1 });
     console.log('Index created successfully.');
-    
+
     await mongoose.connection.close();
     console.log('Database connection closed.');
-    
+
   } catch (error) {
     console.error('Error creating sample pincodes:', error.message);
     if (mongoose.connection.readyState !== 0) {
@@ -156,4 +158,4 @@ createSamplePincodes()
   .catch(err => {
     console.error('Process failed:', err.message);
     process.exit(1);
-  }); 
+  });

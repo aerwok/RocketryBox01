@@ -1,10 +1,10 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import axios from 'axios';
 import csv from 'csv-parser';
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import Pincode from '../models/pincode.model.js';
 
 dotenv.config();
@@ -22,9 +22,11 @@ const MONGODB_URI = process.env.MONGODB_ATLAS_URI || 'mongodb://localhost:27017/
 console.log('Attempting to connect to MongoDB...');
 console.log(`Connection URI: ${MONGODB_URI}`);
 
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => {
+mongoose.connect(MONGODB_URI, {
+  dbName: 'RocketryBox'  // Force connection to RocketryBox database
+})
+  .then(() => console.log('Connected to MongoDB database: RocketryBox'))
+  .catch((err) => {
     console.error('MongoDB connection error:', err);
     process.exit(1);
   });
@@ -107,12 +109,12 @@ async function importPincodes() {
             circle: data.circlename,
             taluk: data.Taluk || data.taluk || ''
           };
-          
+
           // Add to batch if pincode exists
           if (pincode.pincode) {
             pincodes.push(pincode);
             count++;
-            
+
             // Insert in batches of 1000 for better performance
             if (pincodes.length >= 1000) {
               try {
@@ -149,11 +151,11 @@ async function importPincodes() {
     console.log('Creating index on pincode field...');
     await Pincode.collection.createIndex({ pincode: 1 });
     console.log('Index created successfully');
-    
+
     // Close the database connection
     await mongoose.connection.close();
     console.log('Database connection closed');
-    
+
   } catch (error) {
     console.error('Error importing pincodes:', error);
     await mongoose.connection.close();
@@ -170,4 +172,4 @@ importPincodes()
   .catch(err => {
     console.error('Import process failed:', err);
     process.exit(1);
-  }); 
+  });

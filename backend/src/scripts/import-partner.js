@@ -1,8 +1,8 @@
-import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import fs from 'fs/promises';
+import mongoose from 'mongoose';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
 import { logger } from '../utils/logger.js';
 
@@ -23,8 +23,10 @@ async function importPartner() {
 
     // Connect to MongoDB
     logger.info('Attempting to connect to MongoDB...');
-    await mongoose.connect(MONGODB_URI);
-    logger.info('Connected to MongoDB');
+    await mongoose.connect(MONGODB_URI, {
+      dbName: 'RocketryBox'  // Force connection to RocketryBox database
+    });
+    logger.info('Connected to MongoDB database: RocketryBox');
 
     // Read partner configuration
     const partnerConfig = JSON.parse(
@@ -57,4 +59,4 @@ async function importPartner() {
   }
 }
 
-importPartner(); 
+importPartner();

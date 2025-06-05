@@ -908,7 +908,8 @@ class RateCardService {
         courier = null,
         orderType = 'prepaid', // 'prepaid' or 'cod'
         codCollectableAmount = 0, // Amount on which COD percentage is calculated
-        includeRTO = false // Whether to include RTO charges
+        includeRTO = false, // Whether to include RTO charges
+        rateCards = null // Optional: Pre-provided rate cards (for seller-specific rates)
       } = calculationData;
 
       // Validate required parameters
@@ -939,24 +940,52 @@ class RateCardService {
       const billedWeight = Math.max(weight, volumetricWeight);
 
       // Get applicable rate cards
-      const query = { zone: determinedZone, isActive: true };
-      if (courier) {
-        query.courier = courier;
-      }
-      if (mode) {
-        query.mode = mode;
+      let applicableRateCards;
+
+      if (rateCards && Array.isArray(rateCards)) {
+        // Use provided rate cards (for seller-specific effective rates)
+        applicableRateCards = rateCards.filter(rate => {
+          let matches = rate.zone === determinedZone && rate.isActive !== false;
+          if (courier) matches = matches && rate.courier === courier;
+          if (mode) matches = matches && rate.mode === mode;
+          return matches;
+        });
+
+        console.log('🎯 Using provided rate cards (seller-specific):', {
+          totalProvided: rateCards.length,
+          afterFiltering: applicableRateCards.length,
+          zone: determinedZone,
+          courier: courier || 'all',
+          mode: mode || 'all'
+        });
+      } else {
+        // Query database for base rate cards (for customers and default case)
+        const query = { zone: determinedZone, isActive: true };
+        if (courier) {
+          query.courier = courier;
+        }
+        if (mode) {
+          query.mode = mode;
+        }
+
+        applicableRateCards = await RateCard.find(query).sort({ courier: 1, baseRate: 1 });
+
+        console.log('🏢 Using base rate cards from database (customer/default):', {
+          found: applicableRateCards.length,
+          zone: determinedZone,
+          courier: courier || 'all',
+          mode: mode || 'all'
+        });
       }
 
-      const rateCards = await RateCard.find(query).sort({ courier: 1, baseRate: 1 });
-
-      if (rateCards.length === 0) {
+      if (applicableRateCards.length === 0) {
         return {
           success: false,
-          error: `No rate cards found for zone: ${determinedZone}${courier ? ` and courier: ${courier}` : ''}`
+          error: `No rate cards found for zone: ${determinedZone}${courier ? ` and courier: ${courier}` : ''}${rateCards ? ' (seller-specific)' : ' (base rates)'}`
         };
       }
 
-      const calculations = rateCards.map(rate => {
+      const calculations = applicableRateCards.map(rate => {
         // Step 1: Calculate final weight considering minimum billable weight
         const finalWeight = Math.max(billedWeight, rate.minimumBillableWeight || 0.5);
 
@@ -1018,12 +1047,15 @@ class RateCardService {
           rtoCharges: Number(rtoCharges.toFixed(2)),
           gst: Number(gst.toFixed(2)),
           total: Number(total.toFixed(2)),
-          rateCardId: rate._id,
+          rateCardId: rate._id || rate.baseRateCardId, // Use appropriate ID
           // Additional details for debugging
           baseRate: Number(rate.baseRate.toFixed(2)),
           addlRate: Number(rate.addlRate.toFixed(2)),
           codAmount: rate.codAmount || 0,
-          codPercent: rate.codPercent || 0
+          codPercent: rate.codPercent || 0,
+          // Add seller-specific information if applicable
+          isCustomRate: rate.isOverride || false,
+          overrideId: rate.overrideId || null
         };
       });
 
@@ -1038,16 +1070,19 @@ class RateCardService {
         }
       });
 
-      console.log('💰 Shipping rates calculated (script.js logic):', {
+      const rateSource = rateCards ? 'seller-specific' : 'base';
+      console.log(`💰 Shipping rates calculated (${rateSource}):`, {
         fromPincode: fromPincode || 'N/A',
         toPincode: toPincode || 'N/A',
         zone: determinedZone,
         courier: courier || 'all',
         orderType,
         includeRTO,
+        rateSource,
         optionsCount: calculations.length,
         cheapestOption: calculations[0]?.courier,
-        cheapestRate: calculations[0]?.total
+        cheapestRate: calculations[0]?.total,
+        customRatesUsed: rateCards ? calculations.filter(c => c.isCustomRate).length : 0
       });
 
       return {
@@ -1059,6 +1094,7 @@ class RateCardService {
         volumetricWeight: Number(volumetricWeight.toFixed(2)),
         deliveryEstimate: this.getDeliveryEstimate(determinedZone, mode),
         requestId: this.generateRequestId(),
+        rateSource: rateSource, // Indicate if using base or seller-specific rates
         inputData: {
           fromPincode: fromPincode || null,
           toPincode: toPincode || null,
@@ -1069,7 +1105,8 @@ class RateCardService {
           courier,
           orderType, // Changed from isCOD to orderType
           codCollectableAmount, // Changed from declaredValue
-          includeRTO // Added includeRTO
+          includeRTO, // Added includeRTO
+          rateSource // Added rate source for debugging
         }
       };
 
