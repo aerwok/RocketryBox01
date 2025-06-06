@@ -1,10 +1,10 @@
-import Seller from '../models/seller.model.js';
+import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
-import { sendSMS } from '../../../utils/sms.js';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
+import { sendOTP as sendSMSOTP } from '../../../utils/sms.js';
+import Seller from '../models/seller.model.js';
 import VerificationToken from '../models/verificationToken.model.js';
 
 // Helper to generate OTP
@@ -71,7 +71,7 @@ export const login = async (req, res, next) => {
 export const sendOTP = async (req, res, next) => {
   try {
     const { emailOrPhone, purpose } = req.body;
-    
+
     // For registration purpose, we don't require the seller to exist
     if (purpose === 'register') {
       // Check if the email/phone is already registered
@@ -81,11 +81,11 @@ export const sendOTP = async (req, res, next) => {
           { phone: !emailOrPhone.includes('@') ? emailOrPhone : undefined }
         ]
       });
-      
+
       if (existingSeller) {
         return next(new AppError('Email or phone already registered', 409));
       }
-      
+
       // Generate OTP
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -97,7 +97,7 @@ export const sendOTP = async (req, res, next) => {
         type: purpose,
         expiresAt
       });
-      
+
       // In development mode, log the OTP
       if (process.env.NODE_ENV === 'development') {
         console.log('\n=========== DEVELOPMENT OTP ===========');
@@ -106,7 +106,7 @@ export const sendOTP = async (req, res, next) => {
         console.log(`⏱️ Expires in: 10 minutes`);
         console.log('========================================\n');
       }
-      
+
       // Send OTP via email or SMS
       try {
         if (emailOrPhone.includes('@')) {
@@ -116,10 +116,7 @@ export const sendOTP = async (req, res, next) => {
             text: `Your OTP is ${otp}. It is valid for 10 minutes.`
           });
         } else {
-          await sendSMS({
-            to: emailOrPhone,
-            message: `Your OTP for Rocketry Box Seller Registration is ${otp}. Valid for 10 min.`
-          });
+          await sendSMSOTP(emailOrPhone, otp, 'phone verification', 10);
         }
       } catch (sendError) {
         console.error('Failed to send OTP:', sendError);
@@ -128,7 +125,7 @@ export const sendOTP = async (req, res, next) => {
           throw sendError;
         }
       }
-      
+
       return res.status(200).json({
         success: true,
         data: {
@@ -138,7 +135,7 @@ export const sendOTP = async (req, res, next) => {
         }
       });
     }
-    
+
     // For login/reset purposes, find the existing seller
     const seller = await Seller.findOne({
       $or: [
@@ -167,10 +164,7 @@ export const sendOTP = async (req, res, next) => {
         text: `Your OTP is ${otp}. It is valid for 10 minutes.`
       });
     } else {
-      await sendSMS({
-        to: seller.phone,
-        message: `Your OTP for Rocketry Box Seller Login is ${otp}. Valid for 10 min.`
-      });
+      await sendSMSOTP(seller.phone, otp, 'login verification', 10);
     }
 
     res.status(200).json({
@@ -190,7 +184,7 @@ export const sendOTP = async (req, res, next) => {
 export const verifyOTP = async (req, res, next) => {
   try {
     const { emailOrPhone, otp, purpose } = req.body;
-    
+
     // Find the verification token
     const verificationToken = await VerificationToken.findOne({
       identifier: emailOrPhone,
@@ -205,15 +199,15 @@ export const verifyOTP = async (req, res, next) => {
 
     // For registration verification, we don't need to check against a stored user
     if (purpose === 'register') {
-      return res.status(200).json({ 
-        success: true, 
-        data: { 
+      return res.status(200).json({
+        success: true,
+        data: {
           message: 'OTP verified successfully',
           verified: true
-        } 
+        }
       });
     }
-    
+
     // For other purposes, verify the seller exists
     const seller = await Seller.findOne({
       $or: [
@@ -229,11 +223,11 @@ export const verifyOTP = async (req, res, next) => {
     // Delete the used verification token
     await VerificationToken.deleteOne({ _id: verificationToken._id });
 
-    res.status(200).json({ 
-      success: true, 
-      data: { 
-        message: 'OTP verified successfully' 
-      } 
+    res.status(200).json({
+      success: true,
+      data: {
+        message: 'OTP verified successfully'
+      }
     });
   } catch (error) {
     next(new AppError(error.message, 400));
@@ -325,9 +319,9 @@ export const register = async (req, res, next) => {
 
     // Check if email or phone is already registered
     console.log('Checking for existing seller:', { email, phone });
-    const existingSeller = await Seller.findOne({ 
+    const existingSeller = await Seller.findOne({
       $or: [
-        { email: email.toLowerCase() }, 
+        { email: email.toLowerCase() },
         { phone }
       ]
     });
@@ -369,11 +363,11 @@ export const register = async (req, res, next) => {
       email: email.toLowerCase(),
       phone,
       password,
-      
+
       // Business Info
       businessName: companyName,
       monthlyShipments,
-      
+
       // Initialize empty structures for later updates
       address: {
         country: 'India'
@@ -384,7 +378,7 @@ export const register = async (req, res, next) => {
         aadhaar: { status: 'pending' }
       },
       bankDetails: {},
-      
+
       // System status
       status: 'pending'
     });
@@ -455,7 +449,7 @@ export const logout = async (req, res, next) => {
   try {
     // Get the seller ID from the request (set by the auth middleware)
     const sellerId = req.user?.id;
-    
+
     if (!sellerId) {
       return res.status(200).json({
         success: true,
@@ -467,11 +461,11 @@ export const logout = async (req, res, next) => {
 
     // Find the seller and clear their refresh token
     const seller = await Seller.findById(sellerId);
-    
+
     if (seller) {
       seller.refreshToken = undefined;
       await seller.save();
-      
+
       // Emit logout event
       emitEvent(EVENT_TYPES.SELLER_LOGOUT, {
         sellerId: seller._id,
@@ -489,4 +483,4 @@ export const logout = async (req, res, next) => {
   } catch (error) {
     next(new AppError(error.message, 400));
   }
-}; 
+};

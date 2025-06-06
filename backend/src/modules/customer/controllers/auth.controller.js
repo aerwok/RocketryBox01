@@ -4,7 +4,7 @@ import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 import { logger } from '../../../utils/logger.js';
 import { generateOTP } from '../../../utils/otp.js';
 import { deleteSession, setOTP, setSession, verifyOTP } from '../../../utils/redis.js';
-import { sendSMS, SMS_TEMPLATES } from '../../../utils/sms.js';
+import { sendOTP as sendSMSOTP } from '../../../utils/sms.js';
 import Customer from '../models/customer.model.js';
 
 // Register new customer
@@ -93,14 +93,7 @@ export const register = async (req, res, next) => {
 
     // Send verification SMS
     try {
-      await sendSMS({
-        to: mobile,
-        templateId: SMS_TEMPLATES.OTP.templateId,
-        variables: {
-          otp: mobileOTP,
-          expiry: '10 minutes'
-        }
-      });
+      await sendSMSOTP(mobile, mobileOTP, 'phone verification', 10);
     } catch (smsError) {
       console.error('Failed to send verification SMS:', smsError);
       // Continue with registration process even if SMS fails
@@ -265,26 +258,12 @@ export const sendOTP = async (req, res, next) => {
             text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
           });
         } else {
-          await sendSMS({
-            to: phoneOrEmail,
-            templateId: SMS_TEMPLATES.OTP.templateId,
-            variables: {
-              otp: otp,
-              expiry: '10 minutes'
-            }
-          });
+          await sendSMSOTP(phoneOrEmail, otp, 'phone verification', 10);
         }
       } catch (sendError) {
-        // In development mode, ignore sending errors
-        if (process.env.NODE_ENV !== 'development') {
-          throw sendError;
-        }
-        logger.warn('Development mode: Ignoring SMS/Email sending error', {
-          error: sendError.message,
-          phoneOrEmail: phoneOrEmail.includes('@') ?
-            '***' + phoneOrEmail.slice(-10) :
-            '***' + phoneOrEmail.slice(-4)
-        });
+        // Log and throw SMS/Email sending errors
+        console.error('Failed to send OTP:', sendError);
+        throw sendError;
       }
 
       return res.status(200).json({
@@ -324,26 +303,17 @@ export const sendOTP = async (req, res, next) => {
           text: `Your verification code is: ${otp}. This code will expire in 10 minutes.`
         });
       } else {
-        await sendSMS({
-          to: phoneOrEmail,
-          templateId: SMS_TEMPLATES.OTP.templateId,
-          variables: {
-            otp: otp,
-            expiry: '10 minutes'
-          }
-        });
+        await sendSMSOTP(phoneOrEmail, otp, 'phone verification', 10);
       }
     } catch (sendError) {
-      // In development mode, ignore sending errors
-      if (process.env.NODE_ENV !== 'development') {
-        throw sendError;
-      }
-      logger.warn('Development mode: Ignoring SMS/Email sending error', {
+      // Log the error and re-throw it
+      logger.error('Failed to send OTP via SMS/Email', {
         error: sendError.message,
         phoneOrEmail: phoneOrEmail.includes('@') ?
           '***' + phoneOrEmail.slice(-10) :
           '***' + phoneOrEmail.slice(-4)
       });
+      throw sendError;
     }
 
     res.status(200).json({

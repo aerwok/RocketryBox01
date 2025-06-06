@@ -23,20 +23,13 @@ export const sendSMS = async ({ to, message, type, variables }) => {
       throw new Error(`Invalid SMS type: ${type}. Valid types are: ${validTypes.join(', ')}`);
     }
 
-    // In development mode, bypass actual SMS sending
+    // Log SMS request in development mode for debugging
     if (process.env.NODE_ENV === 'development') {
-      logger.info('Development mode: Bypassing actual SMS sending', {
+      logger.info('Development mode: Sending actual SMS', {
         to: '***' + to.toString().slice(-4),
         type,
         variables: variables || 'none'
       });
-
-      return {
-        success: true,
-        requestId: 'dev-mode-' + Date.now(),
-        message: 'SMS sending bypassed in development mode',
-        route: 'dlt'
-      };
     }
 
     // Validate API key
@@ -111,16 +104,7 @@ export const sendSMS = async ({ to, message, type, variables }) => {
       stack: error.stack
     });
 
-    // For development mode, bypass SMS sending error
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('Development mode: Bypassing SMS sending failure');
-      return {
-        success: true,
-        requestId: 'dev-mode-' + Date.now(),
-        message: 'SMS sending bypassed in development mode',
-        route: 'dlt'
-      };
-    }
+    // Don't bypass SMS errors - let them propagate properly
 
     throw new Error('Failed to send DLT SMS: ' + (error.response?.data?.message || error.message));
   }
