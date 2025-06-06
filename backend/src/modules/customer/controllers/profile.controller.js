@@ -1,7 +1,8 @@
-import Customer from '../models/customer.model.js';
-import { AppError } from '../../../middleware/errorHandler.js';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
+import { AppError } from '../../../middleware/errorHandler.js';
+import { deleteFromS3, generateSignedUrl, uploadToS3 } from '../../../utils/fileUpload.js';
+import Customer from '../models/customer.model.js';
 
 // Get customer profile
 export const getProfile = async (req, res, next) => {
@@ -12,9 +13,17 @@ export const getProfile = async (req, res, next) => {
       return next(new AppError('Customer not found', 404));
     }
 
+    // Convert customer to object to modify profileImage
+    const customerData = customer.toObject();
+
+    // Generate signed URL for profile image if it exists
+    if (customerData.profileImage) {
+      customerData.profileImage = await generateSignedUrl(customerData.profileImage);
+    }
+
     res.status(200).json({
       success: true,
-      data: customer
+      data: customerData
     });
   } catch (error) {
     next(new AppError(error.message, 400));
@@ -55,11 +64,17 @@ export const updateProfile = async (req, res, next) => {
 
     await customer.save();
 
+    // Convert customer to object and generate signed URL for profile image
+    const customerData = customer.toObject();
+    if (customerData.profileImage) {
+      customerData.profileImage = await generateSignedUrl(customerData.profileImage);
+    }
+
     res.status(200).json({
       success: true,
       data: {
         message: 'Profile updated successfully',
-        profile: customer
+        profile: customerData
       }
     });
   } catch (error) {
@@ -67,7 +82,7 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
-// Upload profile image
+// Upload profile image to S3
 export const uploadProfileImage = async (req, res, next) => {
   try {
     if (!req.file) {
@@ -80,43 +95,49 @@ export const uploadProfileImage = async (req, res, next) => {
       return next(new AppError('Customer not found', 404));
     }
 
-    // Create permanent uploads directory for customer profile images
-    const uploadsDir = 'uploads/customers/profile-images';
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return next(new AppError('Invalid file type. Only JPEG, PNG, and WebP images are allowed.', 400));
     }
 
-    // Generate new filename for permanent storage
-    const fileExtension = path.extname(req.file.originalname);
-    const newFileName = `customer-${customer._id}-${Date.now()}${fileExtension}`;
-    const permanentPath = path.join(uploadsDir, newFileName);
-
-    // Move file from temp to permanent location
-    fs.renameSync(req.file.path, permanentPath);
-
-    // Delete old profile image if it exists
-    if (customer.profileImage) {
-      const oldImagePath = path.join(process.cwd(), customer.profileImage);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
-      }
+    // Validate file size (5MB max)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (req.file.size > maxSize) {
+      return next(new AppError('File size too large. Maximum size is 5MB.', 400));
     }
 
-    // Update customer with new profile image path
-    customer.profileImage = permanentPath;
-    await customer.save();
-
-    // Return URL that can be accessed by the frontend
-    const imageUrl = `/${permanentPath}`;
-
-    res.status(200).json({
-      success: true,
-      data: {
-        message: 'Profile image uploaded successfully',
-        imageUrl: imageUrl,
-        customer: customer
+    try {
+      // Delete old profile image from S3 if it exists
+      if (customer.profileImage) {
+        await deleteFromS3(customer.profileImage);
       }
-    });
+
+      // Upload new image to S3
+      const s3Key = `customers/profile-images/customer-${customer._id}-${Date.now()}${path.extname(req.file.originalname)}`;
+      const imageUrl = await uploadToS3(req.file, s3Key);
+
+      // Update customer with new profile image URL
+      customer.profileImage = imageUrl;
+      await customer.save();
+
+      // Generate signed URL for immediate use in response
+      const signedImageUrl = await generateSignedUrl(imageUrl);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          message: 'Profile image uploaded successfully',
+          imageUrl: signedImageUrl,
+          customer: customer
+        }
+      });
+
+    } catch (uploadError) {
+      console.error('S3 upload error:', uploadError);
+      return next(new AppError('Failed to upload image to cloud storage', 500));
+    }
+
   } catch (error) {
     // Clean up uploaded file if there was an error
     if (req.file && fs.existsSync(req.file.path)) {
@@ -279,4 +300,31 @@ export const deleteAddress = async (req, res, next) => {
   } catch (error) {
     next(new AppError(error.message, 400));
   }
-}; 
+};
+
+// Get profile image signed URL
+export const getProfileImageUrl = async (req, res, next) => {
+  try {
+    const customer = await Customer.findById(req.user.id);
+
+    if (!customer) {
+      return next(new AppError('Customer not found', 404));
+    }
+
+    if (!customer.profileImage) {
+      return next(new AppError('No profile image found', 404));
+    }
+
+    // Generate fresh signed URL
+    const signedUrl = await generateSignedUrl(customer.profileImage);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        imageUrl: signedUrl
+      }
+    });
+  } catch (error) {
+    next(new AppError(error.message, 400));
+  }
+};

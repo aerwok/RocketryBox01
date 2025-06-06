@@ -71,12 +71,15 @@ router.post('/send-customer-registration', async (req, res) => {
 /**
  * Generate OTP for seller registration
  *
- * Route: POST /otp/send-seller-registration
+ * DISABLED: This route is now handled by /seller/auth/otp/send
+ * to prevent duplicate OTP emails
+ *
+ * Route: POST /otp/send-seller-registration (DISABLED)
  * Body: { email, businessName?, contactName?, phone? }
  *
  * Sends OTP to seller email for registration verification
  */
-router.post('/send-seller-registration', async (req, res) => {
+router.post('/send-seller-registration-DISABLED', async (req, res) => {
   try {
     const { email, businessName, contactName, phone } = req.body;
 
@@ -302,8 +305,8 @@ Email: ${email} | Type: ${registrationType}
  *    POST /api/v2/otp/send-customer-registration
  *    { "email": "customer@gmail.com", "name": "John Doe" }
  *
- * 2. Seller Registration:
- *    POST /api/v2/otp/send-seller-registration
+ * 2. Seller Registration (DISABLED - Use /api/v2/seller/auth/otp/send instead):
+ *    POST /api/v2/otp/send-seller-registration-DISABLED
  *    { "email": "business@company.com", "businessName": "ABC Corp", "contactName": "Jane Smith" }
  *
  * 3. Verify OTP:

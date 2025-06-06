@@ -50,8 +50,8 @@ router.get('/document-status', authenticateSeller, (req, res) => {
       data: {
         ...documentStatus,
         businessFeatures: {
-          available: documentStatus.isComplete,
-          blockedFeatures: documentStatus.isComplete ? [] : [
+          available: documentStatus.adminVerified,
+          blockedFeatures: documentStatus.adminVerified ? [] : [
             'Order Management',
             'Shipment Processing',
             'Bulk Orders',
@@ -68,11 +68,10 @@ router.get('/document-status', authenticateSeller, (req, res) => {
           ]
         },
         kycStatus: {
-          documentsUploaded: documentStatus.isComplete,
-          adminVerification: 'pending', // Will be updated by admin KYC process
-          message: documentStatus.isComplete ?
-            'Documents uploaded successfully! Admin verification in progress.' :
-            'Please upload all required documents to enable business features.'
+          documentsUploaded: documentStatus.documentsUploaded,
+          adminVerification: documentStatus.adminVerified ? 'verified' : 'pending',
+          status: documentStatus.status,
+          message: documentStatus.message
         }
       }
     });

@@ -1,16 +1,9 @@
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import fs from 'fs';
 import path from 'path';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client } from '../config/aws.js';
 import { logger } from './logger.js';
-
-// Configure S3 client
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
-});
 
 /**
  * Upload file to S3 bucket
@@ -24,18 +17,28 @@ export const uploadToS3 = async (file, key) => {
     if (
       !process.env.AWS_ACCESS_KEY_ID ||
       !process.env.AWS_SECRET_ACCESS_KEY ||
-      !process.env.AWS_BUCKET_NAME
+      !process.env.AWS_S3_BUCKET_NAME
     ) {
-      logger.warn('AWS S3 not configured, saving file locally');
+      logger.warn('AWS S3 not configured, saving file locally', {
+        hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+        hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
+        hasBucketName: !!process.env.AWS_S3_BUCKET_NAME
+      });
       return saveLocally(file);
     }
 
     // Generate unique key if not provided
     const objectKey = key || `uploads/${Date.now()}-${file.originalname}`;
 
+    logger.info('Attempting S3 upload', {
+      bucket: process.env.AWS_S3_BUCKET_NAME,
+      region: process.env.AWS_REGION,
+      key: objectKey
+    });
+
     // Create params for S3 upload
     const params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: objectKey,
       Body: fs.createReadStream(file.path),
       ContentType: file.mimetype
@@ -55,10 +58,15 @@ export const uploadToS3 = async (file, key) => {
     if (cdnUrl) {
       return `${cdnUrl}/${objectKey}`;
     } else {
-      return `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${objectKey}`;
+      return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${objectKey}`;
     }
   } catch (error) {
     logger.error(`S3 upload error: ${error.message}`);
+    logger.error(`S3 upload error details:`, {
+      code: error.code,
+      statusCode: error.$metadata?.httpStatusCode,
+      requestId: error.$metadata?.requestId
+    });
     // Fallback to local storage
     return saveLocally(file);
   }
@@ -80,7 +88,7 @@ const saveLocally = async (file) => {
 
     // If we need to manually save the file
     const uploadDir = 'uploads';
-    
+
     // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -88,13 +96,13 @@ const saveLocally = async (file) => {
 
     const fileName = `${Date.now()}-${file.originalname}`;
     const filePath = path.join(uploadDir, fileName);
-    
+
     // Create a readable stream from the buffer and pipe to writable file stream
     const readStream = fs.createReadStream(file.path);
     const writeStream = fs.createWriteStream(filePath);
-    
+
     readStream.pipe(writeStream);
-    
+
     return new Promise((resolve, reject) => {
       writeStream.on('finish', () => {
         resolve(`/${filePath.replace(/\\/g, '/')}`);
@@ -116,11 +124,11 @@ export const deleteFromS3 = async (fileUrl) => {
   try {
     // Extract key from URL
     let key;
-    
+
     if (process.env.AWS_CDN_URL && fileUrl.startsWith(process.env.AWS_CDN_URL)) {
       key = fileUrl.substring(process.env.AWS_CDN_URL.length + 1);
     } else {
-      const s3BucketUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/`;
+      const s3BucketUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/`;
       if (fileUrl.startsWith(s3BucketUrl)) {
         key = fileUrl.substring(s3BucketUrl.length);
       } else {
@@ -137,7 +145,7 @@ export const deleteFromS3 = async (fileUrl) => {
     if (
       !process.env.AWS_ACCESS_KEY_ID ||
       !process.env.AWS_SECRET_ACCESS_KEY ||
-      !process.env.AWS_BUCKET_NAME
+      !process.env.AWS_S3_BUCKET_NAME
     ) {
       logger.warn('AWS S3 not configured, deleting local file');
       deleteLocally(key);
@@ -146,13 +154,13 @@ export const deleteFromS3 = async (fileUrl) => {
 
     // Delete from S3
     const params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: key
     };
 
     const command = new DeleteObjectCommand(params);
     await s3Client.send(command);
-    
+
     logger.info(`File deleted from S3: ${key}`);
     return true;
   } catch (error) {
@@ -187,15 +195,81 @@ export const uploadFile = async (file, folder = 'uploads') => {
     if (!file) {
       throw new Error('No file provided');
     }
-    
+
     // Generate a key with folder structure
     const fileName = `${Date.now()}-${file.originalname}`;
     const key = `${folder}/${fileName}`;
-    
+
     // Upload to S3 or local storage
     return await uploadToS3(file, key);
   } catch (error) {
     logger.error(`File upload error: ${error.message}`);
     throw error;
+  }
+};
+
+/**
+ * Generate signed URL for S3 object
+ * @param {String} fileUrl - S3 URL of the file
+ * @param {Number} expiresIn - URL expiration time in seconds (default: 3600 = 1 hour)
+ * @returns {Promise<String>} - Signed URL for secure access
+ */
+export const generateSignedUrl = async (fileUrl, expiresIn = 3600) => {
+  try {
+    if (!fileUrl) {
+      return null;
+    }
+
+    // Check if it's a local file (starts with /)
+    if (fileUrl.startsWith('/')) {
+      // For local files, return the URL as-is since they're served directly
+      return fileUrl;
+    }
+
+    // Extract key from S3 URL
+    let key;
+    const s3BucketUrl = `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/`;
+
+    if (process.env.AWS_CDN_URL && fileUrl.startsWith(process.env.AWS_CDN_URL)) {
+      key = fileUrl.substring(process.env.AWS_CDN_URL.length + 1);
+    } else if (fileUrl.startsWith(s3BucketUrl)) {
+      key = fileUrl.substring(s3BucketUrl.length);
+    } else {
+      // If it's already a signed URL or different format, return as-is
+      return fileUrl;
+    }
+
+    // Check if S3 is configured
+    if (
+      !process.env.AWS_ACCESS_KEY_ID ||
+      !process.env.AWS_SECRET_ACCESS_KEY ||
+      !process.env.AWS_S3_BUCKET_NAME
+    ) {
+      logger.warn('AWS S3 not configured, returning original URL');
+      return fileUrl;
+    }
+
+    // Create GetObject command for signed URL
+    const command = new GetObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key
+    });
+
+    // Generate signed URL
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+
+    logger.info(`Generated signed URL for key: ${key}`, {
+      expiresIn,
+      keyLength: key.length
+    });
+
+    return signedUrl;
+  } catch (error) {
+    logger.error(`Error generating signed URL: ${error.message}`, {
+      fileUrl,
+      error: error.code
+    });
+    // Fallback to original URL
+    return fileUrl;
   }
 };

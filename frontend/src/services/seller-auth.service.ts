@@ -1,14 +1,14 @@
-import { ApiService } from './api.service';
+import { getStoredTeamMembers, SellerTeamMember } from '@/lib/api/seller-users';
+import { SellerLoginInput, SellerRegisterInput } from '@/lib/validations/seller';
+import {
+  ApiError,
+  ApiResponse,
+  ERROR_CODES,
+  Seller
+} from '@/types/api';
 import { secureStorage } from '@/utils/secureStorage';
 import { toast } from 'sonner';
-import { 
-  ApiResponse, 
-  ApiError, 
-  Seller, 
-  ERROR_CODES 
-} from '@/types/api';
-import { SellerLoginInput, SellerRegisterInput } from '@/lib/validations/seller';
-import { getStoredTeamMembers, SellerTeamMember } from '@/lib/api/seller-users';
+import { ApiService } from './api.service';
 
 interface SellerLoginResponse {
   accessToken: string;
@@ -48,29 +48,29 @@ export class SellerAuthService {
   private api: ApiService;
 
   constructor() {
-    this.api = new ApiService();
+    this.api = ApiService.getInstance();
   }
 
-  private async checkTeamMemberLogin(emailOrPhone: string, password: string): Promise<TeamMemberLoginResponse | null> {
+  private async checkTeamMemberLogin(emailOrPhone: string, _password: string): Promise<TeamMemberLoginResponse | null> {
     try {
       // Get all team members from localStorage
       const teamMembers = getStoredTeamMembers();
-      
+
       // Find matching team member by email
-      const teamMember = teamMembers.find((member: SellerTeamMember) => 
-        member.email.toLowerCase() === emailOrPhone.toLowerCase() && 
+      const teamMember = teamMembers.find((member: SellerTeamMember) =>
+        member.email.toLowerCase() === emailOrPhone.toLowerCase() &&
         member.status === 'active'
       );
-      
+
       if (!teamMember) {
         return null;
       }
-      
+
       // In a real implementation, you'd verify the password hash
       // For now, we'll use a simple mock verification
       // In production, this should be handled by the backend
       console.log('🔐 Team member found:', teamMember.name, 'Role:', teamMember.jobRole);
-      
+
       // Create a proper JWT-like token that won't be rejected by the backend
       // This mimics the structure of a real JWT but is still mock data
       const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -91,7 +91,7 @@ export class SellerAuthService {
       }));
       const signature = btoa(`mock_signature_${teamMember.id}_${Date.now()}`);
       const mockToken = `${header}.${payload}.${signature}`;
-      
+
       return {
         accessToken: mockToken,
         refreshToken: `refresh_${mockToken}`,
@@ -119,14 +119,14 @@ export class SellerAuthService {
         hasPassword: !!data.password,
         rememberMe: data.rememberMe
       });
-      
+
       // First, check if this is a team member login
       console.log('Checking for team member login...');
       const teamMemberResponse = await this.checkTeamMemberLogin(data.emailOrPhone, data.password || '');
-      
+
       if (teamMemberResponse) {
         console.log('Team member login successful:', teamMemberResponse.teamMember.name);
-        
+
         // Store team member context
         await secureStorage.setItem('auth_token', teamMemberResponse.accessToken);
         await secureStorage.setItem('refresh_token', teamMemberResponse.refreshToken);
@@ -141,10 +141,10 @@ export class SellerAuthService {
           userType: 'team_member',
           parentSellerId: teamMemberResponse.teamMember.parentSellerId
         }));
-        
+
         // Also store seller_token for navbar compatibility
         localStorage.setItem('seller_token', teamMemberResponse.accessToken);
-        
+
         return {
           success: true,
           data: teamMemberResponse,
@@ -152,7 +152,7 @@ export class SellerAuthService {
           status: 200
         };
       }
-      
+
       // If not a team member, proceed with normal seller login
       console.log('Proceeding with main seller login...');
       const credentials = {
@@ -160,7 +160,7 @@ export class SellerAuthService {
         password: data.password || '',
         rememberMe: data.rememberMe || false
       };
-      
+
       console.log('Making login request to API...');
       const response = await this.api.post<SellerLoginResponse>('/seller/auth/login', credentials);
       console.log('API response received:', {
@@ -168,7 +168,7 @@ export class SellerAuthService {
         hasData: !!response.data,
         hasToken: !!(response.data?.accessToken)
       });
-      
+
       // Store the seller token and context
       if (response.data?.accessToken) {
         console.log('Storing seller auth tokens...');
@@ -184,7 +184,7 @@ export class SellerAuthService {
           businessName: response.data.seller.businessName,
           userType: 'seller'
         }));
-        
+
         // Store seller data in localStorage so team members can access it
         localStorage.setItem('current_seller_data', JSON.stringify({
           sellerId: response.data.seller.id,
@@ -192,15 +192,15 @@ export class SellerAuthService {
           email: response.data.seller.email,
           businessName: response.data.seller.businessName
         }));
-        
+
         // Also store seller_token for navbar compatibility
         localStorage.setItem('seller_token', response.data.accessToken);
-        
+
         console.log('Seller auth tokens stored successfully');
       } else {
         console.warn('No access token in response:', response);
       }
-      
+
       return response;
     } catch (error: any) {
       console.error('Login request failed:', {
@@ -210,7 +210,7 @@ export class SellerAuthService {
         code: error.code,
         response: error.response?.data
       });
-      
+
       // Properly handle 404 error
       if (error.response?.status === 404) {
         const apiError: ApiError = {
@@ -220,7 +220,7 @@ export class SellerAuthService {
         };
         throw apiError;
       }
-      
+
       // Handle other errors
       const apiError = error as ApiError;
       if (!apiError.message) {
@@ -243,9 +243,9 @@ export class SellerAuthService {
         monthlyShipments: data.monthlyShipments,
         otp: verifiedOtp
       };
-      
+
       const response = await this.api.post<SellerRegisterResponse>('/seller/auth/register', registerData);
-      
+
       // Store the token in secure storage
       if (response.data?.accessToken) {
         await secureStorage.setItem('auth_token', response.data.accessToken);
@@ -254,7 +254,7 @@ export class SellerAuthService {
         }
         await secureStorage.setItem('user_type', 'seller');
       }
-      
+
       return response;
     } catch (error) {
       const apiError = error as ApiError;
@@ -273,7 +273,7 @@ export class SellerAuthService {
       await secureStorage.removeItem('user_type');
       await secureStorage.removeItem('user_permissions');
       await secureStorage.removeItem('user_context');
-      
+
       // Also remove localStorage tokens and seller data
       localStorage.removeItem('seller_token');
       localStorage.removeItem('current_seller_data');
@@ -287,7 +287,7 @@ export class SellerAuthService {
 
       const userType = await secureStorage.getItem('user_type');
       const userContext = await secureStorage.getItem('user_context');
-      
+
       if (userContext) {
         return JSON.parse(userContext);
       }
@@ -297,7 +297,7 @@ export class SellerAuthService {
         const response = await this.api.get<Seller>('/seller/profile');
         return response.data;
       }
-      
+
       return null;
     } catch (error) {
       const apiError = error as ApiError;
@@ -314,12 +314,12 @@ export class SellerAuthService {
   async getCurrentUserPermissions(): Promise<string[]> {
     try {
       const userType = await secureStorage.getItem('user_type');
-      
+
       if (userType === 'team_member') {
         const permissions = await secureStorage.getItem('user_permissions');
         return permissions ? JSON.parse(permissions) : [];
       }
-      
+
       // Sellers have all permissions
       if (userType === 'seller') {
         return [
@@ -329,7 +329,7 @@ export class SellerAuthService {
           "Stores", "Priority", "Label", "Manage Users"
         ];
       }
-      
+
       return [];
     } catch (error) {
       console.error('Error getting user permissions:', error);
@@ -348,18 +348,18 @@ export class SellerAuthService {
     try {
       const token = await secureStorage.getItem('auth_token');
       const userType = await secureStorage.getItem('user_type');
-      
+
       if (!token || !userType) {
         return false;
       }
-      
+
       // For team members, validate the mock token structure and expiration
       if (userType === 'team_member') {
         const userContext = await secureStorage.getItem('user_context');
         if (!userContext) {
           return false;
         }
-        
+
         // Validate token expiration for team members
         try {
           const parts = token.split('.');
@@ -375,10 +375,10 @@ export class SellerAuthService {
           console.error('🔐 Team member token validation error:', tokenError);
           return false;
         }
-        
+
         return true;
       }
-      
+
       // For sellers, we could add more validation here if needed
       return true;
     } catch (error) {
@@ -416,11 +416,11 @@ export class SellerAuthService {
       }
 
       const context = JSON.parse(userContext);
-      
+
       // Find the team member in storage and regenerate token
       const teamMembers = getStoredTeamMembers();
       const teamMember = teamMembers.find(member => member.id === context.id);
-      
+
       if (!teamMember) {
         console.log('🔐 Team member not found in storage, clearing auth');
         await this.clearAuthData();
@@ -449,7 +449,7 @@ export class SellerAuthService {
       // Store the new token
       await secureStorage.setItem('auth_token', newToken);
       localStorage.setItem('seller_token', newToken);
-      
+
       console.log('🔐 Team member token refreshed successfully');
       return true;
     } catch (error) {
@@ -462,13 +462,13 @@ export class SellerAuthService {
   async validateAndRestoreSession(): Promise<boolean> {
     try {
       const isAuth = await this.isAuthenticated();
-      
+
       if (!isAuth) {
         return false;
       }
 
       const userType = await secureStorage.getItem('user_type');
-      
+
       // For team members, ensure all required data is present
       if (userType === 'team_member') {
         const authToken = await secureStorage.getItem('auth_token');
@@ -499,8 +499,18 @@ export class SellerAuthService {
     }
   }
 
-  async sendOTP(emailOrPhone: string, purpose: string = 'login'): Promise<ApiResponse<{ message: string }>> {
+  async sendOTP(emailOrPhone: string, purpose: string = 'login', options?: { phone?: string }): Promise<ApiResponse<{ message: string }>> {
     try {
+      // For registration with both email and phone
+      if (purpose === 'register' && options?.phone) {
+        return await this.api.post('/seller/auth/otp/send', {
+          email: emailOrPhone,
+          phone: options.phone,
+          purpose
+        });
+      }
+
+      // Standard OTP sending
       return await this.api.sendSellerOTP(emailOrPhone, purpose);
     } catch (error) {
       const apiError = error as ApiError;
@@ -555,4 +565,4 @@ export class SellerAuthService {
   }
 }
 
-export const sellerAuthService = new SellerAuthService(); 
+export const sellerAuthService = new SellerAuthService();

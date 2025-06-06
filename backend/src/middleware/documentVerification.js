@@ -1,132 +1,81 @@
-// Document Upload Enforcement Middleware
-// Enforces document upload requirements for sellers (verification handled later by admin KYC)
-
 import { AppError } from './errorHandler.js';
 
 /**
- * Check if seller has uploaded all required documents
+ * Get document upload status for a seller
  * @param {Object} seller - Seller object from database
- * @returns {Object} - Document upload status analysis
+ * @returns {Object} Document status information
  */
-export const checkDocumentUploadStatus = (seller) => {
-  const documents = seller.documents || {};
-
-  // Required documents for upload (verification comes later via admin KYC)
-  const requiredDocs = ['gstin', 'pan', 'aadhaar'];
-  const requiredBankDoc = seller.bankDetails?.cancelledCheque?.url;
-
-  // Check which documents are uploaded
-  const uploadedDocs = requiredDocs.filter(docType =>
-    documents[docType] && documents[docType].url
-  );
-
-  const bankDocUploaded = !!requiredBankDoc;
-
-  // Calculate missing documents
-  const missingDocuments = requiredDocs.filter(docType =>
-    !documents[docType] || !documents[docType].url
-  );
-
-  const allDocumentsUploaded = uploadedDocs.length === requiredDocs.length && bankDocUploaded;
-  const completionPercentage = Math.round(((uploadedDocs.length + (bankDocUploaded ? 1 : 0)) / (requiredDocs.length + 1)) * 100);
-
-  return {
-    totalRequired: requiredDocs.length + 1, // +1 for bank document
-    uploaded: uploadedDocs.length + (bankDocUploaded ? 1 : 0),
-    allUploaded: allDocumentsUploaded,
-    missingDocuments,
-    bankDocumentMissing: !bankDocUploaded,
-    completionPercentage,
-    isComplete: allDocumentsUploaded
-  };
-};
-
-/**
- * Middleware: Require all documents to be uploaded
- * Blocks access to business operations until documents are uploaded
- * (Verification will be handled later by admin KYC)
- */
-export const requireDocumentUpload = async (req, res, next) => {
+export const getDocumentUploadStatus = (seller) => {
   try {
-    const seller = req.user;
-
     if (!seller) {
-      return next(new AppError('Authentication required', 401));
+      return {
+        documentsUploaded: false,
+        adminVerified: false,
+        completionPercentage: 0,
+        missingDocuments: ['gstin', 'pan', 'aadhaar'],
+        uploadedDocuments: [],
+        status: 'pending_upload'
+      };
     }
 
-    const uploadStatus = checkDocumentUploadStatus(seller);
+    const requiredDocuments = ['gstin', 'pan', 'aadhaar'];
+    const uploadedDocuments = [];
+    const missingDocuments = [];
 
-    if (!uploadStatus.allUploaded) {
-      return res.status(403).json({
-        success: false,
-        error: 'Document upload required',
-        message: 'Please upload all required documents to access business features. Verification will be completed by our team.',
-        data: {
-          completionPercentage: uploadStatus.completionPercentage,
-          uploaded: uploadStatus.uploaded,
-          totalRequired: uploadStatus.totalRequired,
-          missingDocuments: uploadStatus.missingDocuments,
-          bankDocumentMissing: uploadStatus.bankDocumentMissing,
-          requiredActions: [
-            ...uploadStatus.missingDocuments.map(doc => `Upload ${doc.toUpperCase()} document`),
-            ...(uploadStatus.bankDocumentMissing ? ['Upload cancelled cheque'] : [])
-          ],
-          nextSteps: [
-            'Upload all required documents',
-            'Admin team will verify your documents',
-            'You will be notified once verification is complete'
-          ]
-        }
-      });
+    // Check each required document
+    requiredDocuments.forEach(docType => {
+      const document = seller.documents?.[docType];
+      if (document && document.url && document.number) {
+        uploadedDocuments.push(docType);
+      } else {
+        missingDocuments.push(docType);
+      }
+    });
+
+    const uploadCompletionPercentage = Math.round((uploadedDocuments.length / requiredDocuments.length) * 100);
+    const documentsUploaded = uploadedDocuments.length === requiredDocuments.length;
+
+    // Check admin verification status
+    const adminVerified = seller.status === 'verified' || seller.documentsVerified === true;
+
+    // Determine overall status
+    let status = 'pending_upload';
+    if (documentsUploaded && adminVerified) {
+      status = 'verified';
+    } else if (documentsUploaded && !adminVerified) {
+      status = 'pending_admin_verification';
     }
 
-    // Documents uploaded - allow access (verification handled separately by admin)
-    next();
+    return {
+      documentsUploaded,
+      adminVerified,
+      completionPercentage: uploadCompletionPercentage,
+      uploadedDocuments,
+      missingDocuments,
+      totalRequired: requiredDocuments.length,
+      totalUploaded: uploadedDocuments.length,
+      status,
+      message: status === 'verified'
+        ? 'All documents verified by admin'
+        : status === 'pending_admin_verification'
+          ? 'Documents uploaded. Awaiting admin verification.'
+          : 'Please upload all required documents'
+    };
   } catch (error) {
-    next(new AppError(error.message, 400));
+    console.error('Error getting document upload status:', error);
+    return {
+      documentsUploaded: false,
+      adminVerified: false,
+      completionPercentage: 0,
+      missingDocuments: ['gstin', 'pan', 'aadhaar'],
+      uploadedDocuments: [],
+      status: 'pending_upload'
+    };
   }
 };
 
 /**
- * Middleware: Progressive access based on document upload completion
- * Allows different features based on upload completion level
- */
-export const progressiveDocumentAccess = (requiredLevel = 100) => {
-  return async (req, res, next) => {
-    try {
-      const seller = req.user;
-
-      if (!seller) {
-        return next(new AppError('Authentication required', 401));
-      }
-
-      const uploadStatus = checkDocumentUploadStatus(seller);
-
-      if (uploadStatus.completionPercentage < requiredLevel) {
-        return res.status(403).json({
-          success: false,
-          error: 'Insufficient document completion',
-          message: `This feature requires ${requiredLevel}% document upload completion. You are at ${uploadStatus.completionPercentage}%`,
-          data: {
-            currentCompletion: uploadStatus.completionPercentage,
-            requiredCompletion: requiredLevel,
-            missingDocuments: uploadStatus.missingDocuments,
-            bankDocumentMissing: uploadStatus.bankDocumentMissing,
-            hint: 'Complete document upload to unlock all features'
-          }
-        });
-      }
-
-      next();
-    } catch (error) {
-      next(new AppError(error.message, 400));
-    }
-  };
-};
-
-/**
- * Check if basic profile info is complete
- * Used for step-by-step onboarding
+ * Middleware to require basic profile completion
  */
 export const requireBasicProfile = async (req, res, next) => {
   try {
@@ -136,84 +85,91 @@ export const requireBasicProfile = async (req, res, next) => {
       return next(new AppError('Authentication required', 401));
     }
 
-    // Check if basic profile fields are complete
-    const missingFields = [];
+    // Check if basic profile info is complete
+    const hasBasicInfo = seller.firstName && seller.lastName && seller.email && seller.phone;
+    const hasBusinessInfo = seller.businessName;
 
-    if (!seller.businessName) missingFields.push('Business Name');
-    if (!seller.companyCategory) missingFields.push('Company Category');
-    if (!seller.address?.city) missingFields.push('Business Address');
-    if (!seller.phone) missingFields.push('Phone Number');
+    if (!hasBasicInfo || !hasBusinessInfo) {
+      return next(new AppError('Please complete your basic profile information first', 403));
+    }
 
-    if (missingFields.length > 0) {
+    next();
+  } catch (error) {
+    next(new AppError('Profile verification failed', 500));
+  }
+};
+
+/**
+ * Middleware to require admin-verified documents for critical business operations
+ */
+export const requireDocumentUpload = async (req, res, next) => {
+  try {
+    const seller = req.user;
+
+    if (!seller) {
+      return next(new AppError('Authentication required', 401));
+    }
+
+    const documentStatus = getDocumentUploadStatus(seller);
+
+    // Require both document upload AND admin verification for critical operations
+    if (!documentStatus.adminVerified) {
       return res.status(403).json({
         success: false,
-        error: 'Profile incomplete',
-        message: 'Please complete your basic profile information first',
+        error: 'Admin verification required',
+        message: documentStatus.documentsUploaded
+          ? 'Your documents are pending admin verification. Please wait for approval to access this feature.'
+          : 'Please upload all required documents and wait for admin verification to access this feature.',
         data: {
-          missingFields,
-          nextAction: 'Complete profile setup',
-          redirectTo: '/seller/dashboard/profile'
+          status: documentStatus.status,
+          documentsUploaded: documentStatus.documentsUploaded,
+          adminVerified: documentStatus.adminVerified,
+          requiredDocuments: documentStatus.missingDocuments,
+          completionPercentage: documentStatus.completionPercentage
         }
       });
     }
 
     next();
   } catch (error) {
-    next(new AppError(error.message, 400));
+    next(new AppError('Document verification failed', 500));
   }
 };
 
 /**
- * Get document upload status for dashboard
- * Shows progress and requirements to sellers
+ * Progressive document access middleware - allows access based on document upload percentage
+ * (Note: This only checks upload completion, not admin verification)
+ * @param {number} requiredPercentage - Minimum upload completion percentage required
  */
-export const getDocumentUploadStatus = (seller) => {
-  const uploadStatus = checkDocumentUploadStatus(seller);
+export const progressiveDocumentAccess = (requiredPercentage = 50) => {
+  return async (req, res, next) => {
+    try {
+      const seller = req.user;
 
-  return {
-    isComplete: uploadStatus.allUploaded,
-    completionPercentage: uploadStatus.completionPercentage,
-    status: uploadStatus.allUploaded ? 'uploaded' : 'incomplete',
-    requirements: {
-      documents: {
-        gstin: {
-          uploaded: !!(seller.documents?.gstin?.url),
-          required: true,
-          label: 'GST Certificate'
-        },
-        pan: {
-          uploaded: !!(seller.documents?.pan?.url),
-          required: true,
-          label: 'PAN Card'
-        },
-        aadhaar: {
-          uploaded: !!(seller.documents?.aadhaar?.url),
-          required: true,
-          label: 'Aadhaar Card'
-        },
-        cancelledCheque: {
-          uploaded: !!(seller.bankDetails?.cancelledCheque?.url),
-          required: true,
-          label: 'Cancelled Cheque'
-        }
+      if (!seller) {
+        return next(new AppError('Authentication required', 401));
       }
-    },
-    nextActions: [
-      ...uploadStatus.missingDocuments.map(doc => ({
-        action: 'upload',
-        document: doc,
-        description: `Upload ${doc.toUpperCase()} document`,
-        priority: 'high'
-      })),
-      ...(uploadStatus.bankDocumentMissing ? [{
-        action: 'upload',
-        document: 'cancelledCheque',
-        description: 'Upload cancelled cheque',
-        priority: 'high'
-      }] : [])
-    ],
-    message: uploadStatus.allUploaded ?
-      'All documents uploaded successfully! Our team will verify them shortly.' :
-      'Please upload all required documents to start using business features.'
+
+      const documentStatus = getDocumentUploadStatus(seller);
+
+      if (documentStatus.completionPercentage < requiredPercentage) {
+        return res.status(403).json({
+          success: false,
+          error: 'Insufficient document upload',
+          message: `Please upload at least ${requiredPercentage}% of required documents to access this feature`,
+          data: {
+            currentPercentage: documentStatus.completionPercentage,
+            requiredPercentage,
+            missingDocuments: documentStatus.missingDocuments,
+            status: documentStatus.status,
+            note: 'Admin verification not required for this feature'
+          }
+        });
+      }
+
+      next();
+    } catch (error) {
+      next(new AppError('Document verification failed', 500));
+    }
   };
 };

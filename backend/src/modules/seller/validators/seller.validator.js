@@ -12,13 +12,21 @@ export const loginSchema = Joi.object({
 });
 
 export const sendOTPSchema = Joi.object({
-  emailOrPhone: Joi.string().required().messages({
+  emailOrPhone: Joi.string().messages({
     'string.empty': 'Email or phone is required'
+  }),
+  email: Joi.string().email().messages({
+    'string.email': 'Invalid email format'
+  }),
+  phone: Joi.string().pattern(/^[6-9]\d{9}$/).messages({
+    'string.pattern.base': 'Please provide a valid Indian phone number'
   }),
   purpose: Joi.string().valid('login', 'reset', 'verify', 'register').required().messages({
     'any.only': 'Purpose must be login, reset, verify, or register',
     'string.empty': 'Purpose is required'
   })
+}).or('emailOrPhone', 'email', 'phone').messages({
+  'object.missing': 'Email, phone, or emailOrPhone is required'
 });
 
 export const verifyOTPSchema = Joi.object({
@@ -226,4 +234,4 @@ export const documentUpdateSchema = Joi.object({
     then: Joi.string().required(),
     otherwise: Joi.string().optional()
   })
-}); 
+});

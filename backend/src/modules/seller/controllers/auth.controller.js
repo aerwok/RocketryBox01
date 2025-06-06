@@ -70,54 +70,92 @@ export const login = async (req, res, next) => {
 // Send OTP
 export const sendOTP = async (req, res, next) => {
   try {
-    const { emailOrPhone, purpose } = req.body;
+    console.log('🔍 sendOTP request body:', req.body);
+    const { emailOrPhone, email, phone, purpose } = req.body;
+
+    // Validate purpose field
+    if (!purpose) {
+      console.log('❌ Missing purpose field');
+      return next(new AppError('Purpose is required', 400));
+    }
 
     // For registration purpose, we don't require the seller to exist
     if (purpose === 'register') {
+      // For registration, expect both email and phone to send same OTP to both channels
+      const registrationEmail = email || (emailOrPhone && emailOrPhone.includes('@') ? emailOrPhone : null);
+      const registrationPhone = phone || (emailOrPhone && !emailOrPhone.includes('@') ? emailOrPhone : null);
+
+      console.log('🔍 Registration validation:', {
+        email, phone, emailOrPhone,
+        registrationEmail, registrationPhone
+      });
+
+      if (!registrationEmail && !registrationPhone) {
+        console.log('❌ Validation failed: No email or phone provided');
+        return next(new AppError('Email or phone required for registration', 400));
+      }
+
       // Check if the email/phone is already registered
       const existingSeller = await Seller.findOne({
         $or: [
-          { email: emailOrPhone.includes('@') ? emailOrPhone.toLowerCase() : undefined },
-          { phone: !emailOrPhone.includes('@') ? emailOrPhone : undefined }
-        ]
+          registrationEmail ? { email: registrationEmail.toLowerCase() } : null,
+          registrationPhone ? { phone: registrationPhone } : null
+        ].filter(Boolean)
       });
 
       if (existingSeller) {
         return next(new AppError('Email or phone already registered', 409));
       }
 
-      // Generate OTP
+      // Generate OTP (same for both email and SMS)
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Store OTP in VerificationToken collection
-      await VerificationToken.create({
-        identifier: emailOrPhone,
-        token: otp,
-        type: purpose,
-        expiresAt
-      });
+      // Store OTP for both email and phone identifiers if provided
+      const tokenPromises = [];
+      if (registrationEmail) {
+        tokenPromises.push(VerificationToken.create({
+          identifier: registrationEmail,
+          token: otp,
+          type: purpose,
+          expiresAt
+        }));
+      }
+      if (registrationPhone) {
+        tokenPromises.push(VerificationToken.create({
+          identifier: registrationPhone,
+          token: otp,
+          type: purpose,
+          expiresAt
+        }));
+      }
+      await Promise.all(tokenPromises);
 
       // In development mode, log the OTP
       if (process.env.NODE_ENV === 'development') {
         console.log('\n=========== DEVELOPMENT OTP ===========');
-        console.log(`📱 ${emailOrPhone.includes('@') ? 'Email' : 'Phone'}: ${emailOrPhone}`);
-        console.log(`🔐 OTP Generated: ${otp}`);
+        if (registrationEmail) console.log(`📧 Email: ${registrationEmail}`);
+        if (registrationPhone) console.log(`📱 Phone: ${registrationPhone}`);
+        console.log(`🔐 OTP Generated (same for both): ${otp}`);
         console.log(`⏱️ Expires in: 10 minutes`);
         console.log('========================================\n');
       }
 
-      // Send OTP via email or SMS
+      // Send same OTP to both email and SMS
+      const sendPromises = [];
       try {
-        if (emailOrPhone.includes('@')) {
-          await sendEmail({
-            to: emailOrPhone,
+        if (registrationEmail) {
+          sendPromises.push(sendEmail({
+            to: registrationEmail,
             subject: 'Your OTP for Rocketry Box Seller Registration',
             text: `Your OTP is ${otp}. It is valid for 10 minutes.`
-          });
-        } else {
-          await sendSMSOTP(emailOrPhone, otp, 'phone verification', 10);
+          }));
         }
+        if (registrationPhone) {
+          sendPromises.push(sendSMSOTP(registrationPhone, otp, 'phone verification', 10));
+        }
+
+        await Promise.all(sendPromises);
       } catch (sendError) {
         console.error('Failed to send OTP:', sendError);
         // Continue in development mode
@@ -129,9 +167,13 @@ export const sendOTP = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         data: {
-          message: 'OTP sent successfully',
+          message: `OTP sent successfully to ${[registrationEmail && 'email', registrationPhone && 'SMS'].filter(Boolean).join(' and ')}`,
           otp: process.env.NODE_ENV === 'development' ? otp : undefined,
-          expiresIn: 600 // 10 minutes
+          expiresIn: 600, // 10 minutes
+          sentTo: {
+            email: !!registrationEmail,
+            sms: !!registrationPhone
+          }
         }
       });
     }
