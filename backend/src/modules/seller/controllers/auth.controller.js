@@ -107,7 +107,33 @@ export const sendOTP = async (req, res, next) => {
         return next(new AppError('Email or phone already registered', 409));
       }
 
-      // Generate OTP (same for both email and SMS)
+      // Check for recent OTP to prevent rapid duplicate requests
+      const recentOTP = await VerificationToken.findOne({
+        identifier: emailOrPhone,
+        type: purpose,
+        createdAt: { $gt: new Date(Date.now() - 2 * 60 * 1000) } // Within last 2 minutes
+      });
+
+      if (recentOTP) {
+        return res.status(429).json({
+          success: false,
+          error: 'OTP already sent',
+          message: 'Please wait before requesting another OTP',
+          data: {
+            canRequestAt: new Date(recentOTP.createdAt.getTime() + 2 * 60 * 1000),
+            waitTime: Math.ceil((recentOTP.createdAt.getTime() + 2 * 60 * 1000 - Date.now()) / 1000)
+          }
+        });
+      }
+
+      // Clean up any existing expired OTPs for this identifier
+      await VerificationToken.deleteMany({
+        identifier: emailOrPhone,
+        type: purpose,
+        expiresAt: { $lt: new Date() }
+      });
+
+      // Generate OTP
       const otp = generateOTP();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
@@ -186,6 +212,32 @@ export const sendOTP = async (req, res, next) => {
       ]
     });
     if (!seller) return next(new AppError('Seller not found', 404));
+
+    // Check for recent OTP to prevent rapid duplicate requests
+    const recentOTP = await VerificationToken.findOne({
+      identifier: emailOrPhone,
+      type: purpose,
+      createdAt: { $gt: new Date(Date.now() - 2 * 60 * 1000) } // Within last 2 minutes
+    });
+
+    if (recentOTP) {
+      return res.status(429).json({
+        success: false,
+        error: 'OTP already sent',
+        message: 'Please wait before requesting another OTP',
+        data: {
+          canRequestAt: new Date(recentOTP.createdAt.getTime() + 2 * 60 * 1000),
+          waitTime: Math.ceil((recentOTP.createdAt.getTime() + 2 * 60 * 1000 - Date.now()) / 1000)
+        }
+      });
+    }
+
+    // Clean up any existing expired OTPs for this identifier
+    await VerificationToken.deleteMany({
+      identifier: emailOrPhone,
+      type: purpose,
+      expiresAt: { $lt: new Date() }
+    });
 
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
@@ -342,7 +394,7 @@ export const register = async (req, res, next) => {
       password: '[REDACTED]' // Don't log the actual password
     });
 
-    const { firstName, lastName, email, phone, password, companyName, monthlyShipments, otp } = req.body;
+    const { firstName, lastName, email, phone, password, companyName, monthlyShipments, otp, bankDetails } = req.body;
 
     // Validate required fields
     if (!firstName || !lastName || !email || !phone || !password || !companyName || !monthlyShipments || !otp) {
@@ -397,6 +449,28 @@ export const register = async (req, res, next) => {
 
     // Create seller account with new structure
     console.log('Creating seller account');
+
+    // Log bank details processing
+    console.log('Processing bank details:', {
+      hasBankDetails: !!bankDetails,
+      bankDetailsKeys: bankDetails ? Object.keys(bankDetails) : [],
+      bankDetailsData: bankDetails || 'No bank details provided'
+    });
+
+    // Prepare bank details - use provided data or initialize empty structure
+    const sellerBankDetails = bankDetails && Object.keys(bankDetails).length > 0 ? {
+      ...bankDetails,
+      // Ensure cancelled cheque has proper structure
+      ...(bankDetails.cancelledCheque && {
+        cancelledCheque: {
+          url: bankDetails.cancelledCheque.url,
+          status: 'pending'
+        }
+      })
+    } : {};
+
+    console.log('Prepared bank details for seller:', sellerBankDetails);
+
     const seller = await Seller.create({
       // Basic Info
       name: `${firstName} ${lastName}`.trim(),
@@ -419,7 +493,9 @@ export const register = async (req, res, next) => {
         pan: { status: 'pending' },
         aadhaar: { status: 'pending' }
       },
-      bankDetails: {},
+
+      // Bank details - use provided data or empty object
+      bankDetails: sellerBankDetails,
 
       // System status
       status: 'pending'
@@ -430,7 +506,9 @@ export const register = async (req, res, next) => {
       name: seller.name,
       email: seller.email,
       phone: seller.phone,
-      businessName: seller.businessName
+      businessName: seller.businessName,
+      hasBankDetails: !!(seller.bankDetails && Object.keys(seller.bankDetails).length > 0),
+      bankDetailsFields: seller.bankDetails ? Object.keys(seller.bankDetails) : []
     });
 
     // Delete the used OTP

@@ -1,39 +1,27 @@
 import express from 'express';
-import { listWalletTransactions, getWalletTransaction, exportWalletTransactions, initiateRecharge, verifyRecharge, creditCODToWallet, creditToWallet, getWalletBalance, getWalletSummary } from '../controllers/wallet.controller.js';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
+import { requireBasicProfile, requireDocumentUpload } from '../../../middleware/documentVerification.js';
+import { creditCODToWallet, creditToWallet, exportWalletTransactions, getWalletBalance, getWalletSummary, getWalletTransaction, initiateRecharge, listWalletTransactions, verifyRecharge } from '../controllers/wallet.controller.js';
 
 const router = express.Router();
 
-router.use(protect);
+// Apply seller authentication to all routes
+router.use(authenticateSeller);
 
-// Get wallet balance
-router.get('/balance', getWalletBalance);
+// Wallet viewing operations - require basic profile only
+router.get('/balance', requireBasicProfile, getWalletBalance);
+router.get('/summary', requireBasicProfile, getWalletSummary);
+router.get('/history', requireBasicProfile, listWalletTransactions);
+router.get('/transactions', requireBasicProfile, listWalletTransactions);
+router.get('/:id', requireBasicProfile, getWalletTransaction);
+router.get('/export', requireBasicProfile, exportWalletTransactions);
 
-// Get wallet summary
-router.get('/summary', getWalletSummary);
+// Financial operations - require complete document upload for security
+router.post('/recharge/initiate', requireDocumentUpload, initiateRecharge);
+router.post('/recharge/verify', requireDocumentUpload, verifyRecharge);
 
-// List wallet transactions
-router.get('/history', listWalletTransactions);
+// Admin/system operations - require complete documents
+router.post('/cod-credit', requireDocumentUpload, creditCODToWallet);
+router.post('/credit', requireDocumentUpload, creditToWallet);
 
-// List wallet transactions (alternative endpoint for frontend compatibility)
-router.get('/transactions', listWalletTransactions);
-
-// Get wallet transaction details
-router.get('/:id', getWalletTransaction);
-
-// Export wallet transactions
-router.get('/export', exportWalletTransactions);
-
-// Initiate wallet recharge (Razorpay)
-router.post('/recharge/initiate', initiateRecharge);
-
-// Verify wallet recharge (Razorpay)
-router.post('/recharge/verify', verifyRecharge);
-
-// Credit COD remittance to wallet (admin/system)
-router.post('/cod-credit', creditCODToWallet);
-
-// Generic admin credit to wallet
-router.post('/credit', creditToWallet);
-
-export default router; 
+export default router;

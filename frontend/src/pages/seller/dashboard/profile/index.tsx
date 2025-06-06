@@ -641,15 +641,27 @@ const SellerProfilePage = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">GSTIN</h3>
-                          <p className="mt-1">{profile.documents?.gstin || "Not provided"}</p>
+                          <p className="mt-1">{
+                            typeof profile.documents?.gstin === 'object'
+                              ? (profile.documents.gstin as any)?.number || "Not provided"
+                              : profile.documents?.gstin || "Not provided"
+                          }</p>
                         </div>
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">PAN</h3>
-                          <p className="mt-1">{profile.documents?.pan || "Not provided"}</p>
+                          <p className="mt-1">{
+                            typeof profile.documents?.pan === 'object'
+                              ? (profile.documents.pan as any)?.number || "Not provided"
+                              : profile.documents?.pan || "Not provided"
+                          }</p>
                         </div>
                         <div>
                           <h3 className="text-sm font-medium text-gray-500">Aadhaar</h3>
-                          <p className="mt-1">{profile.documents?.aadhaar || "Not provided"}</p>
+                          <p className="mt-1">{
+                            typeof profile.documents?.aadhaar === 'object'
+                              ? (profile.documents.aadhaar as any)?.number || "Not provided"
+                              : profile.documents?.aadhaar || "Not provided"
+                          }</p>
                         </div>
                       </div>
 

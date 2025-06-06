@@ -1,32 +1,33 @@
-import WalletTransaction from '../models/walletTransaction.model.js';
-import { AppError } from '../../../middleware/errorHandler.js';
 import xlsx from 'xlsx';
-import Seller from '../models/seller.model.js';
+import { checkDocumentUploadStatus } from '../../../middleware/documentVerification.js';
+import { AppError } from '../../../middleware/errorHandler.js';
 import razorpayService from '../../../services/razorpay.service.js';
+import Seller from '../models/seller.model.js';
+import WalletTransaction from '../models/walletTransaction.model.js';
 
 // Get wallet balance
 export const getWalletBalance = async (req, res, next) => {
   try {
     const sellerId = req.user.id;
     const seller = await Seller.findById(sellerId);
-    
+
     if (!seller) {
       throw new AppError('Seller not found', 404);
     }
-    
+
     // Get latest transaction for last recharge amount
-    const lastRecharge = await WalletTransaction.findOne({ 
-      seller: sellerId, 
-      type: 'Recharge' 
+    const lastRecharge = await WalletTransaction.findOne({
+      seller: sellerId,
+      type: 'Recharge'
     }).sort({ date: -1 });
-    
+
     const walletData = {
       walletBalance: parseFloat(seller.walletBalance || '0'),
       lastRecharge: lastRecharge ? parseFloat(lastRecharge.amount) : 0,
       remittanceBalance: 0, // If you track remittance balance separately
       lastUpdated: new Date().toISOString()
     };
-    
+
     res.status(200).json({
       success: true,
       data: walletData
@@ -41,38 +42,38 @@ export const getWalletSummary = async (req, res, next) => {
   try {
     const sellerId = req.user.id;
     const seller = await Seller.findById(sellerId);
-    
+
     if (!seller) {
       throw new AppError('Seller not found', 404);
     }
-    
+
     // Get total recharge amount
     const rechargeAggregation = await WalletTransaction.aggregate([
       { $match: { seller: sellerId, type: { $in: ['Recharge', 'Manual Credit'] } } },
       { $group: { _id: null, totalRecharge: { $sum: { $toDouble: "$amount" } } } }
     ]);
     const totalRecharge = rechargeAggregation.length > 0 ? rechargeAggregation[0].totalRecharge : 0;
-    
+
     // Get total used (debit) amount
     const debitAggregation = await WalletTransaction.aggregate([
       { $match: { seller: sellerId, type: 'Debit' } },
       { $group: { _id: null, totalUsed: { $sum: { $toDouble: "$amount" } } } }
     ]);
     const totalUsed = debitAggregation.length > 0 ? debitAggregation[0].totalUsed : 0;
-    
+
     // Get last recharge transaction
-    const lastRechargeTransaction = await WalletTransaction.findOne({ 
-      seller: sellerId, 
+    const lastRechargeTransaction = await WalletTransaction.findOne({
+      seller: sellerId,
       type: { $in: ['Recharge', 'Manual Credit'] }
     }).sort({ createdAt: -1 });
-    
+
     // Get COD to wallet credits
     const codToWalletAggregation = await WalletTransaction.aggregate([
       { $match: { seller: sellerId, type: 'COD Credit' } },
       { $group: { _id: null, codToWallet: { $sum: { $toDouble: "$amount" } } } }
     ]);
     const codToWallet = codToWalletAggregation.length > 0 ? codToWalletAggregation[0].codToWallet : 0;
-    
+
     const summaryData = {
       totalRecharge: Math.round(totalRecharge * 100) / 100, // Round to 2 decimal places
       totalUsed: Math.round(totalUsed * 100) / 100,
@@ -80,7 +81,7 @@ export const getWalletSummary = async (req, res, next) => {
       codToWallet: Math.round(codToWallet * 100) / 100,
       closingBalance: seller.walletBalance || '₹0'
     };
-    
+
     res.status(200).json({
       success: true,
       data: summaryData
@@ -96,7 +97,7 @@ export const listWalletTransactions = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, type, startDate, endDate, search, sortBy = 'date', sortOrder = 'desc' } = req.query;
     const sellerId = req.user.id;
-    
+
     const query = { seller: sellerId };
     if (type) query.type = type;
     if (startDate || endDate) {
@@ -110,17 +111,17 @@ export const listWalletTransactions = async (req, res, next) => {
         { remark: { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-    
+
     const transactions = await WalletTransaction.find(query)
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(parseInt(limit));
-      
+
     const total = await WalletTransaction.countDocuments(query);
-    
+
     const responseData = {
       success: true,
       data: {
@@ -133,7 +134,7 @@ export const listWalletTransactions = async (req, res, next) => {
         pages: Math.ceil(total / limit)
       }
     };
-    
+
     res.status(200).json(responseData);
   } catch (error) {
     console.error(`[ERROR] Error listing wallet transactions:`, error);
@@ -249,7 +250,7 @@ export const initiateRecharge = async (req, res, next) => {
   try {
     const { amount } = req.body;
     const sellerId = req.user.id;
-    
+
     if (!amount || isNaN(amount) || amount <= 0) {
       throw new AppError('Invalid amount', 400);
     }
@@ -265,6 +266,32 @@ export const initiateRecharge = async (req, res, next) => {
       throw new AppError('Seller not found', 404);
     }
 
+    // PROGRESSIVE ACCESS: Check document completion for recharge operations
+    const documentStatus = checkDocumentUploadStatus(seller);
+    if (!documentStatus.isComplete) {
+      return res.status(403).json({
+        success: false,
+        error: 'Document verification required',
+        message: 'Please complete document upload to enable wallet recharge functionality',
+        data: {
+          completionPercentage: documentStatus.completionPercentage,
+          uploaded: documentStatus.uploaded,
+          totalRequired: documentStatus.totalRequired,
+          missingDocuments: documentStatus.missingDocuments,
+          bankDocumentMissing: documentStatus.bankDocumentMissing,
+          requiredActions: [
+            ...documentStatus.missingDocuments.map(doc => `Upload ${doc.toUpperCase()} document`),
+            ...(documentStatus.bankDocumentMissing ? ['Upload cancelled cheque'] : [])
+          ],
+          nextSteps: [
+            'Upload all required documents (GST, PAN, Aadhaar, Bank details)',
+            'Admin team will verify your documents',
+            'Wallet recharge will be enabled after verification'
+          ]
+        }
+      });
+    }
+
     // Create Razorpay order
     const orderData = {
       amount: parseFloat(amount),
@@ -278,7 +305,7 @@ export const initiateRecharge = async (req, res, next) => {
     };
 
     const razorpayOrder = await razorpayService.createOrder(orderData);
-    
+
     if (!razorpayOrder.success) {
       throw new AppError('Failed to create payment order', 500);
     }
@@ -312,7 +339,7 @@ export const verifyRecharge = async (req, res, next) => {
   try {
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature, amount } = req.body;
     const sellerId = req.user.id;
-    
+
     console.log(`[DEBUG] Payment verification started for seller: ${sellerId}`);
     console.log(`[DEBUG] Payment details:`, {
       payment_id: razorpay_payment_id,
@@ -320,10 +347,24 @@ export const verifyRecharge = async (req, res, next) => {
       signature: razorpay_signature ? `${razorpay_signature.substring(0, 10)}...` : 'undefined',
       amount: amount
     });
-    
+
     if (!razorpay_payment_id || !razorpay_order_id || !razorpay_signature || !amount) {
       console.log('[ERROR] Missing payment verification data');
       throw new AppError('Missing payment verification data', 400);
+    }
+
+    // Get seller details (for document verification)
+    const seller = await Seller.findById(sellerId);
+    if (!seller) {
+      console.log(`[ERROR] Seller not found: ${sellerId}`);
+      throw new AppError('Seller not found', 404);
+    }
+
+    // PROGRESSIVE ACCESS: Double-check document completion during verification
+    const documentStatus = checkDocumentUploadStatus(seller);
+    if (!documentStatus.isComplete) {
+      console.log('[ERROR] Document verification incomplete during payment verification');
+      throw new AppError('Document verification required to complete wallet recharge', 403);
     }
 
     // Enhanced signature verification with debugging
@@ -333,7 +374,7 @@ export const verifyRecharge = async (req, res, next) => {
       payment_id: razorpay_payment_id,
       signature_length: razorpay_signature.length
     });
-    
+
     const signatureVerification = razorpayService.verifyPaymentSignature({
       razorpay_order_id,
       razorpay_payment_id,
@@ -343,10 +384,10 @@ export const verifyRecharge = async (req, res, next) => {
     console.log('[DEBUG] Signature verification result:', signatureVerification);
 
     // Test mode bypass for development/debugging
-    const isTestMode = process.env.NODE_ENV === 'development' || 
-                      razorpay_payment_id.startsWith('pay_test') ||
-                      process.env.RAZORPAY_KEY_ID?.includes('test');
-    
+    const isTestMode = process.env.NODE_ENV === 'development' ||
+      razorpay_payment_id.startsWith('pay_test') ||
+      process.env.RAZORPAY_KEY_ID?.includes('test');
+
     if (!signatureVerification.success || !signatureVerification.isValid) {
       if (isTestMode) {
         console.log('[WARN] Signature verification failed in test mode - proceeding anyway');
@@ -362,10 +403,10 @@ export const verifyRecharge = async (req, res, next) => {
     // Fetch payment details from Razorpay
     console.log('[DEBUG] Fetching payment details from Razorpay...');
     const paymentDetails = await razorpayService.fetchPayment(razorpay_payment_id);
-    
+
     if (!paymentDetails.success) {
       console.log('[ERROR] Failed to fetch payment details from Razorpay:', paymentDetails.error);
-      
+
       if (isTestMode) {
         console.log('[WARN] Payment fetch failed in test mode - proceeding with mock data');
         // Create mock payment data for testing
@@ -384,7 +425,7 @@ export const verifyRecharge = async (req, res, next) => {
     const payment = paymentDetails.payment;
     console.log('[DEBUG] Payment status from Razorpay:', payment.status);
     console.log('[DEBUG] Payment amount from Razorpay:', payment.amount);
-    
+
     // Check if payment is captured/successful
     if (payment.status !== 'captured') {
       if (isTestMode && payment.status === 'authorized') {
@@ -407,15 +448,8 @@ export const verifyRecharge = async (req, res, next) => {
     }
     console.log('[DEBUG] Payment amount verified');
 
-    // Find the seller
-    const seller = await Seller.findById(sellerId);
-    if (!seller) {
-      console.log(`[ERROR] Seller not found: ${sellerId}`);
-      throw new AppError('Seller not found', 404);
-    }
-    
     console.log(`[DEBUG] Current wallet balance: ₹${seller.walletBalance || 0}`);
-    
+
     // Check if transaction already exists to prevent double credit
     const existingTransaction = await WalletTransaction.findOne({
       seller: sellerId,
@@ -432,14 +466,14 @@ export const verifyRecharge = async (req, res, next) => {
     const currentBalance = parseFloat(seller.walletBalance || '0');
     const rechargeAmount = parseFloat(amount);
     const newBalance = (currentBalance + rechargeAmount).toFixed(2);
-    
+
     console.log(`[DEBUG] Updating wallet balance from ₹${currentBalance} to ₹${newBalance}`);
-    
+
     seller.walletBalance = newBalance;
     await seller.save();
-    
+
     console.log(`[DEBUG] Wallet balance updated successfully`);
-    
+
     // Record wallet transaction
     const txn = await WalletTransaction.create({
       seller: seller._id,
@@ -449,23 +483,23 @@ export const verifyRecharge = async (req, res, next) => {
       remark: `Wallet recharge via Razorpay - Order: ${razorpay_order_id}${isTestMode ? ' (TEST MODE)' : ''}`,
       closingBalance: newBalance
     });
-    
+
     console.log(`[DEBUG] Transaction recorded with ID: ${txn._id}`);
-    
+
     const responseData = {
-      success: true, 
-      data: { 
+      success: true,
+      data: {
         transaction: txn,
         balance: newBalance,
         message: `Wallet recharged successfully with ₹${rechargeAmount}${isTestMode ? ' (Test Mode)' : ''}`
       }
     };
-    
+
     console.log(`[DEBUG] Payment verification completed successfully. New balance: ₹${newBalance}`);
-    
+
     res.status(200).json(responseData);
   } catch (error) {
     console.error(`[ERROR] Payment verification failed:`, error);
     next(error);
   }
-}; 
+};

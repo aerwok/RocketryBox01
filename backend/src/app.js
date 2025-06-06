@@ -57,7 +57,7 @@ import shippingRoutes from './modules/shipping/index.js';
 
 // NEW: Import AWS routes for S3 and Email functionality
 import emailRoutes from './routes/email.routes.js';
-import otpRoutes from './routes/otp.routes.js';
+// import otpRoutes from './routes/otp.routes.js'; // DISABLED: Conflicts with module-specific OTP systems
 import s3Routes from './routes/s3.routes.js';
 
 // Dashboard update configuration with dynamic adjustment
@@ -272,7 +272,7 @@ app.use('/api/v2/pincodes', pincodeRoutes);
 // NEW: Mount AWS routes
 app.use('/api/v2/s3', s3Routes);
 app.use('/api/v2/email', emailRoutes);
-app.use('/api/v2/otp', otpRoutes);
+// app.use('/api/v2/otp', otpRoutes); // DISABLED: Conflicts with module-specific OTP systems (seller, customer)
 
 // Mount webhook routes at root level (no version prefix)
 app.use('/api/webhooks', webhookRoutes);

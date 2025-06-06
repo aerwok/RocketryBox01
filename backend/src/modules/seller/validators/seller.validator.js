@@ -95,7 +95,33 @@ export const registerSchema = Joi.object({
   otp: Joi.string().length(6).required().messages({
     'string.empty': 'OTP is required',
     'string.length': 'OTP must be 6 digits'
-  })
+  }),
+  // Optional bank details during registration
+  bankDetails: Joi.object({
+    accountType: Joi.string().valid('savings', 'current').messages({
+      'any.only': 'Account type must be either savings or current'
+    }),
+    bankName: Joi.string().messages({
+      'string.empty': 'Bank name cannot be empty'
+    }),
+    accountNumber: Joi.string().min(9).max(18).pattern(/^\d+$/).messages({
+      'string.min': 'Account number must be at least 9 digits',
+      'string.max': 'Account number cannot exceed 18 digits',
+      'string.pattern.base': 'Account number must contain only digits'
+    }),
+    accountHolderName: Joi.string().messages({
+      'string.empty': 'Account holder name cannot be empty'
+    }),
+    ifscCode: Joi.string().length(11).pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).messages({
+      'string.length': 'IFSC code must be 11 characters',
+      'string.pattern.base': 'Invalid IFSC code format'
+    }),
+    cancelledCheque: Joi.object({
+      url: Joi.string().uri().messages({
+        'string.uri': 'Invalid cancelled cheque document URL'
+      })
+    })
+  }).optional()
 });
 
 // Company Details Update Schema

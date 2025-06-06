@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import Seller from '../modules/seller/models/seller.model.js';
 import { logger } from '../utils/logger.js';
 import { getSession, setSession } from '../utils/redis.js';
 import { AppError } from './errorHandler.js';
@@ -138,44 +139,44 @@ export const authenticateSeller = async (req, res, next) => {
       return next(new AppError('You do not have permission to access this route', 403));
     }
 
-    // 4) Check session in Redis (skip in dev mode if Redis fails)
+    // 4) Fetch current seller data from database
     try {
-      const session = await getSession(decoded.id);
-      if (!session && !isDev) {
-        return next(new AppError('Your session has expired. Please log in again.', 401));
+      const seller = await Seller.findById(decoded.id);
+      if (!seller) {
+        return next(new AppError('Seller not found. Please log in again.', 401));
       }
 
-      // 5) Extend session if needed
-      if (session) {
-        const sessionData = JSON.parse(session);
-        if (sessionData.lastActivity < Date.now() - (30 * 60 * 1000)) { // 30 minutes
-          await setSession(decoded.id, {
-            ...sessionData,
-            lastActivity: Date.now()
-          });
-        }
+      // 5) Check if seller is active
+      if (seller.status === 'suspended') {
+        return next(new AppError('Your account has been suspended. Please contact support.', 403));
+      }
 
-        // 6) Add user info to request
-        req.user = {
-          ...decoded,
-          ...sessionData.user
-        };
-      } else if (isDev) {
-        // In development, if Redis fails, just use the token data
-        logger.warn('Redis session check skipped in development mode');
-        req.user = decoded;
-      }
-    } catch (redisError) {
-      if (isDev) {
-        // In development, if Redis fails, just use the token data
-        logger.warn('Redis error in development mode:', redisError.message);
-        req.user = decoded;
-      } else {
-        throw redisError;
-      }
+      // 6) Update last active time
+      seller.lastActive = new Date();
+      await seller.save();
+
+      // 7) Add complete seller data to request
+      req.user = {
+        id: seller._id,
+        email: seller.email,
+        role: 'seller',
+        businessName: seller.businessName,
+        companyCategory: seller.companyCategory,
+        phone: seller.phone,
+        address: seller.address,
+        status: seller.status,
+        documents: seller.documents,
+        bankDetails: seller.bankDetails,
+        // Add any other fields needed for middleware checks
+        ...seller.toObject()
+      };
+
+      next();
+    } catch (dbError) {
+      logger.error('Database error in authenticateSeller:', dbError);
+      return next(new AppError('Authentication failed. Please try again.', 500));
     }
 
-    next();
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
       return next(new AppError('Invalid token. Please log in again!', 401));

@@ -146,9 +146,72 @@ export const getDocuments = async (req, res, next) => {
     if (!seller) {
       return next(new AppError('Seller not found', 404));
     }
+
+    // Create completely flat, React-safe response structure
+    // Each document field is a simple primitive value to prevent rendering errors
+    const documentsData = {
+      // GST Document - flat structure
+      gstinNumber: seller.documents?.gstin?.number || '',
+      gstinUrl: seller.documents?.gstin?.url || '',
+      gstinStatus: seller.documents?.gstin?.status || 'pending',
+      gstinUploaded: !!(seller.documents?.gstin?.url),
+
+      // PAN Document - flat structure
+      panNumber: seller.documents?.pan?.number || '',
+      panUrl: seller.documents?.pan?.url || '',
+      panStatus: seller.documents?.pan?.status || 'pending',
+      panUploaded: !!(seller.documents?.pan?.url),
+
+      // Aadhaar Document - flat structure
+      aadhaarNumber: seller.documents?.aadhaar?.number || '',
+      aadhaarUrl: seller.documents?.aadhaar?.url || '',
+      aadhaarStatus: seller.documents?.aadhaar?.status || 'pending',
+      aadhaarUploaded: !!(seller.documents?.aadhaar?.url),
+
+      // Cancelled Cheque - flat structure
+      cancelledChequeUrl: seller.bankDetails?.cancelledCheque?.url || '',
+      cancelledChequeStatus: seller.bankDetails?.cancelledCheque?.status || 'pending',
+      cancelledChequeUploaded: !!(seller.bankDetails?.cancelledCheque?.url),
+
+      // Other documents count
+      otherDocumentsCount: seller.documents?.others?.length || 0,
+
+      // Overall status - simple primitives
+      totalRequired: 4,
+      totalUploaded: [
+        !!(seller.documents?.gstin?.url),
+        !!(seller.documents?.pan?.url),
+        !!(seller.documents?.aadhaar?.url),
+        !!(seller.bankDetails?.cancelledCheque?.url)
+      ].filter(Boolean).length,
+      completionPercentage: Math.round([
+        !!(seller.documents?.gstin?.url),
+        !!(seller.documents?.pan?.url),
+        !!(seller.documents?.aadhaar?.url),
+        !!(seller.bankDetails?.cancelledCheque?.url)
+      ].filter(Boolean).length / 4 * 100),
+      allCompleted: [
+        !!(seller.documents?.gstin?.url),
+        !!(seller.documents?.pan?.url),
+        !!(seller.documents?.aadhaar?.url),
+        !!(seller.bankDetails?.cancelledCheque?.url)
+      ].every(Boolean)
+    };
+
+    // Also provide original structure for any existing code that needs it
+    // But keep it in a separate field to avoid accidental rendering
+    const legacyData = {
+      gstin: seller.documents?.gstin || { status: 'pending' },
+      pan: seller.documents?.pan || { status: 'pending' },
+      aadhaar: seller.documents?.aadhaar || { status: 'pending' },
+      others: seller.documents?.others || []
+    };
+
     res.status(200).json({
       success: true,
-      data: seller.documents
+      data: documentsData,
+      legacy: legacyData,
+      message: 'Documents retrieved successfully'
     });
   } catch (error) {
     next(new AppError(error.message, 400));

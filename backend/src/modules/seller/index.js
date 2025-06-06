@@ -20,6 +20,11 @@ import walletRoutes from './routes/wallet.routes.js';
 import warehouseRoutes from './routes/warehouse.routes.js';
 import weightDisputeRoutes from './routes/weightDispute.routes.js';
 
+// Import authentication middleware
+
+// Import authentication middleware
+import { authenticateSeller } from '../../middleware/auth.js';
+
 // Import document requirement middleware
 import {
   progressiveDocumentAccess,
@@ -39,50 +44,50 @@ router.use('/support', supportRoutes);
 router.use('/agreements', agreementRoutes);
 
 // ==============================================================================
-// PROGRESSIVE ACCESS ROUTES (Require basic profile completion)
+// PROGRESSIVE ACCESS ROUTES (Require authentication + basic profile completion)
 // ==============================================================================
 
-// Dashboard - Require basic profile completion (50% document completion)
-router.use('/dashboard', requireBasicProfile, progressiveDocumentAccess(50), dashboardRoutes);
+// Dashboard - Require authentication, basic profile completion (50% document completion)
+router.use('/dashboard', authenticateSeller, requireBasicProfile, progressiveDocumentAccess(50), dashboardRoutes);
 
-// Settings - Require basic profile completion
-router.use('/settings', requireBasicProfile, settingsRoutes);
+// Settings - Require authentication + basic profile completion
+router.use('/settings', authenticateSeller, requireBasicProfile, settingsRoutes);
 
-// Warehouse and service checks - Basic tools, require profile completion
-router.use('/warehouse', requireBasicProfile, warehouseRoutes);
-router.use('/service-check', requireBasicProfile, serviceCheckRoutes);
+// Warehouse and service checks - Basic tools, require authentication + profile completion
+router.use('/warehouse', authenticateSeller, requireBasicProfile, warehouseRoutes);
+router.use('/service-check', authenticateSeller, requireBasicProfile, serviceCheckRoutes);
 
 // ==============================================================================
-// CRITICAL BUSINESS OPERATIONS (Require 100% document upload)
+// CRITICAL BUSINESS OPERATIONS (Require authentication + 100% document upload)
 // ==============================================================================
 
-// Order management - REQUIRES ALL DOCUMENTS
-router.use('/orders', requireDocumentUpload, orderRoutes);
+// Order management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/orders', authenticateSeller, requireDocumentUpload, orderRoutes);
 
-// Shipment management - REQUIRES ALL DOCUMENTS
-router.use('/shipments', requireDocumentUpload, shipmentRoutes);
+// Shipment management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/shipments', authenticateSeller, requireDocumentUpload, shipmentRoutes);
 
-// Bulk Orders - REQUIRES ALL DOCUMENTS
-router.use('/bulk-orders', requireDocumentUpload, bulkOrdersRoutes);
+// Bulk Orders - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/bulk-orders', authenticateSeller, requireDocumentUpload, bulkOrdersRoutes);
 
-// Financial management - REQUIRES ALL DOCUMENTS
-router.use('/wallet', requireDocumentUpload, walletRoutes);
-router.use('/invoices', requireDocumentUpload, invoiceRoutes);
-router.use('/ledger', requireDocumentUpload, ledgerRoutes);
-router.use('/cod-remittance', requireDocumentUpload, codRemittanceRoutes);
+// Financial management - REQUIRES AUTHENTICATION + BASIC PROFILE (Progressive access for wallet)
+router.use('/wallet', authenticateSeller, requireBasicProfile, walletRoutes);
+router.use('/invoices', authenticateSeller, requireDocumentUpload, invoiceRoutes);
+router.use('/ledger', authenticateSeller, requireDocumentUpload, ledgerRoutes);
+router.use('/cod-remittance', authenticateSeller, requireDocumentUpload, codRemittanceRoutes);
 
-// Rate Card management - REQUIRES ALL DOCUMENTS
-router.use('/rate-card', requireDocumentUpload, rateCardRoutes);
+// Rate Card management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/rate-card', authenticateSeller, requireDocumentUpload, rateCardRoutes);
 
-// Business operations - REQUIRES ALL DOCUMENTS
-router.use('/ndr', requireDocumentUpload, ndrRoutes);
-router.use('/weight-disputes', requireDocumentUpload, weightDisputeRoutes);
+// Business operations - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/ndr', authenticateSeller, requireDocumentUpload, ndrRoutes);
+router.use('/weight-disputes', authenticateSeller, requireDocumentUpload, weightDisputeRoutes);
 
-// Store and product management - REQUIRES ALL DOCUMENTS
-router.use('/stores', requireDocumentUpload, storeRoutes);
-router.use('/products', requireDocumentUpload, productRoutes);
+// Store and product management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/stores', authenticateSeller, requireDocumentUpload, storeRoutes);
+router.use('/products', authenticateSeller, requireDocumentUpload, productRoutes);
 
-// Team Management - REQUIRES ALL DOCUMENTS
-router.use('/team', requireDocumentUpload, teamUserRoutes);
+// Team Management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
+router.use('/team', authenticateSeller, requireDocumentUpload, teamUserRoutes);
 
 export default router;
