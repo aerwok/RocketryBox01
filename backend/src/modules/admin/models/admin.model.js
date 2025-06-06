@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 
 const adminSchema = new mongoose.Schema({
   fullName: {
@@ -187,9 +187,9 @@ adminSchema.index({ role: 1, status: 1 });
 adminSchema.index({ department: 1, status: 1 });
 adminSchema.index({ fullName: 'text', email: 'text', phoneNumber: 'text' });
 
-adminSchema.pre('save', async function(next) {
+adminSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  
+
   try {
     this.password = await bcrypt.hash(this.password, 12);
     next();
@@ -198,12 +198,12 @@ adminSchema.pre('save', async function(next) {
   }
 });
 
-adminSchema.pre(/^find/, function(next) {
+adminSchema.pre(/^find/, function (next) {
   if (!this._conditions.status) {
-    const skipDefaultFilter = 
-      this.getOptions().skipDefaultFilter || 
+    const skipDefaultFilter =
+      this.getOptions().skipDefaultFilter ||
       (this._conditions._id && Object.keys(this._conditions).length === 1);
-    
+
     if (!skipDefaultFilter) {
       this.find({ status: { $ne: 'Inactive' } });
     }
@@ -211,12 +211,12 @@ adminSchema.pre(/^find/, function(next) {
   next();
 });
 
-adminSchema.pre('save', function(next) {
+adminSchema.pre('save', function (next) {
   this.lastActive = new Date();
   next();
 });
 
-adminSchema.methods.isPasswordCorrect = async function(candidatePassword) {
+adminSchema.methods.isPasswordCorrect = async function (candidatePassword) {
   try {
     return await bcrypt.compare(candidatePassword, this.password);
   } catch (error) {
@@ -224,19 +224,19 @@ adminSchema.methods.isPasswordCorrect = async function(candidatePassword) {
   }
 };
 
-adminSchema.methods.generateToken = function() {
+adminSchema.methods.generateToken = function () {
   return jwt.sign(
-    { 
+    {
       id: this._id,
       role: this.role,
       isSuperAdmin: this.isSuperAdmin
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
   );
 };
 
-adminSchema.statics.findByIdSafe = async function(id) {
+adminSchema.statics.findByIdSafe = async function (id) {
   try {
     return await this.findById(id).select('-password').lean();
   } catch (error) {
@@ -244,18 +244,18 @@ adminSchema.statics.findByIdSafe = async function(id) {
   }
 };
 
-adminSchema.methods.updateSafe = async function(updates) {
+adminSchema.methods.updateSafe = async function (updates) {
   const allowedFields = [
-    'fullName', 'phoneNumber', 'department', 'designation', 
+    'fullName', 'phoneNumber', 'department', 'designation',
     'address', 'status', 'remarks', 'permissions'
   ];
-  
+
   Object.keys(updates).forEach(key => {
     if (allowedFields.includes(key)) {
       this[key] = updates[key];
     }
   });
-  
+
   if (updates.status && updates.status !== this.status) {
     if (!this.statusHistory) this.statusHistory = [];
     this.statusHistory.push({
@@ -265,10 +265,10 @@ adminSchema.methods.updateSafe = async function(updates) {
       timestamp: new Date()
     });
   }
-  
+
   return await this.save();
 };
 
 const Admin = mongoose.model('Admin', adminSchema);
 
-export default Admin; 
+export default Admin;

@@ -96,6 +96,7 @@ const sellerSchema = new mongoose.Schema({
 
   // System Fields
   status: { type: String, enum: ['pending', 'active', 'suspended'], default: 'pending', index: true },
+  kycVerified: { type: Boolean, default: false, index: true },
   otp: {
     code: { type: String },
     expiresAt: { type: Date }

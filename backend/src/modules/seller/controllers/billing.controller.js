@@ -94,9 +94,17 @@ export const getSellerRateCard = async (req, res, next) => {
       }
     });
 
-    // Get the most recent update time from rate cards
-    const lastUpdated = effectiveRates.length > 0
-      ? Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime()))
+    // Get the most recent update time from rate cards (handle invalid dates)
+    const validDates = effectiveRates
+      .map(rate => {
+        if (!rate.lastUpdated) return null;
+        const date = new Date(rate.lastUpdated);
+        return isNaN(date.getTime()) ? null : date.getTime();
+      })
+      .filter(date => date !== null);
+
+    const lastUpdated = validDates.length > 0
+      ? Math.max(...validDates)
       : new Date().getTime();
 
     // Count custom rates for additional info

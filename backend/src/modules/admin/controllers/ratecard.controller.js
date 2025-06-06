@@ -389,6 +389,7 @@ export const uploadRateCardsExcel = async (req, res, next) => {
       'productName': ['productName', 'product_name', 'Product Name', 'Product', 'Service Type', 'service_type'],
       'mode': ['mode', 'Mode', 'MODE', 'delivery_mode', 'Delivery Mode'],
       'zone': ['zone', 'Zone', 'ZONE', 'delivery_zone', 'Delivery Zone'],
+      'rateBand': ['rateBand', 'rate_band', 'Rate Band', 'RateBand', 'RATE_BAND', 'rate_plan', 'Rate Plan'],
       'baseRate': ['baseRate', 'base_rate', 'Base Rate', 'First KG', 'first_kg', 'base_price'],
       'addlRate': ['addlRate', 'addl_rate', 'Additional Rate', 'Additional KG', 'additional_kg', 'addl_price'],
       'codAmount': ['codAmount', 'cod_amount', 'COD Amount', 'COD Charges', 'cod_charges'],
@@ -423,6 +424,7 @@ export const uploadRateCardsExcel = async (req, res, next) => {
           productName: getColumnValue(row, 'productName'),
           mode: getColumnValue(row, 'mode'),
           zone: getColumnValue(row, 'zone'),
+          rateBand: getColumnValue(row, 'rateBand') || 'RBX1', // Default to RBX1 if not specified
           baseRate: parseFloat(getColumnValue(row, 'baseRate') || 0),
           addlRate: parseFloat(getColumnValue(row, 'addlRate') || 0),
           codAmount: parseFloat(getColumnValue(row, 'codAmount') || 0),
@@ -448,6 +450,8 @@ export const uploadRateCardsExcel = async (req, res, next) => {
         // Validate enum values
         const validModes = ['Surface', 'Air', 'Express', 'Standard', 'Premium'];
         const validZones = ['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone', 'North East & Special Areas'];
+        // Remove fixed rate bands to allow custom naming
+        const validRateBands = []; // Allow any rate band name
 
         if (!validModes.includes(rateCardData.mode)) {
           errors.push({
@@ -465,6 +469,13 @@ export const uploadRateCardsExcel = async (req, res, next) => {
             data: rateCardData
           });
           continue;
+        }
+
+        // Validate rate band (optional validation - defaults to RBX1 if invalid)
+        if (rateCardData.rateBand && !validRateBands.includes(rateCardData.rateBand)) {
+          // Log warning but don't fail - just default to RBX1
+          logger.warn(`Invalid rate band '${rateCardData.rateBand}' in row ${rowNumber}, defaulting to RBX1`);
+          rateCardData.rateBand = 'RBX1';
         }
 
         // Validate numeric values
@@ -510,12 +521,13 @@ export const uploadRateCardsExcel = async (req, res, next) => {
 
     for (const rateCardData of processedRateCards) {
       try {
-        // Check if rate card already exists
+        // Check if rate card already exists (including rate band for uniqueness)
         const existingRateCard = await RateCard.findOne({
           courier: rateCardData.courier,
           productName: rateCardData.productName,
           mode: rateCardData.mode,
-          zone: rateCardData.zone
+          zone: rateCardData.zone,
+          rateBand: rateCardData.rateBand
         });
 
         if (existingRateCard) {
@@ -583,6 +595,7 @@ export const downloadRateCardTemplate = async (req, res, next) => {
         'Product Name': 'Surface Delivery',
         'Mode': 'Surface',
         'Zone': 'Within City',
+        'Rate Band': 'RBX1',
         'Base Rate': 40,
         'Additional Rate': 15,
         'COD Amount': 20,
@@ -595,6 +608,7 @@ export const downloadRateCardTemplate = async (req, res, next) => {
         'Product Name': 'Express Delivery',
         'Mode': 'Air',
         'Zone': 'Metro to Metro',
+        'Rate Band': 'RBX1',
         'Base Rate': 60,
         'Additional Rate': 25,
         'COD Amount': 35,
@@ -607,6 +621,7 @@ export const downloadRateCardTemplate = async (req, res, next) => {
         'Product Name': 'B2C Standard',
         'Mode': 'Standard',
         'Zone': 'Within State',
+        'Rate Band': 'RBX1',
         'Base Rate': 35,
         'Additional Rate': 12,
         'COD Amount': 25,
@@ -626,6 +641,7 @@ export const downloadRateCardTemplate = async (req, res, next) => {
       { width: 20 }, // Product Name
       { width: 12 }, // Mode
       { width: 20 }, // Zone
+      { width: 12 }, // Rate Band
       { width: 12 }, // Base Rate
       { width: 15 }, // Additional Rate
       { width: 12 }, // COD Amount

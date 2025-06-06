@@ -1,9 +1,9 @@
 import express from 'express';
-import { validate } from '../../../middleware/validator.js';
+import multer from 'multer';
 import { protect, restrictTo } from '../../../middleware/auth.js';
+import { validate } from '../../../middleware/validator.js';
 import * as authController from '../controllers/auth.controller.js';
 import * as authValidator from '../validators/auth.validator.js';
-import multer from 'multer';
 
 const router = express.Router();
 
@@ -36,6 +36,9 @@ const upload = multer({
 // Login route - public
 router.post('/login', authValidator.loginValidator, validate, authController.login);
 
+// Refresh token route - requires valid (even expired) token
+router.post('/refresh-token', authController.refreshToken);
+
 // Register route - private (super admin only)
 router.post(
   '/register',
@@ -46,6 +49,9 @@ router.post(
   validate,
   authController.register
 );
+
+// Refresh token route - special case, requires token but allows expired tokens
+router.post('/refresh-token', authController.refreshToken);
 
 // Protected routes
 router.use(protect);
@@ -61,4 +67,4 @@ router.get('/sessions', authController.getSessions);
 router.delete('/sessions/:sessionId', authController.revokeSession);
 router.delete('/sessions', authController.revokeAllSessions);
 
-export default router; 
+export default router;

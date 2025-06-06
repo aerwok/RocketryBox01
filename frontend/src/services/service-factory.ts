@@ -825,6 +825,15 @@ export class ServiceFactory {
         return await ServiceFactory.callApi<{
           lastUpdated: string;
           rates: any[];
+          rateBand?: string;
+          rateBandDetails?: {
+            name: string;
+            description: string;
+            isDefault: boolean;
+            isCustom: boolean;
+          };
+          hasCustomRates?: boolean;
+          statistics?: any;
         }>('/seller/rate-card');
       },
       calculateRates: async (data: {

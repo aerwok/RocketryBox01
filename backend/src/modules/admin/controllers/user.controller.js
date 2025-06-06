@@ -734,6 +734,21 @@ export const updateSellerKYC = async (req, res, next) => {
         seller.documents.aadhaar.status = mappedStatus;
         console.log(`✅ Updated Aadhaar status to: ${mappedStatus}`);
       }
+
+      // Check if all required documents are now verified after individual document update
+      const gstStatus = seller.documents.gstin?.status || 'pending';
+      const panStatus = seller.documents.pan?.status || 'pending';
+      const aadhaarStatus = seller.documents.aadhaar?.status || 'pending';
+
+      const allDocumentsVerified = gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified';
+
+      if (allDocumentsVerified && !seller.kycVerified) {
+        seller.kycVerified = true;
+        console.log(`✅ All documents verified - automatically set kycVerified to true`);
+      } else if (!allDocumentsVerified && seller.kycVerified) {
+        seller.kycVerified = false;
+        console.log(`⚠️ Document verification status changed - set kycVerified to false`);
+      }
     } else {
       // Update all document statuses if no specific type provided
       console.log(`📄 Updating all document statuses to: ${mappedStatus}`);

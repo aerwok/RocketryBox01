@@ -13,13 +13,13 @@ const rateCardSchema = new mongoose.Schema({
   mode: {
     type: String,
     required: true,
-    enum: ['Surface', 'Air']
+    enum: ['Surface', 'Air', 'Express', 'Standard', 'Premium']
   },
   zone: {
     type: String,
     required: true,
     index: true,
-    enum: ['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone']
+    enum: ['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone', 'North East & Special Areas']
   },
   // Rate Band - determines which sellers can use this rate card
   rateBand: {

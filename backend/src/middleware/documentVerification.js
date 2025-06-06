@@ -36,7 +36,7 @@ export const getDocumentUploadStatus = (seller) => {
     const documentsUploaded = uploadedDocuments.length === requiredDocuments.length;
 
     // Check admin verification status
-    const adminVerified = seller.status === 'verified' || seller.documentsVerified === true;
+    const adminVerified = seller.kycVerified === true;
 
     // Determine overall status
     let status = 'pending_upload';

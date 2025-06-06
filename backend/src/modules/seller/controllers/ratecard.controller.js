@@ -3,6 +3,71 @@ import SellerRateCard from '../../../models/sellerRateCard.model.js';
 import rateCardService from '../../../services/ratecard.service.js';
 import { logger } from '../../../utils/logger.js';
 
+// Helper function to transform rate cards into frontend table format
+const transformRateCardsToTableFormat = async (rateCards) => {
+  try {
+    // Group rate cards by courier and mode for easier processing
+    const ratesByMode = {};
+
+    rateCards.forEach(card => {
+      const key = `${card.courier}-${card.mode}`;
+      if (!ratesByMode[key]) {
+        ratesByMode[key] = {
+          mode: `${card.courier} ${card.mode}`,
+          courier: card.courier,
+          productName: card.productName,
+          zones: {}
+        };
+      }
+
+      // Map backend zone names to frontend zone structure
+      const zoneMapping = {
+        'Within City': 'withinCity',
+        'Within State': 'withinState',
+        'Within Region': 'withinState', // Map to within state for simplicity
+        'Metro to Metro': 'metroToMetro',
+        'Rest of India': 'restOfIndia',
+        'Special Zone': 'northEastJK',
+        'North East & Special Areas': 'northEastJK'
+      };
+
+      const frontendZone = zoneMapping[card.zone] || 'restOfIndia';
+
+      ratesByMode[key].zones[frontendZone] = {
+        base: `₹${card.baseRate || 0}`,
+        additional: `₹${card.addlRate || 0}`,
+        rto: `₹${card.rtoCharges || (card.baseRate || 0)}` // Use base rate as RTO if not specified
+      };
+
+      // Add COD information from the rate card
+      ratesByMode[key].cod = `₹${card.codAmount || 0}`;
+      ratesByMode[key].codPercent = `${card.codPercent || 2}%`;
+    });
+
+    // Convert to array and fill missing zones with default values
+    const transformedRates = Object.values(ratesByMode).map(rate => {
+      const defaultZone = { base: '₹0', additional: '₹0', rto: '₹0' };
+
+      return {
+        mode: rate.mode,
+        withinCity: rate.zones.withinCity || defaultZone,
+        withinState: rate.zones.withinState || defaultZone,
+        metroToMetro: rate.zones.metroToMetro || defaultZone,
+        restOfIndia: rate.zones.restOfIndia || defaultZone,
+        northEastJK: rate.zones.northEastJK || defaultZone,
+        cod: rate.cod || '₹15',
+        codPercent: rate.codPercent || '2%'
+      };
+    });
+
+    return transformedRates;
+  } catch (error) {
+    logger.error('Error transforming rate cards to table format:', error);
+    // Return empty format if transformation fails
+    return [];
+  }
+};
+
 // Get seller's effective rate cards (base + overrides)
 export const getSellerRateCard = async (req, res, next) => {
   try {
@@ -36,19 +101,36 @@ export const getSellerRateCard = async (req, res, next) => {
     const overriddenRates = effectiveRates.filter(rate => rate.isOverride);
     const hasCustomRates = overriddenRates.length > 0;
 
+    // Transform rate cards into frontend table format
+    const transformedRates = await transformRateCardsToTableFormat(effectiveRates);
+
+    // Get seller rate band information
+    const seller = req.user;
+    const sellerRateBand = seller.rateBand || 'RBX1';
+
     res.status(200).json({
       success: true,
       data: {
-        rateCards: effectiveRates,
-        rateCardsByCourier,
-        totalCount: effectiveRates.length,
+        rates: transformedRates,
+        rateBand: sellerRateBand,
+        rateBandDetails: {
+          name: sellerRateBand,
+          description: seller.rateBand ? 'Custom rate band assigned by admin' : 'Default rate band for all sellers',
+          isDefault: sellerRateBand === 'RBX1' && !seller.rateBand,
+          isCustom: !!seller.rateBand
+        },
+        lastUpdated: new Date().toISOString(),
         hasCustomRates,
         statistics: {
           totalRates: effectiveRates.length,
           customRates: overriddenRates.length,
           baseRates: effectiveRates.length - overriddenRates.length,
           customizationPercentage: Math.round((overriddenRates.length / effectiveRates.length) * 100)
-        }
+        },
+        // Legacy format for compatibility
+        rateCards: effectiveRates,
+        rateCardsByCourier,
+        totalCount: effectiveRates.length
       }
     });
   } catch (error) {
@@ -108,7 +190,16 @@ export const calculateShippingRate = async (req, res, next) => {
       ...calculationResult,
       sellerInfo: {
         hasCustomRates: effectiveRates.some(rate => rate.isOverride),
-        ratesLastUpdated: Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime()))
+        ratesLastUpdated: (() => {
+          const validDates = effectiveRates
+            .map(rate => {
+              if (!rate.lastUpdated) return null;
+              const date = new Date(rate.lastUpdated);
+              return isNaN(date.getTime()) ? null : date.getTime();
+            })
+            .filter(date => date !== null);
+          return validDates.length > 0 ? Math.max(...validDates) : Date.now();
+        })()
       }
     };
 
@@ -300,8 +391,18 @@ export const getRateCardStatistics = async (req, res, next) => {
         zone: Object.entries(zoneStats).map(([name, count]) => ({ name, count })),
         mode: Object.entries(modeStats).map(([name, count]) => ({ name, count }))
       },
-      lastUpdated: effectiveRates.length > 0 ?
-        Math.max(...effectiveRates.map(rate => new Date(rate.lastUpdated).getTime())) : null
+      lastUpdated: effectiveRates.length > 0 ? (() => {
+        try {
+          const validDates = effectiveRates
+            .map(rate => rate.lastUpdated || rate.updatedAt || rate.createdAt)
+            .filter(date => date && !isNaN(new Date(date).getTime()))
+            .map(date => new Date(date).getTime());
+          return validDates.length > 0 ? Math.max(...validDates) : Date.now();
+        } catch (error) {
+          logger.warn('Error processing lastUpdated dates:', error);
+          return Date.now();
+        }
+      })() : null
     };
 
     res.status(200).json({

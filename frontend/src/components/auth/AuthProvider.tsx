@@ -52,8 +52,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const payload = JSON.parse(atob(parts[1]));
       const now = Math.floor(Date.now() / 1000);
 
-      // Check if token is expired (with 5 minute buffer)
-      if (payload.exp && payload.exp < (now + 300)) {
+      // Check if token is expired (with 2 hour buffer for better UX)
+      if (payload.exp && payload.exp < (now + 7200)) {
         console.log('🔐 Token expiring soon or expired, attempting refresh');
         return false;
       }
@@ -125,8 +125,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             await clearAuthData();
             return;
           }
+        } else if (storedUserType === 'admin') {
+          // Try to refresh admin token
+          try {
+            const apiService = ApiService.getInstance();
+            const response = await apiService.post<{
+              accessToken: string;
+              expiresIn: number;
+            }>('/admin/auth/refresh-token', {}, {
+              headers: {
+                'Authorization': `Bearer ${authToken}`
+              }
+            });
+
+            if (response.success && response.data?.accessToken) {
+              await secureStorage.setItem('auth_token', response.data.accessToken);
+              console.log('🔐 Admin token refreshed successfully');
+            } else {
+              throw new Error('Admin token refresh failed');
+            }
+          } catch (refreshError) {
+            console.error('🔐 Admin token refresh failed:', refreshError);
+            await clearAuthData();
+            return;
+          }
         } else {
-          // For admin tokens, clear and require re-login
+          // For unknown user types, clear and require re-login
           await clearAuthData();
           return;
         }
@@ -169,8 +193,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await secureStorage.removeItem('user_type');
       await secureStorage.removeItem('user_permissions');
       await secureStorage.removeItem('user_context');
+
+      // Clear seller-specific data
       localStorage.removeItem('seller_token');
       localStorage.removeItem('current_seller_data');
+
+      // Clear admin-specific data
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
 
       setIsAuthenticated(false);
       setUserType(null);
@@ -218,7 +248,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const interval = setInterval(async () => {
       console.log('🔐 Periodic auth refresh');
       await refreshAuth();
-    }, 30 * 60 * 1000); // 30 minutes
+    }, 4 * 60 * 60 * 1000); // 4 hours
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);

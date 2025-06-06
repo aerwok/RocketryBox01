@@ -11,9 +11,15 @@ class RazorpayService {
   constructor() {
     // Initialize Razorpay instance with your credentials
     this.razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y',
-      key_secret: process.env.RAZORPAY_KEY_SECRET || '41gQuFZj7FeltDpKcHBRGho9'
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET
     });
+
+    // Validate credentials are provided
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      console.error('❌ Razorpay credentials not found in environment variables');
+      console.error('Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file');
+    }
 
     // console.log('🔧 Razorpay Service initialized with key:',
     //   process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y'
@@ -57,7 +63,7 @@ class RazorpayService {
       return {
         success: true,
         order: razorpayOrder,
-        keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y'
+        keyId: process.env.RAZORPAY_KEY_ID
       };
 
     } catch (error) {
@@ -88,7 +94,7 @@ class RazorpayService {
       // Create expected signature
       const body = razorpay_order_id + '|' + razorpay_payment_id;
       const expectedSignature = crypto
-        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '41gQuFZj7FeltDpKcHBRGho9')
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
         .update(body.toString())
         .digest('hex');
 
@@ -322,7 +328,7 @@ class RazorpayService {
    */
   getConfig() {
     return {
-      keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_f3lgnRdSjAnm6y',
+      keyId: process.env.RAZORPAY_KEY_ID,
       currency: 'INR',
       prefill: {
         name: '',

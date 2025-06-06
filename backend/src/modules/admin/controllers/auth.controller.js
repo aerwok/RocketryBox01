@@ -277,6 +277,88 @@ export const register = async (req, res, next) => {
 };
 
 /**
+ * Refresh admin token
+ * @route POST /api/v2/admin/auth/refresh-token
+ * @access Private
+ */
+export const refreshToken = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+
+    if (!token) {
+      return next(new AppError('Not logged in', 401));
+    }
+
+    // 1) Verify the current token (even if expired)
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        // Allow refresh for expired tokens
+        decoded = jwt.decode(token);
+      } else {
+        return next(new AppError('Invalid token', 401));
+      }
+    }
+
+    // 2) Check if admin still exists
+    const admin = await Admin.findById(decoded.id);
+    if (!admin) {
+      return next(new AppError('Admin no longer exists', 401));
+    }
+
+    // 3) Check if admin is still active
+    if (admin.status !== 'Active') {
+      return next(new AppError('Admin account is not active', 403));
+    }
+
+    // 4) Generate new token
+    const newToken = generateToken(admin);
+
+    // 5) Update session in database
+    const session = await Session.findOne({ token, adminId: admin._id });
+    if (session && session.isActive) {
+      session.token = newToken;
+      session.lastActive = new Date();
+      await session.save();
+    }
+
+    // 6) Update Redis session
+    try {
+      const permissionsArray = Object.keys(admin.permissions || {}).filter(key => admin.permissions[key] === true);
+      await setSession(admin._id.toString(), JSON.stringify({
+        sessionId: session?._id?.toString(),
+        user: {
+          id: admin._id,
+          name: admin.fullName,
+          email: admin.email,
+          role: admin.role,
+          isSuperAdmin: admin.isSuperAdmin,
+          permissions: permissionsArray
+        },
+        lastActivity: Date.now()
+      }), 24 * 60 * 60); // 24 hours in seconds
+    } catch (redisError) {
+      logger.warn('Redis session update failed during token refresh:', redisError.message);
+    }
+
+    logger.info(`Admin ${admin._id} token refreshed successfully`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        accessToken: newToken,
+        expiresIn: 24 * 60 * 60 // 24 hours in seconds
+      }
+    });
+  } catch (error) {
+    logger.error(`Token refresh error: ${error.message}`);
+    next(new AppError('Failed to refresh token', 500));
+  }
+};
+
+/**
  * Get current admin's profile
  * @route GET /api/v2/admin/auth/profile
  * @access Private
