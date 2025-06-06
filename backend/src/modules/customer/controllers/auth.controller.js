@@ -95,9 +95,9 @@ export const register = async (req, res, next) => {
     // Note: OTP verification is handled separately via the sendOTP endpoint
     // The frontend sends OTP before calling register, so no need to send SMS here
 
-    // Generate tokens
-    const accessToken = customer.generateAuthToken();
-    const refreshToken = customer.generateRefreshToken();
+    // Generate tokens (registration doesn't use rememberMe)
+    const accessToken = customer.generateAuthToken(false);
+    const refreshToken = customer.generateRefreshToken(false);
 
     // Emit customer registered event for real-time dashboard updates
     emitEvent(EVENT_TYPES.CUSTOMER_REGISTERED, {
@@ -161,9 +161,9 @@ export const login = async (req, res, next) => {
     customer.lastLogin = Date.now();
     await customer.save();
 
-    // Generate tokens
-    const accessToken = customer.generateAuthToken();
-    const refreshToken = customer.generateRefreshToken();
+    // Generate tokens with rememberMe setting
+    const accessToken = customer.generateAuthToken(rememberMe);
+    const refreshToken = customer.generateRefreshToken(rememberMe);
 
     // Set up session in Redis
     await setSession(customer._id.toString(), {

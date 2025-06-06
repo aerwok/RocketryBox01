@@ -30,6 +30,7 @@ import {
   addAddress,
   deleteAddress,
   getProfile,
+  getProfileImageUrl,
   updateAddress,
   updateProfile,
   uploadProfileImage
@@ -87,6 +88,7 @@ router.post('/auth/logout', authLimiter, logout);
 router.get('/profile', getProfile);
 router.put('/profile', validateRequest([profileUpdateSchema]), updateProfile);
 router.post('/profile/image', upload.single('profileImage'), handleMulterError, uploadProfileImage);
+router.get('/profile/image-url', getProfileImageUrl);
 router.post('/address', validateRequest([addressSchema]), addAddress);
 router.put('/address/:id', validateRequest([addressSchema]), updateAddress);
 router.delete('/address/:id', deleteAddress);

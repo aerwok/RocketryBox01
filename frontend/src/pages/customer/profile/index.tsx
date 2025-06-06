@@ -341,7 +341,7 @@ const CustomerProfilePage = () => {
             <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              className="relative size-20 lg:size-28 rounded-full bg-neutral-200 cursor-pointer overflow-visible"
+              className="relative size-20 lg:size-28 rounded-full bg-neutral-200 cursor-pointer overflow-hidden"
               onClick={handleImageClick}
             >
               <AnimatePresence mode="wait">
@@ -351,7 +351,7 @@ const CustomerProfilePage = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex items-center justify-center h-full"
+                    className="flex items-center justify-center h-full rounded-full"
                   >
                     <Loader2 className="h-8 w-8 animate-spin text-[#412A5F]" />
                   </motion.div>
@@ -363,7 +363,7 @@ const CustomerProfilePage = () => {
                     exit={{ opacity: 0 }}
                     src={profileImage}
                     alt="Profile"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
                   <motion.div
@@ -371,12 +371,12 @@ const CustomerProfilePage = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="flex flex-col items-center justify-center h-full relative"
+                    className="flex flex-col items-center justify-center h-full relative rounded-full"
                   >
                     <UserIcon strokeWidth={1.3} className="size-12 lg:size-20 text-[#412A5F]" />
                     <motion.span
                       whileHover={{ scale: 1.1 }}
-                      className="absolute right-0 bottom-0 size-8 flex items-center justify-center bg-[#412A5F] rounded-full"
+                      className="absolute right-0 bottom-0 size-8 flex items-center justify-center bg-[#412A5F] rounded-full border-2 border-neutral-200"
                     >
                       <Camera className="size-5 text-[#412A5F] fill-white" />
                     </motion.span>

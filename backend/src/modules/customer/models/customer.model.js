@@ -215,20 +215,22 @@ customerSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 // Generate JWT token
-customerSchema.methods.generateAuthToken = function () {
+customerSchema.methods.generateAuthToken = function (rememberMe = false) {
+  const expiresIn = rememberMe ? '30d' : (process.env.JWT_EXPIRES_IN || '1d');
   return jwt.sign(
     { id: this._id, role: 'customer' },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN }
+    { expiresIn }
   );
 };
 
 // Generate refresh token
-customerSchema.methods.generateRefreshToken = function () {
+customerSchema.methods.generateRefreshToken = function (rememberMe = false) {
+  const expiresIn = rememberMe ? '60d' : (process.env.JWT_REFRESH_EXPIRES_IN || '7d');
   return jwt.sign(
     { id: this._id, role: 'customer' },
     process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN }
+    { expiresIn }
   );
 };
 
