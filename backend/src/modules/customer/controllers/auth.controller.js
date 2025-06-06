@@ -2,7 +2,6 @@ import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
 import { logger } from '../../../utils/logger.js';
-import { generateOTP } from '../../../utils/otp.js';
 import { deleteSession, setOTP, setSession, verifyOTP } from '../../../utils/redis.js';
 import { sendOTP as sendSMSOTP } from '../../../utils/sms.js';
 import Customer from '../models/customer.model.js';
@@ -10,7 +9,7 @@ import Customer from '../models/customer.model.js';
 // Register new customer
 export const register = async (req, res, next) => {
   try {
-    const { name, email, mobile, password, confirmPassword, acceptTerms } = req.body;
+    const { name, email, mobile, password, confirmPassword, acceptTerms, mobileOtp, emailOtp } = req.body;
 
     // Validate terms acceptance
     if (!acceptTerms) {
@@ -25,6 +24,29 @@ export const register = async (req, res, next) => {
     // Validate mobile number
     if (!mobile || mobile.trim() === '') {
       return next(new AppError('Mobile number is required', 400));
+    }
+
+    // Validate OTPs
+    if (!mobileOtp || mobileOtp.trim() === '') {
+      return next(new AppError('Mobile OTP is required', 400));
+    }
+
+    if (!emailOtp || emailOtp.trim() === '') {
+      return next(new AppError('Email OTP is required', 400));
+    }
+
+    // Verify mobile OTP from Redis (sent via sendOTP endpoint)
+    const mobileOtpKey = `temp_${mobile}`;
+    const mobileOtpResult = await verifyOTP(mobileOtpKey, mobileOtp);
+    if (!mobileOtpResult.valid) {
+      return next(new AppError('Invalid or expired mobile OTP', 400));
+    }
+
+    // Verify email OTP from Redis (sent via sendOTP endpoint)
+    const emailOtpKey = `temp_${email}`;
+    const emailOtpResult = await verifyOTP(emailOtpKey, emailOtp);
+    if (!emailOtpResult.valid) {
+      return next(new AppError('Invalid or expired email OTP', 400));
     }
 
     // For backwards compatibility, map mobile to phone field
@@ -67,37 +89,11 @@ export const register = async (req, res, next) => {
       phone: customer.phone
     });
 
-    // Generate OTP for email verification
-    const emailOTP = generateOTP();
-    customer.emailVerificationOTP = emailOTP;
-    customer.emailVerificationOTPExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
-    await customer.save();
+    // Note: Email OTP verification is handled separately via the sendOTP endpoint
+    // The frontend sends email OTP before calling register, so no need to send email here
 
-    // Send verification email
-    try {
-      await sendEmail({
-        to: email,
-        subject: 'Verify Your Email - RocketryBox',
-        text: `Your verification code is: ${emailOTP}. This code will expire in 10 minutes.`
-      });
-    } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
-      // Continue with registration process even if email fails
-    }
-
-    // Generate OTP for mobile verification
-    const mobileOTP = generateOTP();
-    customer.mobileVerificationOTP = mobileOTP;
-    customer.mobileVerificationOTPExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
-    await customer.save();
-
-    // Send verification SMS
-    try {
-      await sendSMSOTP(mobile, mobileOTP, 'phone verification', 10);
-    } catch (smsError) {
-      console.error('Failed to send verification SMS:', smsError);
-      // Continue with registration process even if SMS fails
-    }
+    // Note: OTP verification is handled separately via the sendOTP endpoint
+    // The frontend sends OTP before calling register, so no need to send SMS here
 
     // Generate tokens
     const accessToken = customer.generateAuthToken();
@@ -113,7 +109,7 @@ export const register = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: {
-        message: 'Registration successful. Please verify your email and phone number.',
+        message: 'Registration successful! Your account has been created and verified.',
         user: customer,
         accessToken,
         refreshToken

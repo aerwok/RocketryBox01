@@ -48,8 +48,24 @@ export const registerSchema = Joi.object({
       'boolean.base': 'You must accept the terms and conditions',
       'any.only': 'You must accept the terms and conditions'
     }),
-  mobileOtp: Joi.string().optional(),
-  emailOtp: Joi.string().optional(),
+  mobileOtp: Joi.string()
+    .required()
+    .length(6)
+    .pattern(/^\d+$/)
+    .messages({
+      'string.empty': 'Mobile OTP is required',
+      'string.length': 'Mobile OTP must be 6 digits',
+      'string.pattern.base': 'Mobile OTP must contain only digits'
+    }),
+  emailOtp: Joi.string()
+    .required()
+    .length(6)
+    .pattern(/^\d+$/)
+    .messages({
+      'string.empty': 'Email OTP is required',
+      'string.length': 'Email OTP must be 6 digits',
+      'string.pattern.base': 'Email OTP must contain only digits'
+    }),
   address1: Joi.string().optional(),
   address2: Joi.string().allow('').optional(),
   city: Joi.string().optional(),
@@ -253,4 +269,4 @@ export const addressSchema = Joi.object({
     .default('India'),
   isDefault: Joi.boolean()
     .default(false)
-}); 
+});
