@@ -46,6 +46,28 @@ export const login = async (req, res, next) => {
     seller.refreshToken = refreshToken;
     await seller.save();
 
+    // Create Redis session for seller
+    try {
+      const { setSession } = await import('../../../utils/redis.js');
+      const sessionData = {
+        user: {
+          id: seller._id,
+          email: seller.email,
+          role: 'seller',
+          businessName: seller.businessName,
+          phone: seller.phone,
+          status: seller.status
+        },
+        lastActivity: Date.now(),
+        createdAt: Date.now()
+      };
+      await setSession(seller._id.toString(), sessionData);
+      console.log('✅ Seller session created in Redis');
+    } catch (redisError) {
+      console.warn('⚠️ Failed to create seller session in Redis:', redisError.message);
+      // Don't fail login if Redis is unavailable
+    }
+
     // Emit seller login event for real-time dashboard updates
     emitEvent(EVENT_TYPES.SELLER_LOGIN, {
       sellerId: seller._id,
@@ -585,6 +607,16 @@ export const logout = async (req, res, next) => {
     if (seller) {
       seller.refreshToken = undefined;
       await seller.save();
+
+      // Delete Redis session
+      try {
+        const { deleteSession } = await import('../../../utils/redis.js');
+        await deleteSession(sellerId.toString());
+        console.log('✅ Seller session deleted from Redis');
+      } catch (redisError) {
+        console.warn('⚠️ Failed to delete seller session from Redis:', redisError.message);
+        // Don't fail logout if Redis is unavailable
+      }
 
       // Emit logout event
       emitEvent(EVENT_TYPES.SELLER_LOGOUT, {

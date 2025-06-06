@@ -1,12 +1,12 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import { addStockSchema } from '../validators/warehouse.validator.js';
 import { listWarehouseItems, addStockToItem } from '../controllers/warehouse.controller.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(authenticateSeller);
 
 // List warehouse items
 router.get('/items', listWarehouseItems);

@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import {
   listLedgerEntries,
   getLedgerEntry,
@@ -8,8 +8,8 @@ import {
 
 const router = express.Router();
 
-// All routes are protected
-router.use(protect);
+// All routes are authenticateSellered
+router.use(authenticateSeller);
 
 // List ledger entries with filters and pagination
 router.get('/', listLedgerEntries);

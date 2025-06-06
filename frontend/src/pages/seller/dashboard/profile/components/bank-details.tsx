@@ -29,6 +29,8 @@ interface BankDetailsProps {
 
 const BankDetails = ({ onSave }: BankDetailsProps) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadingCheque, setUploadingCheque] = useState(false);
+  const [uploadedCheque, setUploadedCheque] = useState<{ url: string; filename: string } | null>(null);
 
   const form = useForm<BankDetailsInput>({
     resolver: zodResolver(bankDetailsSchema),
@@ -42,6 +44,33 @@ const BankDetails = ({ onSave }: BankDetailsProps) => {
     },
   });
 
+  const handleChequeUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    try {
+      setUploadingCheque(true);
+
+      const response = await ServiceFactory.seller.profile.uploadCancelledCheque(file);
+
+      if (response.success) {
+        setUploadedCheque({
+          url: response.data.documentUrl,
+          filename: file.name
+        });
+
+        toast.success("Cancelled cheque uploaded successfully to S3!");
+      } else {
+        throw new Error(response.message || 'Upload failed');
+      }
+    } catch (error: any) {
+      console.error('Error uploading cancelled cheque:', error);
+      toast.error(`Failed to upload cancelled cheque: ${error.message}`);
+    } finally {
+      setUploadingCheque(false);
+    }
+  };
+
   const onSubmit = async (data: BankDetailsInput) => {
     try {
       setIsLoading(true);
@@ -53,9 +82,9 @@ const BankDetails = ({ onSave }: BankDetailsProps) => {
           branchName: data.branchName,
           accountType: data.accountType,
           ifscCode: data.ifscCode,
-          cancelledCheque: data.cancelledChequeImage?.[0] ? {
+          cancelledCheque: uploadedCheque ? {
             status: 'pending',
-            url: URL.createObjectURL(data.cancelledChequeImage[0])
+            url: uploadedCheque.url
           } : undefined
         }
       });
@@ -213,13 +242,31 @@ const BankDetails = ({ onSave }: BankDetailsProps) => {
                     Cancelled Cheque Image *
                   </FormLabel>
                   <FormControl>
-                    <Input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="bg-[#F8F7FF] file:bg-main file:text-white file:border-0 file:text-xs file:rounded-md file:px-3 file:py-1.5 file:mr-4 hover:file:bg-main/90"
-                      onChange={(e) => onChange(e.target.files)}
-                      {...field}
-                    />
+                    <div className="space-y-2">
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="bg-[#F8F7FF] file:bg-main file:text-white file:border-0 file:text-xs file:rounded-md file:px-3 file:py-1.5 file:mr-4 hover:file:bg-main/90"
+                        onChange={(e) => {
+                          onChange(e.target.files);
+                          handleChequeUpload(e.target.files);
+                        }}
+                        disabled={uploadingCheque}
+                        {...field}
+                      />
+                      {uploadingCheque && (
+                        <div className="flex items-center gap-2 text-sm text-blue-600">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Uploading to S3...
+                        </div>
+                      )}
+                      {uploadedCheque && (
+                        <div className="flex items-center gap-2 text-sm text-green-600">
+                          <CheckCircle2 className="h-4 w-4" />
+                          {uploadedCheque.filename} uploaded successfully ✓
+                        </div>
+                      )}
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

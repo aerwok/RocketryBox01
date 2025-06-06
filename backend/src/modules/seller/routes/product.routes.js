@@ -1,12 +1,12 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import { addProductSchema, updateProductSchema } from '../validators/product.validator.js';
 import { listProducts, addProduct, getProduct, updateProduct, deleteProduct } from '../controllers/product.controller.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(authenticateSeller);
 
 // List products
 router.get('/products', listProducts);

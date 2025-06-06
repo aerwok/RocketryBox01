@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import {
   acceptAgreement,
   downloadAgreement,
@@ -10,7 +10,7 @@ import {
 const router = express.Router();
 
 // All routes require seller authentication
-router.use(protect);
+router.use(authenticateSeller);
 
 // Get all agreements for the seller
 router.get('/', getSellerAgreements);

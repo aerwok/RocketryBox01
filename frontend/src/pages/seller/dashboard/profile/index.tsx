@@ -48,6 +48,7 @@ const SellerProfilePage = () => {
     opencart: ""
   });
   const [storeLinksErrors, setStoreLinksErrors] = useState<Partial<StoreLinksInput>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Type guard to check if profile is a team member
   const isTeamMemberProfile = (profile: Seller | TeamMemberProfile): profile is TeamMemberProfile => {
@@ -106,7 +107,7 @@ const SellerProfilePage = () => {
       return;
     }
 
-        try {
+    try {
       setStoreLinksLoading(true);
 
       // Prepare the links object, including empty strings to clear existing links
@@ -137,6 +138,66 @@ const SellerProfilePage = () => {
     }
   };
 
+  const refreshProfile = async () => {
+    try {
+      setIsRefreshing(true);
+      console.log('🔄 Manual profile refresh triggered');
+
+      // Force refresh by adding timestamp to avoid cached responses
+      const response = await ServiceFactory.seller.profile.get();
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to refresh profile');
+      }
+
+      const profileData = response.data as Seller | TeamMemberProfile;
+      const prevProfile = profile;
+
+      setProfile(profileData);
+
+      // Check if any documents status changed and show specific notification
+      if (prevProfile && !isTeamMemberProfile(prevProfile) && !isTeamMemberProfile(profileData)) {
+        const prevDocs = (prevProfile as any)?.documents;
+        const newDocs = (profileData as any)?.documents;
+
+        if (prevDocs && newDocs) {
+          const changes = [];
+          if (prevDocs.gstin?.status !== newDocs.gstin?.status) {
+            changes.push(`GST: ${newDocs.gstin?.status || 'pending'}`);
+          }
+          if (prevDocs.pan?.status !== newDocs.pan?.status) {
+            changes.push(`PAN: ${newDocs.pan?.status || 'pending'}`);
+          }
+          if (prevDocs.aadhaar?.status !== newDocs.aadhaar?.status) {
+            changes.push(`Aadhaar: ${newDocs.aadhaar?.status || 'pending'}`);
+          }
+
+          if (changes.length > 0) {
+            toast.success('Document Status Updated!', {
+              description: `Latest status: ${changes.join(', ')}`
+            });
+          } else {
+            toast.success('Profile refreshed successfully!', {
+              description: 'Your profile data is now up to date.'
+            });
+          }
+        } else {
+          toast.success('Profile refreshed successfully!');
+        }
+      } else {
+        toast.success('Profile refreshed successfully!');
+      }
+
+      console.log('✅ Profile refresh completed');
+    } catch (err) {
+      console.error('❌ Error refreshing profile:', err);
+      toast.error('Failed to refresh profile data', {
+        description: 'Please try again or contact support if the issue persists.'
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     const fetchProfile = async () => {
       try {
@@ -164,6 +225,108 @@ const SellerProfilePage = () => {
     };
 
     fetchProfile();
+
+    // Set up automatic refresh every 30 seconds to catch admin updates
+    const refreshInterval = setInterval(async () => {
+      try {
+        const response = await ServiceFactory.seller.profile.get();
+        if (response.success) {
+          const profileData = response.data as Seller | TeamMemberProfile;
+          setProfile(prevProfile => {
+            // Check if documents have been updated by comparing KYC status
+            if (prevProfile && !isTeamMemberProfile(prevProfile) && !isTeamMemberProfile(profileData)) {
+              const prevDocs = (prevProfile as any)?.documents;
+              const newDocs = (profileData as any)?.documents;
+
+              if (prevDocs && newDocs) {
+                // Check specific document status changes
+                const gstChanged = prevDocs.gstin?.status !== newDocs.gstin?.status;
+                const panChanged = prevDocs.pan?.status !== newDocs.pan?.status;
+                const aadhaarChanged = prevDocs.aadhaar?.status !== newDocs.aadhaar?.status;
+
+                if (gstChanged || panChanged || aadhaarChanged) {
+                  console.log('📄 Document status updated by admin:', {
+                    gst: { from: prevDocs.gstin?.status, to: newDocs.gstin?.status },
+                    pan: { from: prevDocs.pan?.status, to: newDocs.pan?.status },
+                    aadhaar: { from: prevDocs.aadhaar?.status, to: newDocs.aadhaar?.status }
+                  });
+
+                  let updateMessage = 'KYC document status updated!';
+                  if (gstChanged) updateMessage += ` GST: ${newDocs.gstin?.status || 'pending'}`;
+                  if (panChanged) updateMessage += ` PAN: ${newDocs.pan?.status || 'pending'}`;
+                  if (aadhaarChanged) updateMessage += ` Aadhaar: ${newDocs.aadhaar?.status || 'pending'}`;
+
+                  toast.success('Document Status Updated!', {
+                    description: updateMessage
+                  });
+                }
+              }
+            }
+
+            return profileData;
+          });
+        }
+      } catch (err) {
+        console.error('Background refresh failed:', err);
+        // Silently fail for background refresh
+      }
+    }, 30000); // 30 seconds
+
+    // Set up real-time updates via WebSocket (optional enhancement)
+    let socket: any = null;
+    try {
+      const setupWebSocket = async () => {
+        try {
+          // Import socket.io-client dynamically (only if available)
+          const io = (await import('socket.io-client')).default;
+
+          socket = io(import.meta.env.VITE_API_URL || 'http://localhost:8000', {
+            withCredentials: true,
+            transports: ['websocket', 'polling'],
+            timeout: 5000
+          });
+
+          // Join seller-specific room for updates
+          if (profile && !isTeamMemberProfile(profile)) {
+            socket.emit('join', `seller:${profile.id}`);
+            console.log('🔌 Joined seller room for real-time updates');
+          }
+
+          // Listen for profile updates from admin
+          socket.on('profile:updated', (data: any) => {
+            console.log('📡 Real-time profile update received:', data);
+
+            // Trigger immediate refresh
+            fetchProfile();
+
+            toast.success('Profile Updated!', {
+              description: data.message || 'Your profile has been updated by an admin.'
+            });
+          });
+
+          console.log('🔌 WebSocket connected for real-time updates');
+        } catch (socketError: any) {
+          console.warn('⚠️ WebSocket connection failed (optional feature):', socketError?.message || socketError);
+          // Continue without real-time updates - not critical
+        }
+      };
+
+      // Only try WebSocket if we have a main seller profile
+      if (profile && !isTeamMemberProfile(profile)) {
+        setupWebSocket();
+      }
+    } catch (err) {
+      console.warn('⚠️ WebSocket setup failed (optional feature):', err);
+      // Continue without real-time updates - not critical
+    }
+
+    return () => {
+      clearInterval(refreshInterval);
+      if (socket) {
+        socket.disconnect();
+        console.log('🔌 WebSocket disconnected');
+      }
+    };
   }, []);
 
   const handleTabChange = (value: string) => {
@@ -255,10 +418,21 @@ const SellerProfilePage = () => {
                 </>
               ) : (
                 <>
-                  <p className="text-gray-600 mt-1">{profile.companyName}</p>
+                  <p className="text-gray-600 mt-1">{profile.companyName || profile.businessName}</p>
                   <div className="mt-2 text-sm text-gray-500">
                     <p>Seller ID</p>
-                    <p className="font-medium">@{profile.id}</p>
+                    <p className="font-medium">@{(profile as any)?.rbUserId || profile.id}</p>
+                  </div>
+                  {(profile as any)?.monthlyShipments && (
+                    <div className="mt-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                      Monthly Volume: {(profile as any).monthlyShipments}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-gray-500">
+                    <p>Member since: {(profile as any)?.createdAt
+                      ? new Date((profile as any).createdAt).toLocaleDateString()
+                      : 'N/A'
+                    }</p>
                   </div>
                 </>
               )}
@@ -271,12 +445,28 @@ const SellerProfilePage = () => {
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-600">
                 <Mail className="w-4 h-4" />
-                <span>{profile.email}</span>
+                <span className="text-sm">{profile.email}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <Phone className="w-4 h-4" />
-                <span>{profile.phone}</span>
+                <span className="text-sm">{profile.phone}</span>
               </div>
+              {profile.supportContact && profile.supportContact !== profile.phone && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Phone className="w-4 h-4" />
+                  <span className="text-sm">
+                    <span className="text-xs text-gray-400">Support:</span> {profile.supportContact}
+                  </span>
+                </div>
+              )}
+              {profile.supportEmail && profile.supportEmail !== profile.email && (
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Mail className="w-4 h-4" />
+                  <span className="text-sm">
+                    <span className="text-xs text-gray-400">Support:</span> {profile.supportEmail}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -347,11 +537,10 @@ const SellerProfilePage = () => {
                             }));
                           }
                         }}
-                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          storeLinksErrors[store.key as keyof StoreLinksInput]
-                            ? 'border-red-500 bg-red-50'
-                            : 'border-gray-300'
-                        }`}
+                        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${storeLinksErrors[store.key as keyof StoreLinksInput]
+                          ? 'border-red-500 bg-red-50'
+                          : 'border-gray-300'
+                          }`}
                       />
                       {storeLinksErrors[store.key as keyof StoreLinksInput] && (
                         <p className="text-red-500 text-xs">{storeLinksErrors[store.key as keyof StoreLinksInput]}</p>
@@ -419,9 +608,24 @@ const SellerProfilePage = () => {
         <div className="w-full lg:w-[70%]">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold">Profile Details</h2>
-            <Button onClick={handleEditRequest} variant="outline">
-              {isTeamMemberProfile(profile) ? "Request Changes" : "Request Edit"}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={refreshProfile}
+                variant="outline"
+                disabled={isRefreshing}
+                className="flex items-center gap-2"
+              >
+                {isRefreshing ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                ) : (
+                  "🔄"
+                )}
+                Refresh
+              </Button>
+              <Button onClick={handleEditRequest} variant="outline">
+                {isTeamMemberProfile(profile) ? "Request Changes" : "Request Edit"}
+              </Button>
+            </div>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -478,6 +682,13 @@ const SellerProfilePage = () => {
                       >
                         <CreditCard className="w-4 h-4 mr-2" />
                         Bank
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="account-settings"
+                        className="h-full data-[state=active]:bg-white rounded-none border-b-2 border-transparent data-[state=active]:border-black px-4"
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        Account
                       </TabsTrigger>
                       <TabsTrigger
                         value="agreement"
@@ -562,38 +773,100 @@ const SellerProfilePage = () => {
                   {/* Main Seller Tabs Content */}
                   <TabsContent value="company-details">
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <h3 className="text-lg font-semibold mb-6">Company & Business Information</h3>
+
+                      <div className="space-y-6">
+                        {/* Personal Details Section */}
                         <div>
-                          <h3 className="text-sm font-medium text-gray-500">Company Name</h3>
-                          <p className="mt-1">{profile.companyName || profile.businessName || "Not provided"}</p>
+                          <h4 className="text-sm font-medium text-gray-700 mb-4 pb-2 border-b border-gray-200">Owner Details</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Full Name</h3>
+                              <p className="mt-1 font-medium">{profile.name || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Email Address</h3>
+                              <p className="mt-1">{profile.email || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Phone Number</h3>
+                              <p className="mt-1">{profile.phone || "Not provided"}</p>
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Business Details Section */}
                         <div>
-                          <h3 className="text-sm font-medium text-gray-500">Company Category</h3>
-                          <p className="mt-1">{profile.companyCategory || "Not provided"}</p>
+                          <h4 className="text-sm font-medium text-gray-700 mb-4 pb-2 border-b border-gray-200">Business Details</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Company Name</h3>
+                              <p className="mt-1 font-medium">{profile.companyName || profile.businessName || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Company Category</h3>
+                              <p className="mt-1">{profile.companyCategory || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Brand Name</h3>
+                              <p className="mt-1">{profile.brandName || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Monthly Shipments</h3>
+                              <p className="mt-1">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-sm">
+                                  {(profile as any)?.monthlyShipments || "Not specified"}
+                                </span>
+                              </p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Website</h3>
+                              <p className="mt-1">{profile.website || "Not provided"}</p>
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Contact Details Section */}
                         <div>
-                          <h3 className="text-sm font-medium text-gray-500">Brand Name</h3>
-                          <p className="mt-1">{profile.brandName || "Not provided"}</p>
+                          <h4 className="text-sm font-medium text-gray-700 mb-4 pb-2 border-b border-gray-200">Contact Information</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Support Contact</h3>
+                              <p className="mt-1">{profile.supportContact || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Support Email</h3>
+                              <p className="mt-1">{profile.supportEmail || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Operations Email</h3>
+                              <p className="mt-1">{profile.operationsEmail || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Finance Email</h3>
+                              <p className="mt-1">{profile.financeEmail || "Not provided"}</p>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Website</h3>
-                          <p className="mt-1">{profile.website || "Not provided"}</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Support Contact</h3>
-                          <p className="mt-1">{profile.supportContact || "Not provided"}</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Support Email</h3>
-                          <p className="mt-1">{profile.supportEmail || "Not provided"}</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Operations Email</h3>
-                          <p className="mt-1">{profile.operationsEmail || "Not provided"}</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Finance Email</h3>
-                          <p className="mt-1">{profile.financeEmail || "Not provided"}</p>
+
+                        {/* Registration Information */}
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Registration Information</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">Seller ID:</span>
+                              <span className="ml-2 font-medium">{(profile as any)?.rbUserId || profile.id || "Not available"}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">Registration Date:</span>
+                              <span className="ml-2 font-medium">
+                                {(profile as any)?.createdAt
+                                  ? new Date((profile as any).createdAt).toLocaleDateString()
+                                  : 'Not available'
+                                }
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -601,97 +874,216 @@ const SellerProfilePage = () => {
 
                   <TabsContent value="primary-address">
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
+                      <h3 className="text-lg font-semibold mb-6">Business Address Information</h3>
+
                       {profile.address ? (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-6">
+                          {/* Complete Address Display */}
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <h4 className="text-sm font-medium text-gray-700 mb-2">Complete Address</h4>
+                            <p className="text-gray-900">
+                              {[
+                                (profile.address as any)?.address1,
+                                (profile.address as any)?.address2,
+                                profile.address.street
+                              ].filter(Boolean).join(', ') || 'Address not provided'}
+                              {(profile.address.city || profile.address.state || (profile.address as any)?.pincode || profile.address.postalCode) && (
+                                <>
+                                  <br />
+                                  {[
+                                    profile.address.city,
+                                    profile.address.state,
+                                    (profile.address as any)?.pincode || profile.address.postalCode,
+                                    profile.address.country || 'India'
+                                  ].filter(Boolean).join(', ')}
+                                </>
+                              )}
+                            </p>
+                          </div>
+
+                          {/* Detailed Address Fields */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                              <h3 className="text-sm font-medium text-gray-500">Street Address</h3>
-                              <p className="mt-1">{profile.address.street || `${(profile.address as any)?.address1 || ''} ${(profile.address as any)?.address2 || ''}`.trim() || "Not provided"}</p>
+                              <h3 className="text-sm font-medium text-gray-500">Address Line 1</h3>
+                              <p className="mt-1 font-medium">{(profile.address as any)?.address1 || profile.address.street || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Address Line 2</h3>
+                              <p className="mt-1">{(profile.address as any)?.address2 || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">City</h3>
+                              <p className="mt-1 font-medium">{profile.address.city || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">State</h3>
+                              <p className="mt-1 font-medium">{profile.address.state || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Postal Code / PIN Code</h3>
+                              <p className="mt-1 font-medium">{profile.address.postalCode || (profile.address as any)?.pincode || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Country</h3>
+                              <p className="mt-1 font-medium">{profile.address.country || "India"}</p>
                             </div>
                             <div>
                               <h3 className="text-sm font-medium text-gray-500">Landmark</h3>
                               <p className="mt-1">{profile.address.landmark || "Not provided"}</p>
                             </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">City</h3>
-                              <p className="mt-1">{profile.address.city || "Not provided"}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">State</h3>
-                              <p className="mt-1">{profile.address.state || "Not provided"}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Country</h3>
-                              <p className="mt-1">{profile.address.country || "Not provided"}</p>
-                            </div>
-                            <div>
-                              <h3 className="text-sm font-medium text-gray-500">Postal Code</h3>
-                              <p className="mt-1">{profile.address.postalCode || (profile.address as any)?.pincode || "Not provided"}</p>
+                          </div>
+
+                          {/* Address Verification Status */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center gap-3">
+                              <MapPin className="w-5 h-5 text-blue-600" />
+                              <div>
+                                <h4 className="font-medium text-blue-900">Address Verification</h4>
+                                <p className="text-sm text-blue-700">
+                                  This address was provided during registration and is used for business verification and correspondence.
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-500">No address information available</p>
+                        <div className="text-center py-8">
+                          <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                          <p className="text-gray-500">No address information available</p>
+                          <p className="text-sm text-gray-400 mt-1">Please add your business address to complete your profile</p>
+                        </div>
                       )}
                     </div>
                   </TabsContent>
 
                   <TabsContent value="documents">
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">GSTIN</h3>
-                          <p className="mt-1">{
-                            typeof profile.documents?.gstin === 'object'
-                              ? (profile.documents.gstin as any)?.number || "Not provided"
-                              : profile.documents?.gstin || "Not provided"
-                          }</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">PAN</h3>
-                          <p className="mt-1">{
-                            typeof profile.documents?.pan === 'object'
-                              ? (profile.documents.pan as any)?.number || "Not provided"
-                              : profile.documents?.pan || "Not provided"
-                          }</p>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-medium text-gray-500">Aadhaar</h3>
-                          <p className="mt-1">{
-                            typeof profile.documents?.aadhaar === 'object'
-                              ? (profile.documents.aadhaar as any)?.number || "Not provided"
-                              : profile.documents?.aadhaar || "Not provided"
-                          }</p>
-                        </div>
-                      </div>
+                      <h3 className="text-lg font-semibold mb-6">KYC Documents & Verification Status</h3>
 
-                      {/* Document List */}
-                      <div className="mt-6">
-                        <h3 className="text-lg font-semibold mb-4">Required Documents</h3>
-                        <div className="space-y-4">
-                          {profile.documents?.documents && Array.isArray(profile.documents.documents) && profile.documents.documents.length > 0 ? (
-                            profile.documents.documents.map((doc, index) => (
-                              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                  <FileText className="w-5 h-5 text-gray-400" />
-                                  <div>
-                                    <p className="font-medium">{doc.name}</p>
-                                    <p className="text-sm text-gray-500">{doc.type}</p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-1 rounded-md text-xs ${doc.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                    doc.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                    {doc.status}
-                                  </span>
-                                </div>
+                      {/* KYC Document Cards */}
+                      <div className="space-y-4">
+                        {/* GST Document */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-5 h-5 text-gray-400" />
+                              <div>
+                                <h4 className="font-medium text-gray-900">GST Certificate</h4>
+                                <p className="text-sm text-gray-500">
+                                  {typeof profile.documents?.gstin === 'object'
+                                    ? (profile.documents.gstin as any)?.number || "Not provided"
+                                    : profile.documents?.gstin || "Not provided"
+                                  }
+                                </p>
                               </div>
-                            ))
-                          ) : (
-                            <p className="text-gray-500">No documents uploaded yet</p>
-                          )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${(profile.documents?.gstin as any)?.status === 'verified'
+                                ? 'bg-green-100 text-green-800'
+                                : (profile.documents?.gstin as any)?.status === 'rejected'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                {(profile.documents?.gstin as any)?.status === 'verified'
+                                  ? '✓ Verified'
+                                  : (profile.documents?.gstin as any)?.status === 'rejected'
+                                    ? '✗ Rejected'
+                                    : '⏳ Pending'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* PAN Document */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-5 h-5 text-gray-400" />
+                              <div>
+                                <h4 className="font-medium text-gray-900">PAN Card</h4>
+                                <p className="text-sm text-gray-500">
+                                  {typeof profile.documents?.pan === 'object'
+                                    ? (profile.documents.pan as any)?.number || "Not provided"
+                                    : profile.documents?.pan || "Not provided"
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${(profile.documents?.pan as any)?.status === 'verified'
+                                ? 'bg-green-100 text-green-800'
+                                : (profile.documents?.pan as any)?.status === 'rejected'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                {(profile.documents?.pan as any)?.status === 'verified'
+                                  ? '✓ Verified'
+                                  : (profile.documents?.pan as any)?.status === 'rejected'
+                                    ? '✗ Rejected'
+                                    : '⏳ Pending'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Aadhaar Document */}
+                        <div className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <FileText className="w-5 h-5 text-gray-400" />
+                              <div>
+                                <h4 className="font-medium text-gray-900">Aadhaar Card</h4>
+                                <p className="text-sm text-gray-500">
+                                  {typeof profile.documents?.aadhaar === 'object'
+                                    ? (profile.documents.aadhaar as any)?.number || "Not provided"
+                                    : profile.documents?.aadhaar || "Not provided"
+                                  }
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${(profile.documents?.aadhaar as any)?.status === 'verified'
+                                ? 'bg-green-100 text-green-800'
+                                : (profile.documents?.aadhaar as any)?.status === 'rejected'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                {(profile.documents?.aadhaar as any)?.status === 'verified'
+                                  ? '✓ Verified'
+                                  : (profile.documents?.aadhaar as any)?.status === 'rejected'
+                                    ? '✗ Rejected'
+                                    : '⏳ Pending'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Overall KYC Status */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                          <div className="flex items-center gap-3">
+                            <Shield className="w-5 h-5 text-blue-600" />
+                            <div>
+                              <h4 className="font-medium text-blue-900">Overall KYC Status</h4>
+                              <p className="text-sm text-blue-700">
+                                {(() => {
+                                  const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                  const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                  const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                  if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                    return 'All documents verified - KYC Complete ✓';
+                                  } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                    return 'Some documents rejected - Please contact support';
+                                  } else {
+                                    return 'KYC verification in progress - Waiting for admin approval';
+                                  }
+                                })()}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -699,43 +1091,354 @@ const SellerProfilePage = () => {
 
                   <TabsContent value="bank-details">
                     <div className="bg-white rounded-lg p-6 shadow-sm border">
+                      <h3 className="text-lg font-semibold mb-6">Bank Account Details</h3>
+
                       {profile.bankDetails && typeof profile.bankDetails === 'object' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">Account Type</h3>
-                            <p className="mt-1">{(profile.bankDetails as any)?.accountType || "Not provided"}</p>
+                        <div className="space-y-6">
+                          {/* Bank Information Grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Account Type</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.accountType || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Bank Name</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.bankName || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Account Number</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.accountNumber || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Account Holder Name</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.accountHolderName || (profile.bankDetails as any)?.accountName || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">Branch Name</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.branchName || "Not provided"}</p>
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-500">IFSC Code</h3>
+                              <p className="mt-1 font-medium">{(profile.bankDetails as any)?.ifscCode || "Not provided"}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">Bank Name</h3>
-                            <p className="mt-1">{(profile.bankDetails as any)?.bankName || "Not provided"}</p>
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">Account Number</h3>
-                            <p className="mt-1">{(profile.bankDetails as any)?.accountNumber || "Not provided"}</p>
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">Account Holder Name</h3>
-                            <p className="mt-1">{(profile.bankDetails as any)?.accountHolderName || (profile.bankDetails as any)?.accountName || "Not provided"}</p>
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">IFSC Code</h3>
-                            <p className="mt-1">{(profile.bankDetails as any)?.ifscCode || "Not provided"}</p>
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-medium text-gray-500">Cancelled Cheque Status</h3>
-                            <p className="mt-1">
-                              <span className={`px-2 py-1 rounded-md text-xs ${(profile.bankDetails as any)?.cancelledCheque?.status === 'verified' ? 'bg-green-100 text-green-800' :
-                                (profile.bankDetails as any)?.cancelledCheque?.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                {(profile.bankDetails as any)?.cancelledCheque?.status || "Not provided"}
-                              </span>
-                            </p>
+
+                          {/* Cancelled Cheque Verification Section */}
+                          <div className="border-t pt-6">
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <FileText className="w-5 h-5 text-gray-400" />
+                                  <div>
+                                    <h4 className="font-medium text-gray-900">Cancelled Cheque</h4>
+                                    <p className="text-sm text-gray-500">Required for bank verification</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${(profile.bankDetails as any)?.cancelledCheque?.status === 'verified'
+                                    ? 'bg-green-100 text-green-800'
+                                    : (profile.bankDetails as any)?.cancelledCheque?.status === 'rejected'
+                                      ? 'bg-red-100 text-red-800'
+                                      : 'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                    {(profile.bankDetails as any)?.cancelledCheque?.status === 'verified'
+                                      ? '✓ Verified'
+                                      : (profile.bankDetails as any)?.cancelledCheque?.status === 'rejected'
+                                        ? '✗ Rejected'
+                                        : '⏳ Pending Verification'
+                                    }
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Bank Verification Status */}
+                            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                              <div className="flex items-center gap-3">
+                                <Shield className="w-5 h-5 text-blue-600" />
+                                <div>
+                                  <h4 className="font-medium text-blue-900">Bank Details Verification</h4>
+                                  <p className="text-sm text-blue-700">
+                                    {(profile.bankDetails as any)?.cancelledCheque?.status === 'verified'
+                                      ? 'Your bank details have been verified and approved by our team'
+                                      : (profile.bankDetails as any)?.cancelledCheque?.status === 'rejected'
+                                        ? 'Bank details verification was rejected. Please contact support for assistance'
+                                        : 'Bank details are under review by our verification team'
+                                    }
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-500">No bank details available</p>
+                        <div className="text-center py-8">
+                          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                          <p className="text-gray-500">No bank details available</p>
+                          <p className="text-sm text-gray-400 mt-1">Please add your bank information to complete your profile</p>
+                        </div>
                       )}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="account-settings">
+                    <div className="bg-white rounded-lg p-6 shadow-sm border">
+                      <h3 className="text-lg font-semibold mb-6">Account Settings & Status</h3>
+
+                      <div className="space-y-6">
+                        {/* Account Status */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-500">Account Status</h4>
+                            <p className="mt-1">
+                              <span className={`inline-flex px-3 py-1 text-sm font-medium rounded-full ${(() => {
+                                // Calculate KYC status based on documents
+                                const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                  return 'bg-green-100 text-green-800';
+                                } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                  return 'bg-red-100 text-red-800';
+                                } else {
+                                  return 'bg-yellow-100 text-yellow-800';
+                                }
+                              })()}`}>
+                                {(() => {
+                                  // Calculate KYC status based on documents
+                                  const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                  const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                  const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                  if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                    return '✓ Verified';
+                                  } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                    return '✗ Rejected';
+                                  } else {
+                                    return '⏳ Pending Verification';
+                                  }
+                                })()}
+                              </span>
+                            </p>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-500">Payment Type</h4>
+                            <p className="mt-1 font-medium">
+                              {(profile as any)?.paymentType === 'credit' ? 'Credit Account' :
+                                (profile as any)?.paymentType === 'wallet' ? 'Wallet Prepaid' :
+                                  'Wallet Prepaid'}
+                            </p>
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-500">Rate Band</h4>
+                            <p className="mt-1 font-medium">
+                              <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium mr-2 ${(() => {
+                                const rateBand = (profile as any)?.rateBand || 'RBX1';
+                                if (rateBand === 'RBX1' || rateBand.includes('RBX1')) {
+                                  return 'bg-blue-100 text-blue-800'; // RBX1 is base rate - blue
+                                } else if (rateBand.includes('Premium') || rateBand.includes('Enterprise')) {
+                                  return 'bg-green-100 text-green-800'; // Premium rates - green
+                                } else if (rateBand === 'Basic') {
+                                  return 'bg-red-100 text-red-800'; // Basic rates - red
+                                } else {
+                                  return 'bg-gray-100 text-gray-800'; // Custom rates - gray
+                                }
+                              })()}`}>
+                                {(profile as any)?.rateBand || 'RBX1'}
+                              </span>
+                              {(profile as any)?.rateCardDetails?.isCustom && (
+                                <span className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
+                                  Custom
+                                </span>
+                              )}
+                              {(profile as any)?.rateCardDetails?.isDefault && (
+                                <span className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600">
+                                  Default
+                                </span>
+                              )}
+                            </p>
+                            {(profile as any)?.rateCardDetails?.description && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {(profile as any).rateCardDetails.description}
+                              </p>
+                            )}
+                          </div>
+                          {(profile as any)?.paymentType === 'credit' && (
+                            <>
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-500">Credit Limit</h4>
+                                <p className="mt-1 font-medium">
+                                  ₹{(profile as any)?.creditLimit?.toLocaleString() || 'Not set'}
+                                </p>
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-medium text-gray-500">Credit Period</h4>
+                                <p className="mt-1 font-medium">
+                                  {(profile as any)?.creditPeriod || 'Not set'} days
+                                </p>
+                              </div>
+                            </>
+                          )}
+                          <div>
+                            <h4 className="text-sm font-medium text-gray-500">Wallet Balance</h4>
+                            <p className="mt-1 font-medium text-green-600">
+                              ₹{(() => {
+                                const balance = (profile as any)?.walletBalance;
+                                if (typeof balance === 'string') {
+                                  return parseFloat(balance).toLocaleString('en-IN');
+                                } else if (typeof balance === 'number') {
+                                  return balance.toLocaleString('en-IN');
+                                }
+                                return '0';
+                              })()}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Admin Settings Notice */}
+                        <div className={`border rounded-lg p-4 ${(() => {
+                          // Calculate KYC status for styling
+                          const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                          const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                          const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                          if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                            return 'bg-green-50 border-green-200';
+                          } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                            return 'bg-red-50 border-red-200';
+                          } else {
+                            return 'bg-blue-50 border-blue-200';
+                          }
+                        })()}`}>
+                          <div className="flex items-start gap-3">
+                            <Shield className={`w-5 h-5 mt-0.5 ${(() => {
+                              // Calculate KYC status for icon color
+                              const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                              const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                              const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                              if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                return 'text-green-600';
+                              } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                return 'text-red-600';
+                              } else {
+                                return 'text-blue-600';
+                              }
+                            })()}`} />
+                            <div>
+                              <h4 className={`font-medium ${(() => {
+                                // Calculate KYC status for text color
+                                const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                  return 'text-green-900';
+                                } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                  return 'text-red-900';
+                                } else {
+                                  return 'text-blue-900';
+                                }
+                              })()}`}>Admin Controlled Settings</h4>
+                              <p className={`text-sm mt-1 ${(() => {
+                                // Calculate KYC status for description text color
+                                const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                  return 'text-green-700';
+                                } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                  return 'text-red-700';
+                                } else {
+                                  return 'text-blue-700';
+                                }
+                              })()}`}>
+                                {(() => {
+                                  // Calculate KYC status for message
+                                  const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                  const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                  const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                  if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                    return 'Your account is fully verified! Payment type, rate band, and credit limits are now active and managed by our admin team based on your business requirements.';
+                                  } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                    return 'Some documents require attention. Please check the Documents tab and contact support if needed. Account settings will be updated once verification is complete.';
+                                  } else {
+                                    return 'Payment type, rate band, credit limits, and account status are managed by our admin team. These settings are updated automatically based on your account verification and business requirements.';
+                                  }
+                                })()}
+                              </p>
+                              <p className={`text-xs mt-2 ${(() => {
+                                // Calculate KYC status for last updated text color
+                                const gstStatus = (profile.documents?.gstin as any)?.status || 'pending';
+                                const panStatus = (profile.documents?.pan as any)?.status || 'pending';
+                                const aadhaarStatus = (profile.documents?.aadhaar as any)?.status || 'pending';
+
+                                if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+                                  return 'text-green-600';
+                                } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+                                  return 'text-red-600';
+                                } else {
+                                  return 'text-blue-600';
+                                }
+                              })()}`}>
+                                Last updated: {(profile as any)?.updatedAt
+                                  ? new Date((profile as any).updatedAt).toLocaleDateString()
+                                  : new Date().toLocaleDateString()
+                                } (Auto-refreshes every 30 seconds)
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Registration Details */}
+                        <div className="border-t pt-6">
+                          <h4 className="text-sm font-medium text-gray-500 mb-4">Registration Information</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-400">Original Monthly Shipments</h5>
+                              <p className="mt-1 text-sm">
+                                <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-md text-xs">
+                                  {(profile as any)?.monthlyShipments || 'Not specified'}
+                                </span>
+                              </p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-400">Seller ID</h5>
+                              <p className="mt-1 text-sm font-mono">{(profile as any)?.rbUserId || profile.id || 'Not available'}</p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-400">Account Created</h5>
+                              <p className="mt-1 text-sm">
+                                {(profile as any)?.createdAt
+                                  ? new Date((profile as any).createdAt).toLocaleDateString()
+                                  : 'N/A'
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-400">Last Login</h5>
+                              <p className="mt-1 text-sm">
+                                {(profile as any)?.lastLogin
+                                  ? new Date((profile as any).lastLogin).toLocaleString()
+                                  : 'N/A'
+                                }
+                              </p>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-medium text-gray-400">Last Updated</h5>
+                              <p className="mt-1 text-sm">
+                                {(profile as any)?.updatedAt
+                                  ? new Date((profile as any).updatedAt).toLocaleDateString()
+                                  : 'N/A'
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </TabsContent>
 

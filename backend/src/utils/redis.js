@@ -22,41 +22,103 @@ console.log(`   URL: redis://:***@${REDIS_HOST}:${REDIS_PORT}`);
 
 // Create Redis client
 let redisClient;
+let isConnecting = false;
 
-try {
-  logger.info('Creating Redis client...');
-  redisClient = createClient({
-    url: REDIS_URL,
-    socket: {
-      reconnectStrategy: (retries) => {
-        if (retries > 3) {
-          logger.error(`Failed to connect to Redis after ${retries} attempts`);
-          return false; // stop retrying
-        }
-        const delay = Math.min(retries * 1000, 5000);
-        logger.debug(`Redis reconnect attempt ${retries} in ${delay}ms`);
-        return delay;
-      },
-      connectTimeout: 5000
-    }
-  });
+const createRedisClient = () => {
+  try {
+    logger.info('Creating Redis client...');
+    redisClient = createClient({
+      url: REDIS_URL,
+      socket: {
+        reconnectStrategy: (retries) => {
+          if (retries > 5) {
+            logger.error(`Failed to connect to Redis after ${retries} attempts`);
+            return false; // stop retrying
+          }
+          const delay = Math.min(retries * 1000, 5000);
+          logger.debug(`Redis reconnect attempt ${retries} in ${delay}ms`);
+          return delay;
+        },
+        connectTimeout: 10000,
+        lazyConnect: true
+      }
+    });
 
-  // Handle Redis events
-  redisClient.on('error', (err) => {
-    logger.error('Redis Client Error:', err.message);
-  });
+    // Handle Redis events
+    redisClient.on('error', (err) => {
+      logger.error('Redis Client Error:', err.message);
+      isConnecting = false;
+    });
 
-  redisClient.on('connect', () => logger.info('Redis Client Connected'));
-  redisClient.on('ready', () => logger.info('Redis Client Ready'));
-  redisClient.on('reconnecting', () => logger.info('Redis Client Reconnecting'));
-  redisClient.on('end', () => logger.info('Redis Client Connection Ended'));
+    redisClient.on('connect', () => {
+      logger.info('Redis Client Connected');
+      isConnecting = false;
+    });
 
-  // Try to connect
-  await redisClient.connect();
-} catch (error) {
-  logger.error('Error creating Redis client:', error.message);
-  throw new Error(`Redis connection failed: ${error.message}`);
-}
+    redisClient.on('ready', () => {
+      logger.info('Redis Client Ready');
+      isConnecting = false;
+    });
+
+    redisClient.on('reconnecting', () => {
+      logger.info('Redis Client Reconnecting');
+      isConnecting = true;
+    });
+
+    redisClient.on('end', () => {
+      logger.info('Redis Client Connection Ended');
+      isConnecting = false;
+    });
+
+    return redisClient;
+  } catch (error) {
+    logger.error('Error creating Redis client:', error.message);
+    isConnecting = false;
+    return null;
+  }
+};
+
+// Initialize Redis client
+redisClient = createRedisClient();
+
+// Connect to Redis
+export const connectRedis = async () => {
+  if (!redisClient) {
+    redisClient = createRedisClient();
+  }
+
+  if (redisClient?.isOpen) {
+    logger.info('Redis already connected');
+    return true;
+  }
+
+  if (isConnecting) {
+    logger.info('Redis connection already in progress...');
+    return false;
+  }
+
+  try {
+    isConnecting = true;
+    logger.info('Connecting to Redis...');
+    await redisClient.connect();
+    logger.info('Redis connected successfully');
+    isConnecting = false;
+    return true;
+  } catch (error) {
+    logger.error('Error connecting to Redis:', error.message);
+    isConnecting = false;
+    return false;
+  }
+};
+
+// Ensure Redis is connected before operations
+const ensureRedisConnection = async () => {
+  if (!redisClient?.isOpen && !isConnecting) {
+    logger.info('Redis not connected, attempting to connect...');
+    await connectRedis();
+  }
+  return redisClient?.isOpen || false;
+};
 
 // Helper function to check if Redis is connected
 const isRedisConnected = () => {
@@ -73,8 +135,10 @@ export const isRedisHealthy = () => {
 
 // Session Management
 export const setSession = async (userId, sessionData, expiryInSeconds = REDIS_SESSION_TTL) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, session not stored');
+    return false;
   }
 
   const key = `session:${userId}`;
@@ -84,8 +148,10 @@ export const setSession = async (userId, sessionData, expiryInSeconds = REDIS_SE
 };
 
 export const getSession = async (userId) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, returning null session');
+    return null;
   }
 
   const key = `session:${userId}`;
@@ -94,8 +160,10 @@ export const getSession = async (userId) => {
 };
 
 export const deleteSession = async (userId) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, session not deleted');
+    return false;
   }
 
   const key = `session:${userId}`;
@@ -105,8 +173,10 @@ export const deleteSession = async (userId) => {
 
 // OTP Management
 export const setOTP = async (userId, otp, expiryInSeconds = REDIS_OTP_TTL) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, OTP not stored');
+    return false;
   }
 
   const key = `otp:${userId}`;
@@ -121,8 +191,10 @@ export const setOTP = async (userId, otp, expiryInSeconds = REDIS_OTP_TTL) => {
 };
 
 export const getOTP = async (userId) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, returning null OTP');
+    return null;
   }
 
   const key = `otp:${userId}`;
@@ -131,8 +203,10 @@ export const getOTP = async (userId) => {
 };
 
 export const verifyOTP = async (userId, inputOTP) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, OTP verification failed');
+    return { valid: false, message: 'Service temporarily unavailable' };
   }
 
   const key = `otp:${userId}`;
@@ -170,8 +244,14 @@ export const verifyOTP = async (userId, inputOTP) => {
 
 // Rate Limiting
 export const checkRateLimit = async (key, limit, windowInSeconds) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, allowing request');
+    return {
+      current: 1,
+      isAllowed: true,
+      remainingAttempts: limit - 1
+    };
   }
 
   const current = await redisClient.incr(key);
@@ -188,8 +268,10 @@ export const checkRateLimit = async (key, limit, windowInSeconds) => {
 
 // Cache Management
 export const setCache = async (key, data, expiryInSeconds = REDIS_TTL) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, cache not stored');
+    return false;
   }
 
   if (!key) {
@@ -203,8 +285,10 @@ export const setCache = async (key, data, expiryInSeconds = REDIS_TTL) => {
 };
 
 export const getCache = async (key) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, returning null cache');
+    return null;
   }
 
   if (!key) {
@@ -223,8 +307,10 @@ export const getCache = async (key) => {
 };
 
 export const deleteCache = async (key) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, cache not deleted');
+    return false;
   }
 
   if (!key) {
@@ -236,8 +322,10 @@ export const deleteCache = async (key) => {
 };
 
 export const getAllSessions = async () => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, returning empty sessions');
+    return [];
   }
 
   const keys = await redisClient.keys('session:*');
@@ -259,8 +347,10 @@ export const getAllSessions = async () => {
 };
 
 export const storeOTP = async (phone, otp, expiryInSeconds = 300) => {
-  if (!isRedisConnected()) {
-    throw new Error('Redis not connected');
+  const connected = await ensureRedisConnection();
+  if (!connected) {
+    logger.warn('Redis unavailable, OTP not stored');
+    return false;
   }
 
   const key = `phone_otp:${phone}`;

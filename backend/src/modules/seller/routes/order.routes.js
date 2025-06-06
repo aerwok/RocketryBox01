@@ -16,15 +16,15 @@ import {
   updateTracking
 } from '../controllers/order.controller.js';
 import { validateOrderStatus, validateBulkOrderStatus } from '../validators/order.validator.js';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { defaultLimiter } from '../../../middleware/rateLimiter.js';
 import multer from 'multer';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// All routes are protected and rate limited
-router.use(protect);
+// All routes are authenticateSellered and rate limited
+router.use(authenticateSeller);
 router.use(defaultLimiter);
 
 // Order management routes

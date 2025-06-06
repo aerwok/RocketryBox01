@@ -64,6 +64,9 @@ const AdminUserProfilePage = () => {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [agreements, setAgreements] = useState<any[]>([]);
+  const [isLoadingAgreements, setIsLoadingAgreements] = useState(false);
+  const [mongoId, setMongoId] = useState<string | null>(null);
 
   // Safe initials generation function to prevent null errors
   const getInitials = (fullName?: string | null): string => {
@@ -150,12 +153,44 @@ const AdminUserProfilePage = () => {
           console.log('✅ Found seller data:', response.data.seller);
           // Seller data structure
           const seller = response.data.seller;
+
+          // Extract and store MongoDB ObjectId for API calls
+          const sellerId = seller._id || seller.id;
+          if (sellerId) {
+            setMongoId(sellerId);
+            console.log('🆔 Extracted MongoDB ObjectId:', sellerId);
+          }
+          // Determine KYC verification status based on documents
+          let kycStatus = 'pending';
+          if (seller.documents) {
+            const gstStatus = seller.documents.gstin?.status || 'pending';
+            const panStatus = seller.documents.pan?.status || 'pending';
+            const aadhaarStatus = seller.documents.aadhaar?.status || 'pending';
+
+            console.log('📄 Document verification status:', {
+              gst: gstStatus,
+              pan: panStatus,
+              aadhaar: aadhaarStatus
+            });
+
+            if (gstStatus === 'verified' && panStatus === 'verified' && aadhaarStatus === 'verified') {
+              kycStatus = 'verified';
+            } else if (gstStatus === 'rejected' || panStatus === 'rejected' || aadhaarStatus === 'rejected') {
+              kycStatus = 'rejected';
+            } else {
+              kycStatus = 'pending';
+            }
+          }
+
+          console.log('📋 Final KYC Status:', kycStatus);
+
           actualUserData = {
             name: seller.name || '',
             email: seller.email || '',
             phone: seller.phone || seller.supportContact || '',
             address: formatAddress(seller.address),
-            status: seller.status === 'active' ? 'Active' : (seller.status || 'Active'),
+            status: kycStatus === 'verified' ? 'verified' :
+              kycStatus === 'rejected' ? 'rejected' : 'pending',
             joinDate: seller.createdAt ? new Date(seller.createdAt).toLocaleDateString() : '',
             lastActive: seller.lastActive ? new Date(seller.lastActive).toLocaleDateString() : seller.lastLogin ? new Date(seller.lastLogin).toLocaleDateString() : '',
             type: 'Seller',
@@ -243,6 +278,39 @@ const AdminUserProfilePage = () => {
     };
     fetchUserData();
   }, [id]);
+
+  // Fetch agreements when mongoId is available and tab is active
+  useEffect(() => {
+    if (mongoId && activeTab === 'agreement') {
+      fetchAgreements();
+    }
+  }, [mongoId, activeTab]);
+
+  const fetchAgreements = async () => {
+    if (!mongoId) return;
+
+    try {
+      setIsLoadingAgreements(true);
+      console.log('📋 Fetching agreements for seller:', mongoId);
+
+      // Get agreements from the seller details API response
+      const response = await ServiceFactory.admin.getTeamMember(mongoId);
+
+      if (response.success && response.data) {
+        const agreements = response.data.agreements || [];
+        console.log('📋 Found agreements:', agreements);
+        setAgreements(agreements);
+      } else {
+        console.warn('⚠️ No agreements found or API error');
+        setAgreements([]);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching agreements:', error);
+      setAgreements([]);
+    } finally {
+      setIsLoadingAgreements(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -426,6 +494,24 @@ const AdminUserProfilePage = () => {
             <div>
               <h1 className="text-2xl font-bold">User Profile: {name || 'Unknown User'}</h1>
               <p className="text-gray-500">Manage user details and settings</p>
+              {type === 'Seller' && (
+                <p className="text-sm text-gray-400 mt-1">
+                  KYC Status: {status === 'verified' ? '✅ Verified' : status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => {
+                  console.log('🔄 Refreshing user profile data...');
+                  window.location.reload(); // Force refresh to get latest data
+                }}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                🔄 Refresh
+              </Button>
             </div>
           </div>
         </div>
@@ -446,11 +532,15 @@ const AdminUserProfilePage = () => {
                     <h2 className="font-bold text-xl">{name || 'Unknown User'}</h2>
                     <p className="text-gray-500">{email || 'No email'}</p>
                     <div className="mt-2">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status === "Active"
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status === "verified"
                         ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
+                        : status === "rejected"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
                         }`}>
-                        {status || 'Unknown'}
+                        {status === 'verified' ? 'KYC Verified' :
+                          status === 'rejected' ? 'KYC Rejected' :
+                            'KYC Pending'}
                       </span>
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 ml-2">
                         {type || 'Unknown'}
@@ -920,17 +1010,23 @@ const AdminUserProfilePage = () => {
                               <h3 className="text-lg font-semibold mb-4">Account Status</h3>
                               <div className="space-y-4">
                                 <div className="flex items-center gap-4">
-                                  <span className="text-sm text-gray-500">Status:</span>
-                                  <Select defaultValue={status?.toLowerCase() || 'active'} name="status">
-                                    <SelectTrigger className="w-40 bg-[#F8F7FF]">
-                                      <SelectValue placeholder="Select status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="active">Active</SelectItem>
-                                      <SelectItem value="suspended">Suspended</SelectItem>
-                                      <SelectItem value="deactivated">Deactivated</SelectItem>
-                                    </SelectContent>
-                                  </Select>
+                                  <span className="text-sm text-gray-500">KYC Status:</span>
+                                  <div className={`px-3 py-2 rounded-md text-sm font-medium ${status === 'verified'
+                                    ? 'bg-green-100 text-green-800'
+                                    : status === 'rejected'
+                                      ? 'bg-red-100 text-red-800'
+                                      : 'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                    {status === 'verified' ? '✅ KYC Verified' :
+                                      status === 'rejected' ? '❌ KYC Rejected' :
+                                        '⏳ KYC Pending'}
+                                  </div>
+                                </div>
+                                <div className="bg-blue-50 p-3 rounded-md">
+                                  <p className="text-sm text-blue-700">
+                                    <strong>Note:</strong> KYC status is determined by document verification.
+                                    Use the KYC tab to verify individual documents.
+                                  </p>
                                 </div>
                                 <div className="flex flex-col space-y-1">
                                   <span className="text-sm text-gray-500">Last Active</span>
@@ -1110,10 +1206,40 @@ const AdminUserProfilePage = () => {
                             </Button>
                             <Button
                               variant="purple"
-                              onClick={() => {
-                                document.getElementById('new-agreement-form')?.classList.add('hidden');
-                                setActiveTab("agreement");
-                                handleSave("Agreement created and sent to seller for approval");
+                              onClick={async () => {
+                                if (!mongoId) {
+                                  toast.error('Unable to create agreement: Missing seller ID');
+                                  return;
+                                }
+
+                                try {
+                                  // Get form data
+                                  const title = (document.getElementById('agreement-title') as HTMLInputElement)?.value;
+                                  const description = (document.getElementById('agreement-description') as HTMLTextAreaElement)?.value;
+
+                                  if (!title || !description) {
+                                    toast.error('Please fill in title and description');
+                                    return;
+                                  }
+
+                                  // Here you would call the create agreement API
+                                  // await ServiceFactory.admin.createSellerAgreement(mongoId, {
+                                  //   title,
+                                  //   content: description,
+                                  //   type: 'service',
+                                  //   status: 'draft'
+                                  // });
+
+                                  document.getElementById('new-agreement-form')?.classList.add('hidden');
+                                  setActiveTab("agreement");
+                                  handleSave("Agreement created and sent to seller for approval");
+
+                                  // Refresh agreements list
+                                  fetchAgreements();
+                                } catch (error) {
+                                  console.error('Error creating agreement:', error);
+                                  toast.error('Failed to create agreement');
+                                }
                               }}
                             >
                               Send to Seller
@@ -1129,50 +1255,48 @@ const AdminUserProfilePage = () => {
 
                           {type === 'Seller' ? (
                             <div className="divide-y">
-                              {/* Example Agreement 1 */}
-                              <div className="p-4 hover:bg-gray-50">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-medium">Credit Terms Agreement</h4>
-                                    <p className="text-sm text-gray-500 mt-1">Change payment type from Wallet to Credit with limit of ₹15,000</p>
-                                    <div className="flex items-center gap-3 mt-2">
-                                      <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Pending Approval</span>
-                                      <span className="text-xs text-gray-500">Created: 12 Aug 2023</span>
+                              {isLoadingAgreements ? (
+                                <div className="p-8 text-center">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+                                  <p className="text-gray-500 mt-2">Loading agreements...</p>
+                                </div>
+                              ) : agreements.length > 0 ? (
+                                agreements.map((agreement, index) => (
+                                  <div key={agreement._id || index} className="p-4 hover:bg-gray-50">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <h4 className="font-medium">{agreement.title || 'Untitled Agreement'}</h4>
+                                        <p className="text-sm text-gray-500 mt-1">{agreement.content || 'No description available'}</p>
+                                        <div className="flex items-center gap-3 mt-2">
+                                          <span className={`text-xs px-2 py-0.5 rounded-full ${agreement.status === 'active'
+                                            ? 'bg-green-100 text-green-800'
+                                            : agreement.status === 'draft'
+                                              ? 'bg-yellow-100 text-yellow-800'
+                                              : 'bg-gray-100 text-gray-800'
+                                            }`}>
+                                            {agreement.status === 'active' ? 'Active' :
+                                              agreement.status === 'draft' ? 'Pending Approval' :
+                                                agreement.status || 'Unknown'}
+                                          </span>
+                                          <span className="text-xs text-gray-500">
+                                            {agreement.effectiveDate
+                                              ? `Since: ${new Date(agreement.effectiveDate).toLocaleDateString()}`
+                                              : agreement.createdAt
+                                                ? `Created: ${new Date(agreement.createdAt).toLocaleDateString()}`
+                                                : 'No date'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <Button variant="outline" size="sm">View Details</Button>
                                     </div>
                                   </div>
-                                  <Button variant="outline" size="sm">View Details</Button>
+                                ))
+                              ) : (
+                                <div className="p-8 text-center text-gray-500">
+                                  <p>No agreements found for this seller.</p>
+                                  <p className="text-sm mt-1">Create a new agreement to get started.</p>
                                 </div>
-                              </div>
-
-                              {/* Example Agreement 2 */}
-                              <div className="p-4 hover:bg-gray-50">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-medium">Rate Band Update</h4>
-                                    <p className="text-sm text-gray-500 mt-1">Changed rate band from RBX1 to RBX2 with improved commission structure</p>
-                                    <div className="flex items-center gap-3 mt-2">
-                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Active</span>
-                                      <span className="text-xs text-gray-500">Since: 5 Apr 2023</span>
-                                    </div>
-                                  </div>
-                                  <Button variant="outline" size="sm">View Details</Button>
-                                </div>
-                              </div>
-
-                              {/* Example Agreement 3 */}
-                              <div className="p-4 hover:bg-gray-50">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-medium">Initial Service Agreement</h4>
-                                    <p className="text-sm text-gray-500 mt-1">Standard terms and conditions for platform usage</p>
-                                    <div className="flex items-center gap-3 mt-2">
-                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Active</span>
-                                      <span className="text-xs text-gray-500">Since: 15 Apr 2023</span>
-                                    </div>
-                                  </div>
-                                  <Button variant="outline" size="sm">View Details</Button>
-                                </div>
-                              </div>
+                              )}
                             </div>
                           ) : (
                             <div className="p-8 text-center text-gray-500">

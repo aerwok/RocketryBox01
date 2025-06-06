@@ -1,12 +1,12 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import { courierSettingSchema } from '../validators/courierSetting.validator.js';
 import { listCourierSettings, addOrUpdateCourierSetting, getCourierSetting, deleteCourierSetting } from '../controllers/courierSetting.controller.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(authenticateSeller);
 
 // List courier settings
 router.get('/courier-settings', listCourierSettings);

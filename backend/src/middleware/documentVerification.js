@@ -173,3 +173,6 @@ export const progressiveDocumentAccess = (requiredPercentage = 50) => {
     }
   };
 };
+
+// Export alias for backward compatibility
+export const checkDocumentUploadStatus = getDocumentUploadStatus;

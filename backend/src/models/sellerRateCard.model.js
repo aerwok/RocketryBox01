@@ -123,9 +123,26 @@ sellerRateCardSchema.methods.getEffectiveRate = function (baseRateCard) {
 // Static method to get seller's effective rate cards (base + overrides)
 sellerRateCardSchema.statics.getSellerEffectiveRates = async function (sellerId) {
   const RateCard = mongoose.model('RateCard');
+  const Seller = mongoose.model('Seller');
 
-  // Get all base rate cards
-  const baseRateCards = await RateCard.find({ isActive: true }).lean();
+  // Get seller's assigned rate band
+  const seller = await Seller.findById(sellerId).select('rateBand').lean();
+  if (!seller) {
+    throw new Error(`Seller not found: ${sellerId}`);
+  }
+
+  // Determine rate band - null means default RBX1
+  const sellerRateBand = seller.rateBand || 'RBX1';
+
+  console.log(`🎯 Getting effective rates for seller ${sellerId} with rate band: ${sellerRateBand}`);
+
+  // Get base rate cards for seller's specific rate band
+  const baseRateCards = await RateCard.find({
+    isActive: true,
+    rateBand: sellerRateBand
+  }).lean();
+
+  console.log(`📋 Found ${baseRateCards.length} base rate cards for rate band: ${sellerRateBand}`);
 
   // Get seller's overrides
   const sellerOverrides = await this.find({
@@ -159,7 +176,8 @@ sellerRateCardSchema.statics.getSellerEffectiveRates = async function (sellerId)
         overrideId: override._id,
         baseRateCardId: baseCard._id,
         lastUpdated: override.updatedAt,
-        notes: override.notes
+        notes: override.notes,
+        sellerRateBand: sellerRateBand // Include rate band info
       };
     }
 
@@ -168,9 +186,12 @@ sellerRateCardSchema.statics.getSellerEffectiveRates = async function (sellerId)
       ...baseCard,
       isOverride: false,
       baseRateCardId: baseCard._id,
-      lastUpdated: baseCard.updatedAt
+      lastUpdated: baseCard.updatedAt,
+      sellerRateBand: sellerRateBand // Include rate band info
     };
   });
+
+  console.log(`✅ Returning ${effectiveRates.length} effective rates for seller ${sellerId} (rate band: ${sellerRateBand})`);
 
   return effectiveRates;
 };

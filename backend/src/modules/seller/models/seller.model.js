@@ -17,6 +17,7 @@ const bankDetailsSchema = new mongoose.Schema({
   bankName: { type: String },
   accountNumber: { type: String },
   accountHolderName: { type: String },
+  branchName: { type: String },
   ifscCode: { type: String },
   cancelledCheque: {
     url: { type: String },
@@ -104,6 +105,15 @@ const sellerSchema = new mongoose.Schema({
   refreshToken: { type: String, select: false },
   walletBalance: { type: String, default: '0' },
   rateCard: { type: mongoose.Schema.Types.ObjectId, ref: 'RateCard', default: null },
+
+  // Rate Band (Admin assignable) - RBX1 is the default for all sellers
+  rateBand: { type: String, default: null }, // null means use default RBX1
+
+  // Payment and Credit Settings (Admin controlled)
+  paymentType: { type: String, enum: ['wallet', 'credit'], default: 'wallet' },
+  creditLimit: { type: Number, default: 0 },
+  creditPeriod: { type: Number, default: 0 }, // in days
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -180,14 +190,14 @@ sellerSchema.methods.comparePassword = async function (candidatePassword) {
 // Generate JWT
 sellerSchema.methods.generateAuthToken = function () {
   return jwt.sign({ id: this._id, role: 'seller' }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d' // Extended to 7 days for better UX
   });
 };
 
 // Generate Refresh Token
 sellerSchema.methods.generateRefreshToken = function () {
   return jwt.sign({ id: this._id, role: 'seller' }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
+    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d' // Extended to 30 days
   });
 };
 
@@ -214,7 +224,9 @@ sellerSchema.methods.updateSafe = async function (updates) {
     'name', 'firstName', 'lastName', 'phone', 'businessName',
     'companyCategory', 'brandName', 'website', 'monthlyShipments',
     'supportContact', 'supportEmail', 'operationsEmail', 'financeEmail',
-    'address', 'documents', 'bankDetails', 'storeLinks'
+    'address', 'documents', 'bankDetails', 'storeLinks',
+    // Admin-controlled fields
+    'rateBand', 'paymentType', 'creditLimit', 'creditPeriod'
   ];
 
   Object.keys(updates).forEach(key => {

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ServiceFactory } from "@/services/service-factory";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckIcon, FileIcon, Upload, XIcon } from "lucide-react";
+import { FileIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
@@ -19,6 +19,8 @@ import { z } from "zod";
 
 // Define schema for KYC details
 const kycDetailsSchema = z.object({
+  gstNumber: z.string().min(15, "GST number must be 15 characters").max(15, "GST number must be 15 characters").optional(),
+  gstDocument: z.instanceof(File).optional(),
   panNumber: z.string().min(10, "PAN number must be 10 characters").max(10, "PAN number must be 10 characters"),
   panCardImage: z.instanceof(File).optional(),
   aadharNumber: z.string().min(12, "Aadhar number must be 12 digits").max(12, "Aadhar number must be 12 digits"),
@@ -34,29 +36,21 @@ interface AdminKycDetailsProps {
 
 const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
   const { id } = useParams();
-  const isSeller = id?.includes("SELLER");
-
-  // States to track document visibility
-  const [showPanUpload, setShowPanUpload] = useState(false);
-  const [showAadharUpload, setShowAadharUpload] = useState(false);
 
   // Track the current KYC status
   const [currentStatus, setCurrentStatus] = useState<"pending" | "approved" | "rejected">("pending");
 
-  const [panDocument, setPanDocument] = useState<{ name: string; url: string } | null>({
-    name: 'PAN Card.pdf',
-    url: ''
-  });
-  const [aadharDocuments, setAadharDocuments] = useState<Array<{ name: string; url: string }>>([
-    { name: 'Aadhaar Card Front.pdf', url: '' },
-    { name: 'Aadhaar Card Back.pdf', url: '' }
-  ]);
+  const [gstDocument, setGstDocument] = useState<{ name: string; url: string; status?: string } | null>(null);
+  const [panDocument, setPanDocument] = useState<{ name: string; url: string; status?: string } | null>(null);
+  const [aadharDocuments, setAadharDocuments] = useState<Array<{ name: string; url: string; status?: string }>>([]);
+  const [mongoId, setMongoId] = useState<string | null>(null); // Store the MongoDB ObjectId
 
   const form = useForm<KycDetailsInput>({
     resolver: zodResolver(kycDetailsSchema),
     defaultValues: {
-      panNumber: "ABCTY1234L",
-      aadharNumber: "XXXX-XXXX-2468",
+      gstNumber: "",
+      panNumber: "",
+      aadharNumber: "",
       kycStatus: currentStatus,
       aadharImages: [],
     },
@@ -84,90 +78,201 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
 
           console.log('📋 Seller data for KYC:', sellerData);
 
-          if (sellerData && sellerData.documents) {
+          // Extract and store the MongoDB ObjectId
+          const sellerId = sellerData._id || sellerData.id;
+          if (sellerId) {
+            setMongoId(sellerId);
+            console.log('🆔 Extracted MongoDB ObjectId for KYC:', sellerId);
+          } else {
+            console.error('❌ No MongoDB ObjectId found in seller data for KYC');
+          }
+
+          if (sellerData) {
             console.log('📄 KYC Documents found:', sellerData.documents);
 
-            // Get the actual documents array - it's nested inside documents.documents
-            const documentsArray = Array.isArray(sellerData.documents)
-              ? sellerData.documents
-              : (sellerData.documents.documents || []);
-            console.log('📋 Documents array:', documentsArray);
+            // Extract real KYC details from seller documents
+            const gstNumber = sellerData.documents?.gstin?.number || "";
+            const panNumber = sellerData.documents?.pan?.number || "";
+            const aadharNumber = sellerData.documents?.aadhaar?.number || "";
 
-            // Extract KYC details from seller documents
+            // Determine overall KYC status based on document statuses
+            const gstStatus = sellerData.documents?.gstin?.status || "pending";
+            const panStatus = sellerData.documents?.pan?.status || "pending";
+            const aadharStatus = sellerData.documents?.aadhaar?.status || "pending";
+
+            let overallKycStatus = "pending";
+            if (gstStatus === "verified" && panStatus === "verified" && aadharStatus === "verified") {
+              overallKycStatus = "approved";
+            } else if (gstStatus === "rejected" || panStatus === "rejected" || aadharStatus === "rejected") {
+              overallKycStatus = "rejected";
+            }
+
             const kycDetails = {
-              panNumber: sellerData.documents.pan || sellerData.panNumber || "ABCTY1234L",
-              aadharNumber: sellerData.documents.aadhaar || sellerData.aadharNumber || "XXXX-XXXX-2468",
-              kycStatus: sellerData.kycStatus || "approved"
+              gstNumber,
+              panNumber,
+              aadharNumber,
+              kycStatus: overallKycStatus as "pending" | "approved" | "rejected"
             };
 
+            console.log('📋 Extracted KYC details:', kycDetails);
+
             form.reset(kycDetails);
-            setCurrentStatus(kycDetails.kycStatus as "pending" | "approved" | "rejected");
+            setCurrentStatus(kycDetails.kycStatus);
+
+            // Set GST document if available
+            if (sellerData.documents?.gstin?.url) {
+              setGstDocument({
+                name: 'GST Certificate Document',
+                url: sellerData.documents.gstin.url,
+                status: sellerData.documents.gstin.status
+              });
+              console.log('📄 GST document found:', sellerData.documents.gstin);
+            } else {
+              setGstDocument(null);
+              console.log('📄 No GST document found');
+            }
 
             // Set PAN document if available
-            const panDoc = documentsArray.find((doc: any) => doc.type === 'PAN Card');
-            if (panDoc) {
+            if (sellerData.documents?.pan?.url) {
               setPanDocument({
-                name: panDoc.fileName || 'PAN Card.pdf',
-                url: panDoc.fileUrl || ''
+                name: 'PAN Card Document',
+                url: sellerData.documents.pan.url,
+                status: sellerData.documents.pan.status
               });
+              console.log('📄 PAN document found:', sellerData.documents.pan);
             } else {
-              setPanDocument({
-                name: 'PAN Card.pdf',
-                url: ''
-              });
+              setPanDocument(null);
+              console.log('📄 No PAN document found');
             }
 
-            // Set Aadhar documents if available
-            const aadharDocs = documentsArray.filter((doc: any) => doc.type === 'Aadhaar Card');
-            if (aadharDocs.length > 0) {
-              setAadharDocuments(aadharDocs.map((doc: any) => ({
-                name: doc.fileName || 'Aadhaar Card.pdf',
-                url: doc.fileUrl || ''
-              })));
+            // Set Aadhaar document if available
+            if (sellerData.documents?.aadhaar?.url) {
+              setAadharDocuments([{
+                name: 'Aadhaar Card Document',
+                url: sellerData.documents.aadhaar.url,
+                status: sellerData.documents.aadhaar.status
+              }]);
+              console.log('📄 Aadhaar document found:', sellerData.documents.aadhaar);
             } else {
-              // Set default aadhar documents for display
-              setAadharDocuments([
-                { name: 'Aadhaar Card Front.pdf', url: '' },
-                { name: 'Aadhaar Card Back.pdf', url: '' }
-              ]);
+              setAadharDocuments([]);
+              console.log('📄 No Aadhaar document found');
             }
           } else {
-            console.log('⚠️ No documents found, using defaults');
-            // Set defaults
-            setPanDocument({
-              name: 'PAN Card.pdf',
-              url: ''
-            });
-            setAadharDocuments([
-              { name: 'Aadhaar Card Front.pdf', url: '' },
-              { name: 'Aadhaar Card Back.pdf', url: '' }
-            ]);
+            console.log('⚠️ No seller data found');
+            // Reset to empty state instead of mock data
+            setGstDocument(null);
+            setPanDocument(null);
+            setAadharDocuments([]);
           }
         } else {
           console.error('❌ Failed to fetch KYC details');
+          // Reset to empty state instead of mock data
+          setGstDocument(null);
+          setPanDocument(null);
+          setAadharDocuments([]);
         }
       } catch (error) {
         console.error('❌ Failed to fetch KYC details:', error);
-        // Set defaults on error
-        setPanDocument({
-          name: 'PAN Card.pdf',
-          url: ''
-        });
-        setAadharDocuments([
-          { name: 'Aadhaar Card Front.pdf', url: '' },
-          { name: 'Aadhaar Card Back.pdf', url: '' }
-        ]);
+        // Reset to empty state instead of mock data
+        setGstDocument(null);
+        setPanDocument(null);
+        setAadharDocuments([]);
       }
     };
     fetchKycDetails();
   }, [id, form]);
 
-  const onSubmit = async (data: KycDetailsInput) => {
-    if (!id) return;
+  const handleDocumentVerification = async (documentType: 'gstin' | 'pan' | 'aadhaar', status: 'verified' | 'rejected') => {
+    if (!mongoId) {
+      console.error('❌ Missing MongoDB ObjectId for KYC verification');
+      onSave('Unable to verify: Missing required data');
+      return;
+    }
+
     try {
-      await ServiceFactory.admin.updateTeamMember(id, {
+      console.log(`📝 ${status === 'verified' ? 'Verifying' : 'Rejecting'} ${documentType} document for seller ${mongoId}`);
+      console.log('🔍 Using MongoDB ObjectId for KYC verification:', mongoId);
+
+      // Call the KYC update API
+      await ServiceFactory.admin.updateSellerKYC(mongoId, {
+        status: status === 'verified' ? 'approved' : 'rejected',
+        documentType,
+        comments: `${documentType.toUpperCase()} document ${status} by admin`
+      });
+
+      // Update local state
+      if (documentType === 'gstin' && gstDocument) {
+        setGstDocument(prev => prev ? { ...prev, status } : null);
+      } else if (documentType === 'pan' && panDocument) {
+        setPanDocument(prev => prev ? { ...prev, status } : null);
+      } else if (documentType === 'aadhaar' && aadharDocuments.length > 0) {
+        setAadharDocuments(prev => prev.map(doc => ({ ...doc, status })));
+      }
+
+      // Update overall KYC status
+      const newGstStatus = documentType === 'gstin' ? status : gstDocument?.status || 'pending';
+      const newPanStatus = documentType === 'pan' ? status : panDocument?.status || 'pending';
+      const newAadharStatus = documentType === 'aadhaar' ? status : aadharDocuments[0]?.status || 'pending';
+
+      console.log('📊 Checking overall KYC status:', {
+        gst: newGstStatus,
+        pan: newPanStatus,
+        aadhaar: newAadharStatus
+      });
+
+      let newOverallStatus: 'pending' | 'approved' | 'rejected' = 'pending';
+      if (newGstStatus === 'verified' && newPanStatus === 'verified' && newAadharStatus === 'verified') {
+        newOverallStatus = 'approved';
+        console.log('✅ All documents verified - KYC approved!');
+      } else if (newGstStatus === 'rejected' || newPanStatus === 'rejected' || newAadharStatus === 'rejected') {
+        newOverallStatus = 'rejected';
+        console.log('❌ At least one document rejected - KYC rejected!');
+      } else {
+        console.log('⏳ Documents still pending - KYC remains pending');
+      }
+
+      // Update UI state
+      setCurrentStatus(newOverallStatus);
+      form.setValue('kycStatus', newOverallStatus);
+
+      // If all documents are verified or any is rejected, update the overall seller KYC status
+      if (newOverallStatus === 'approved' || newOverallStatus === 'rejected') {
+        try {
+          console.log(`🔄 Updating overall seller KYC status to: ${newOverallStatus}`);
+          if (mongoId) {
+            await ServiceFactory.admin.updateSellerKYC(mongoId, {
+              status: newOverallStatus,
+              comments: `Overall KYC ${newOverallStatus} - all documents processed`
+            });
+            console.log('✅ Overall seller KYC status updated successfully');
+          }
+        } catch (overallError) {
+          console.error('❌ Failed to update overall seller KYC status:', overallError);
+        }
+      }
+
+      const message = `${documentType.toUpperCase()} document ${status === 'verified' ? 'verified' : 'rejected'} successfully`;
+      onSave(message);
+
+    } catch (error: any) {
+      console.error(`❌ Error ${status === 'verified' ? 'verifying' : 'rejecting'} ${documentType} document:`, error);
+      onSave(`Failed to ${status === 'verified' ? 'verify' : 'reject'} ${documentType} document`);
+    }
+  };
+
+  const onSubmit = async (data: KycDetailsInput) => {
+    if (!mongoId) {
+      console.error('❌ Missing MongoDB ObjectId for KYC update');
+      onSave('Unable to save: Missing required data');
+      return;
+    }
+
+    try {
+      console.log('🔍 Using MongoDB ObjectId for KYC update:', mongoId);
+      await ServiceFactory.admin.updateTeamMember(mongoId, {
         kycDetails: {
           ...data,
+          gstDocument,
           panDocument,
           aadharDocuments
         }
@@ -175,6 +280,7 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
       onSave("KYC details saved successfully");
     } catch (error) {
       console.error('Failed to save KYC details:', error);
+      onSave('Failed to save KYC details');
     }
   };
 
@@ -233,6 +339,95 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
 
             <FormField
               control={form.control}
+              name="gstNumber"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    GST Number *
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Enter GST number"
+                      className="bg-[#F8F7FF]"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="gstDocument"
+              render={({ field: _ }) => (
+                <FormItem>
+                  <FormLabel>
+                    GST Certificate Document
+                  </FormLabel>
+                  <FormControl>
+                    {gstDocument ? (
+                      <div className="flex items-center gap-3 p-3 border rounded-md bg-[#F8F7FF]">
+                        <div className="flex items-center gap-2 flex-1">
+                          <FileIcon className="h-8 w-8 text-blue-500" />
+                          <div>
+                            <p className="text-sm font-medium">{gstDocument.name}</p>
+                            <p className="text-xs text-gray-500">
+                              Status: <span className={`font-medium ${gstDocument.status === 'verified' ? 'text-green-600' :
+                                gstDocument.status === 'rejected' ? 'text-red-600' :
+                                  'text-yellow-600'
+                                }`}>
+                                {gstDocument.status || 'pending'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(gstDocument.url, '_blank')}
+                          >
+                            View
+                          </Button>
+                          {gstDocument.status === 'pending' && (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                                onClick={() => handleDocumentVerification('gstin', 'verified')}
+                              >
+                                Verify
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-600 hover:bg-red-50"
+                                onClick={() => handleDocumentVerification('gstin', 'rejected')}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p className="text-gray-500">No GST document uploaded</p>
+                      </div>
+                    )}
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="panNumber"
               render={({ field }) => (
                 <FormItem>
@@ -254,52 +449,64 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
             <FormField
               control={form.control}
               name="panCardImage"
-              render={({ field }) => (
+              render={({ field: _ }) => (
                 <FormItem>
                   <FormLabel>
-                    PAN Card Image *
+                    PAN Card Document
                   </FormLabel>
                   <FormControl>
-                    {showPanUpload ? (
-                      <div className="flex items-center justify-center w-full">
-                        <label
-                          htmlFor="pan-image"
-                          className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-[#F8F7FF] hover:bg-gray-100"
-                        >
-                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <Upload className="w-8 h-8 mb-2 text-gray-500" />
-                            <p className="mb-2 text-sm text-gray-500">
-                              <span className="font-semibold">Click to upload</span> or drag and drop
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              JPG, PNG or PDF (MAX. 2MB)
-                            </p>
-                          </div>
-                          <input id="pan-image" type="file" className="hidden" onChange={(e) => {
-                            if (e.target.files?.[0]) {
-                              field.onChange(e.target.files[0]);
-                              setShowPanUpload(false);
-                            }
-                          }} />
-                        </label>
-                      </div>
-                    ) : (
+                    {panDocument ? (
                       <div className="flex items-center gap-3 p-3 border rounded-md bg-[#F8F7FF]">
                         <div className="flex items-center gap-2 flex-1">
                           <FileIcon className="h-8 w-8 text-blue-500" />
                           <div>
-                            <p className="text-sm font-medium">{panDocument?.name || 'PAN Card.pdf'}</p>
-                            <p className="text-xs text-gray-500">Click to view</p>
+                            <p className="text-sm font-medium">{panDocument.name}</p>
+                            <p className="text-xs text-gray-500">
+                              Status: <span className={`font-medium ${panDocument.status === 'verified' ? 'text-green-600' :
+                                panDocument.status === 'rejected' ? 'text-red-600' :
+                                  'text-yellow-600'
+                                }`}>
+                                {panDocument.status || 'pending'}
+                              </span>
+                            </p>
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setShowPanUpload(true)}
-                        >
-                          Change
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(panDocument.url, '_blank')}
+                          >
+                            View
+                          </Button>
+                          {panDocument.status === 'pending' && (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                                onClick={() => handleDocumentVerification('pan', 'verified')}
+                              >
+                                Verify
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 border-red-600 hover:bg-red-50"
+                                onClick={() => handleDocumentVerification('pan', 'rejected')}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p className="text-gray-500">No PAN document uploaded</p>
                       </div>
                     )}
                   </FormControl>
@@ -318,7 +525,7 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Enter Aadhar number"
+                      placeholder="Enter Aadhaar number"
                       className="bg-[#F8F7FF]"
                       {...field}
                     />
@@ -331,113 +538,70 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
             <FormField
               control={form.control}
               name="aadharImages"
-              render={({ field }) => (
+              render={({ field: _ }) => (
                 <FormItem className="col-span-2">
                   <FormLabel>
-                    Aadhar Card Images (Front & Back) *
+                    Aadhaar Card Document
                   </FormLabel>
                   <FormControl>
-                    {showAadharUpload ? (
-                      <div className="flex flex-col gap-4">
-                        <p className="text-sm text-gray-500">Upload both front and back images of the Aadhar card</p>
-                        <div className="flex flex-col md:flex-row gap-4">
-                          <div className="flex-1">
-                            <label
-                              htmlFor="aadhar-front-image"
-                              className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-[#F8F7FF] hover:bg-gray-100"
-                            >
-                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                <Upload className="w-8 h-8 mb-2 text-gray-500" />
-                                <p className="text-sm text-gray-500">
-                                  <span className="font-semibold">Front Side</span>
-                                </p>
-                              </div>
-                              <input
-                                id="aadhar-front-image"
-                                type="file"
-                                className="hidden"
-                                onChange={(e) => {
-                                  if (e.target.files?.[0]) {
-                                    const files = [...(field.value || [])];
-                                    files[0] = e.target.files[0];
-                                    field.onChange(files);
-                                  }
-                                }}
-                              />
-                            </label>
-                          </div>
-                          <div className="flex-1">
-                            <label
-                              htmlFor="aadhar-back-image"
-                              className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-[#F8F7FF] hover:bg-gray-100"
-                            >
-                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                <Upload className="w-8 h-8 mb-2 text-gray-500" />
-                                <p className="text-sm text-gray-500">
-                                  <span className="font-semibold">Back Side</span>
-                                </p>
-                              </div>
-                              <input
-                                id="aadhar-back-image"
-                                type="file"
-                                className="hidden"
-                                onChange={(e) => {
-                                  if (e.target.files?.[0]) {
-                                    const files = [...(field.value || [])];
-                                    files[1] = e.target.files[0];
-                                    field.onChange(files);
-                                  }
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              if (field.value && field.value.length === 2) {
-                                setShowAadharUpload(false);
-                              } else {
-                                alert("Please upload both front and back images");
-                              }
-                            }}
-                          >
-                            Done
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
+                    {aadharDocuments && aadharDocuments.length > 0 ? (
                       <div className="border rounded-md bg-[#F8F7FF] p-4">
-                        <div className="flex flex-col md:flex-row gap-4">
-                          {aadharDocuments && aadharDocuments.length > 0 ? aadharDocuments.map((doc, index) => (
-                            <div key={index} className="flex items-center gap-3 p-3 border rounded-md bg-white flex-1">
+                        <div className="flex flex-col gap-4">
+                          {aadharDocuments.map((doc, index) => (
+                            <div key={index} className="flex items-center gap-3 p-3 border rounded-md bg-white">
                               <div className="flex items-center gap-2 flex-1">
                                 <FileIcon className="h-8 w-8 text-blue-500" />
                                 <div>
                                   <p className="text-sm font-medium">{doc.name}</p>
-                                  <p className="text-xs text-gray-500">Click to view</p>
+                                  <p className="text-xs text-gray-500">
+                                    Status: <span className={`font-medium ${doc.status === 'verified' ? 'text-green-600' :
+                                      doc.status === 'rejected' ? 'text-red-600' :
+                                        'text-yellow-600'
+                                      }`}>
+                                      {doc.status || 'pending'}
+                                    </span>
+                                  </p>
                                 </div>
                               </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => window.open(doc.url, '_blank')}
+                                >
+                                  View
+                                </Button>
+                                {doc.status === 'pending' && (
+                                  <>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-green-600 border-green-600 hover:bg-green-50"
+                                      onClick={() => handleDocumentVerification('aadhaar', 'verified')}
+                                    >
+                                      Verify
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-red-600 border-red-600 hover:bg-red-50"
+                                      onClick={() => handleDocumentVerification('aadhaar', 'rejected')}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </div>
-                          )) : (
-                            <div className="flex items-center justify-center p-8 text-gray-500">
-                              <p>No Aadhar documents uploaded</p>
-                            </div>
-                          )}
+                          ))}
                         </div>
-                        <div className="flex justify-end mt-3">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setShowAadharUpload(true)}
-                          >
-                            Change
-                          </Button>
-                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <p className="text-gray-500">No Aadhaar document uploaded</p>
                       </div>
                     )}
                   </FormControl>
@@ -445,32 +609,6 @@ const AdminKycDetails = ({ onSave }: AdminKycDetailsProps) => {
                 </FormItem>
               )}
             />
-          </div>
-
-          <div className="flex justify-end gap-4">
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => {
-                const data = form.getValues();
-                onSubmit(data);
-              }}
-            >
-              <XIcon className="size-4 mr-2" />
-              Reject
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              className="bg-green-600 hover:bg-green-700 text-white"
-              onClick={() => {
-                const data = form.getValues();
-                onSubmit(data);
-              }}
-            >
-              <CheckIcon className="size-4 mr-2" />
-              Approve
-            </Button>
           </div>
         </form>
       </Form>

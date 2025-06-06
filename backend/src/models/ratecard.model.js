@@ -21,6 +21,13 @@ const rateCardSchema = new mongoose.Schema({
     index: true,
     enum: ['Within City', 'Within State', 'Within Region', 'Metro to Metro', 'Rest of India', 'Special Zone']
   },
+  // Rate Band - determines which sellers can use this rate card
+  rateBand: {
+    type: String,
+    required: true,
+    default: 'RBX1', // Default base rate band for all sellers
+    index: true
+  },
   baseRate: {
     type: Number,
     required: true,
@@ -63,10 +70,23 @@ const rateCardSchema = new mongoose.Schema({
 // Create compound index for efficient queries
 rateCardSchema.index({ courier: 1, zone: 1, mode: 1 });
 rateCardSchema.index({ zone: 1, isActive: 1 });
+rateCardSchema.index({ rateBand: 1, isActive: 1 }); // Index for rate band filtering
 
 // Add a method to find rates by zone and courier
 rateCardSchema.statics.findByZoneAndCourier = function (zone, courier = null) {
   const query = { zone, isActive: true };
+  if (courier) {
+    query.courier = courier;
+  }
+  return this.find(query);
+};
+
+// Add a method to find rates by rate band
+rateCardSchema.statics.findByRateBand = function (rateBand, zone = null, courier = null) {
+  const query = { rateBand, isActive: true };
+  if (zone) {
+    query.zone = zone;
+  }
   if (courier) {
     query.courier = courier;
   }
@@ -78,4 +98,4 @@ rateCardSchema.statics.getActiveCouriers = function () {
   return this.distinct('courier', { isActive: true });
 };
 
-export default mongoose.model('RateCard', rateCardSchema); 
+export default mongoose.model('RateCard', rateCardSchema);

@@ -587,6 +587,18 @@ export class ServiceFactory {
     }): Promise<ApiResponse<any>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.get('/admin/dashboard/shipments', { params });
+    },
+
+    // Seller-specific admin methods
+    async updateSellerBankDetails(sellerId: string, payload: any): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      // Use the new proper admin endpoint for updating seller bank details
+      return apiService.patch(`/admin/users/sellers/${sellerId}/bank-details`, payload);
+    },
+
+    async updateSellerKYC(sellerId: string, kycData: { status: string; comments?: string; documentType?: string }): Promise<ApiResponse<any>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.patch(`/admin/users/sellers/${sellerId}/kyc`, kycData);
     }
   };
 
@@ -1012,6 +1024,35 @@ export class ServiceFactory {
       updateBankDetails: (data: any) => ServiceFactory.getInstance().profileService.updateBankDetails(data),
       updateProfileImage: (file: File) => ServiceFactory.getInstance().profileService.updateProfileImage(file),
       updateStoreLinks: (links: Seller['storeLinks']) => ServiceFactory.getInstance().profileService.updateStoreLinks(links),
+      // S3 Document Upload Methods
+      uploadGstDocument: async (file: File): Promise<ApiResponse<any>> => {
+        const apiService = ServiceFactory.getInstance().getApiService();
+        return apiService.uploadFile('/seller/documents/gst/upload', file, 'gstDocument');
+      },
+      uploadPanDocument: async (file: File): Promise<ApiResponse<any>> => {
+        const apiService = ServiceFactory.getInstance().getApiService();
+        return apiService.uploadFile('/seller/documents/pan/upload', file, 'panDocument');
+      },
+      uploadAadhaarDocument: async (file: File): Promise<ApiResponse<any>> => {
+        const apiService = ServiceFactory.getInstance().getApiService();
+        return apiService.uploadFile('/seller/documents/aadhaar/upload', file, 'aadhaarDocument');
+      },
+      uploadCancelledCheque: async (file: File): Promise<ApiResponse<any>> => {
+        const apiService = ServiceFactory.getInstance().getApiService();
+        return apiService.uploadFile('/seller/documents/cheque/upload', file, 'cancelledCheque');
+      },
+      getDocumentSignedUrl: async (documentType: string): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi(`/seller/documents/${documentType}/url`, 'GET');
+      },
+      getDocuments: async (): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi('/seller/documents', 'GET');
+      },
+      updateDocument: async (data: any): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi('/seller/documents', 'POST', data);
+      },
+      getDocumentStatus: async (): Promise<ApiResponse<any>> => {
+        return ServiceFactory.callApi('/seller/document-status', 'GET');
+      },
       // Agreement related methods
       getAgreements: async (): Promise<ApiResponse<any[]>> => {
         return ServiceFactory.callApi('/seller/agreements', 'GET');

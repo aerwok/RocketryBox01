@@ -1,12 +1,12 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import { addStoreSchema, updateStoreSchema } from '../validators/store.validator.js';
 import { listStores, addStore, getStore, updateStore, deleteStore } from '../controllers/store.controller.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(authenticateSeller);
 
 // List stores
 router.get('/stores', listStores);

@@ -1,11 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { AppError } from '../../../middleware/errorHandler.js';
+import { sendEmail } from '../../../utils/email.js';
+import { generateEmployeeId } from '../../../utils/employeeId.js';
 import { logger } from '../../../utils/logger.js';
+import { deleteSession, setSession } from '../../../utils/redis.js';
 import Admin from '../models/admin.model.js';
 import Session from '../models/session.model.js';
-import { setSession, deleteSession, getAllSessions } from '../../../utils/redis.js';
-import { generateEmployeeId } from '../../../utils/employeeId.js';
-import { sendEmail } from '../../../utils/email.js';
 
 /**
  * Generate JWT token for admin
@@ -13,13 +13,13 @@ import { sendEmail } from '../../../utils/email.js';
  */
 const generateToken = (admin) => {
   return jwt.sign(
-    { 
+    {
       id: admin._id,
       role: admin.role,
       isSuperAdmin: admin.isSuperAdmin
     },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '24h' } // Extended to 24 hours for better UX
   );
 };
 
@@ -42,13 +42,13 @@ export const login = async (req, res, next) => {
 
     // 2) Check if admin exists && password is correct
     const admin = await Admin.findOne({ email }).select('+password');
-    console.log('Admin found:', { 
-      exists: !!admin, 
-      email: admin?.email, 
+    console.log('Admin found:', {
+      exists: !!admin,
+      email: admin?.email,
       status: admin?.status,
-      hasPassword: !!admin?.password 
+      hasPassword: !!admin?.password
     });
-    
+
     if (!admin) {
       console.log('Admin not found');
       return next(new AppError('Incorrect email or password', 401));
@@ -75,7 +75,7 @@ export const login = async (req, res, next) => {
 
     // 5) Generate JWT token
     const token = generateToken(admin);
-    
+
     // 6) Get device info from user agent
     const userAgent = req.headers['user-agent'];
     const deviceInfo = {
@@ -103,31 +103,40 @@ export const login = async (req, res, next) => {
       if (!permissionsObj || typeof permissionsObj !== 'object') {
         return [];
       }
-      
+
       const permissions = [];
       Object.keys(permissionsObj).forEach(key => {
         if (permissionsObj[key] === true) {
           permissions.push(key);
         }
       });
-      
+
       return permissions;
     };
 
     // 9) Store session in Redis for fast access
     const permissionsArray = getPermissionsArray(admin.permissions);
-    await setSession(admin._id.toString(), JSON.stringify({
-      sessionId: session._id.toString(),
-      user: {
-        id: admin._id,
-        name: admin.fullName,
-        email: admin.email,
-        role: admin.role,
-        isSuperAdmin: admin.isSuperAdmin,
-        permissions: permissionsArray
-      },
-      lastActivity: Date.now()
-    }), expiresIn / 1000); // Redis expiry in seconds
+    try {
+      const sessionStored = await setSession(admin._id.toString(), JSON.stringify({
+        sessionId: session._id.toString(),
+        user: {
+          id: admin._id,
+          name: admin.fullName,
+          email: admin.email,
+          role: admin.role,
+          isSuperAdmin: admin.isSuperAdmin,
+          permissions: permissionsArray
+        },
+        lastActivity: Date.now()
+      }), expiresIn / 1000); // Redis expiry in seconds
+
+      if (!sessionStored) {
+        logger.warn('Redis session storage failed, but login will continue with database session only');
+      }
+    } catch (redisError) {
+      logger.error('Redis session error during login:', redisError.message);
+      logger.warn('Login will continue with database session only');
+    }
 
     // 10) Remove password from output
     admin.password = undefined;
@@ -275,7 +284,7 @@ export const register = async (req, res, next) => {
 export const getProfile = async (req, res, next) => {
   try {
     const admin = await Admin.findById(req.user.id);
-    
+
     if (!admin) {
       return next(new AppError('Admin not found', 404));
     }
@@ -299,21 +308,29 @@ export const logout = async (req, res, next) => {
   try {
     // 1) Get token from header
     const token = req.headers.authorization?.split(' ')[1];
-    
+
     if (!token) {
       return next(new AppError('Not logged in', 401));
     }
 
     // 2) Find and update session in database
     const session = await Session.findOne({ token, isActive: true });
-    
+
     if (session) {
       session.isActive = false;
       await session.save();
     }
 
     // 3) Remove session from Redis
-    await deleteSession(req.user.id);
+    try {
+      const sessionDeleted = await deleteSession(req.user.id);
+      if (!sessionDeleted) {
+        logger.warn('Redis session deletion failed, but logout will continue');
+      }
+    } catch (redisError) {
+      logger.error('Redis session deletion error during logout:', redisError.message);
+      logger.warn('Logout will continue without Redis session cleanup');
+    }
 
     logger.info(`Admin ${req.user.id} logged out successfully`);
 
@@ -334,7 +351,7 @@ export const logout = async (req, res, next) => {
  */
 export const getSessions = async (req, res, next) => {
   try {
-    const sessions = await Session.find({ 
+    const sessions = await Session.find({
       adminId: req.user.id,
       isActive: true,
       expiresAt: { $gt: new Date() }
@@ -365,11 +382,11 @@ export const revokeSession = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
 
-    const session = await Session.findOne({ 
+    const session = await Session.findOne({
       _id: sessionId,
       adminId: req.user.id
     });
-    
+
     if (!session) {
       return next(new AppError('Session not found', 404));
     }
@@ -407,7 +424,7 @@ export const revokeAllSessions = async (req, res, next) => {
 
     // Update all sessions except current one in database
     await Session.updateMany(
-      { 
+      {
         adminId: req.user.id,
         isActive: true,
         token: { $ne: token }
@@ -425,4 +442,4 @@ export const revokeAllSessions = async (req, res, next) => {
     logger.error(`Revoke all sessions error: ${error.message}`);
     next(new AppError('Failed to revoke sessions', 500));
   }
-}; 
+};

@@ -112,6 +112,9 @@ export const registerSchema = Joi.object({
     accountHolderName: Joi.string().messages({
       'string.empty': 'Account holder name cannot be empty'
     }),
+    branchName: Joi.string().required().messages({
+      'string.empty': 'Branch name is required'
+    }),
     ifscCode: Joi.string().length(11).pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).messages({
       'string.length': 'IFSC code must be 11 characters',
       'string.pattern.base': 'Invalid IFSC code format'
@@ -201,6 +204,9 @@ export const bankDetailsSchema = Joi.object({
   }),
   accountHolderName: Joi.string().required().messages({
     'string.empty': 'Account holder name is required'
+  }),
+  branchName: Joi.string().required().messages({
+    'string.empty': 'Branch name is required'
   }),
   ifscCode: Joi.string().length(11).pattern(/^[A-Z]{4}0[A-Z0-9]{6}$/).required().messages({
     'string.empty': 'IFSC code is required',

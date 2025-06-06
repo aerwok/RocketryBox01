@@ -1,10 +1,10 @@
 import express from 'express';
 import { getDashboardStats, getChartData, getCourierPerformance, getProductPerformance, getDashboardSummary } from '../controllers/dashboard.controller.js';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(authenticateSeller);
 
 // Get dashboard summary (main endpoint with all data)
 router.get('/', getDashboardSummary);

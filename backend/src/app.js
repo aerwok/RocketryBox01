@@ -15,7 +15,7 @@ import { shippingErrorMiddleware } from './middleware/shippingErrorHandler.js';
 import { broadcastDashboardUpdates } from './modules/admin/services/realtime.service.js';
 import { setupEventListeners } from './utils/eventEmitter.js';
 import { logger } from './utils/logger.js';
-import { getCache, isRedisHealthy } from './utils/redis.js';
+import { connectRedis, getCache, isRedisHealthy } from './utils/redis.js';
 import { initSocketIO } from './utils/socketio.js';
 
 // Get the directory name
@@ -144,6 +144,20 @@ mongoose.connect(MONGODB_URI, {
 })
   .then(async () => {
     logger.info('Connected to MongoDB successfully');
+
+    // Connect to Redis
+    try {
+      logger.info('Initializing Redis connection...');
+      const redisConnected = await connectRedis();
+      if (redisConnected) {
+        logger.info('✅ Redis connected successfully');
+      } else {
+        logger.warn('⚠️  Redis connection failed, but server will continue (Redis operations will be gracefully handled)');
+      }
+    } catch (error) {
+      logger.error('❌ Redis connection error:', error.message);
+      logger.warn('🔄 Server will continue without Redis (Redis operations will be gracefully handled)');
+    }
 
     // Initialize tracking job service for real-time updates
     try {

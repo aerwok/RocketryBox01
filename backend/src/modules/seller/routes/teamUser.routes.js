@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import {
   addTeamUserSchema,
@@ -18,7 +18,7 @@ import {
 const router = express.Router();
 
 // All routes require seller authentication
-router.use(protect);
+router.use(authenticateSeller);
 
 // List team users with filters and pagination
 router.get('/', listTeamUsers);

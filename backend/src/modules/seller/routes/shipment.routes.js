@@ -13,7 +13,7 @@ import {
   bookCourierShipment,
   trackShipmentStatus
 } from '../controllers/shipment.controller.js';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import {
   validateCreateShipment,
   validateCreateBulkShipments,
@@ -26,8 +26,8 @@ import {
 
 const router = express.Router();
 
-// All routes are protected with seller authentication
-router.use(protect);
+// All routes are authenticateSellered with seller authentication
+router.use(authenticateSeller);
 
 // Shipping rates API
 router.post('/rates', validateShippingRates, getShippingRates);

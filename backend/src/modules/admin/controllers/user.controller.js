@@ -688,7 +688,15 @@ export const updateSellerStatus = async (req, res, next) => {
 export const updateSellerKYC = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, comments } = req.body;
+    const { status, comments, documentType } = req.body;
+
+    console.log(`🔍 Admin KYC Update Request:`, {
+      sellerId: id,
+      status,
+      documentType,
+      comments,
+      adminId: req.user.id
+    });
 
     // Find seller
     const seller = await Seller.findById(id);
@@ -697,17 +705,59 @@ export const updateSellerKYC = async (req, res, next) => {
       return next(new AppError('Seller not found', 404));
     }
 
-    // Update seller's KYC status
+    // Initialize documents object if it doesn't exist
     if (!seller.documents) {
       seller.documents = {};
     }
 
-    // Update documents status
-    if (seller.documents.documents && Array.isArray(seller.documents.documents)) {
-      seller.documents.documents.forEach(doc => {
-        doc.status = status === 'approved' ? 'verified' :
-          status === 'rejected' ? 'rejected' : 'pending';
-      });
+    // Map status values to match seller profile expectations
+    const mappedStatus = status === 'approved' ? 'verified' :
+      status === 'rejected' ? 'rejected' : 'pending';
+
+    console.log(`📝 Mapped status: ${status} -> ${mappedStatus}`);
+
+    // Update specific document type if provided
+    if (documentType) {
+      console.log(`📄 Updating specific document: ${documentType}`);
+
+      // Update the specific document status
+      if (documentType === 'gstin') {
+        if (!seller.documents.gstin) seller.documents.gstin = {};
+        seller.documents.gstin.status = mappedStatus;
+        console.log(`✅ Updated GST status to: ${mappedStatus}`);
+      } else if (documentType === 'pan') {
+        if (!seller.documents.pan) seller.documents.pan = {};
+        seller.documents.pan.status = mappedStatus;
+        console.log(`✅ Updated PAN status to: ${mappedStatus}`);
+      } else if (documentType === 'aadhaar') {
+        if (!seller.documents.aadhaar) seller.documents.aadhaar = {};
+        seller.documents.aadhaar.status = mappedStatus;
+        console.log(`✅ Updated Aadhaar status to: ${mappedStatus}`);
+      }
+    } else {
+      // Update all document statuses if no specific type provided
+      console.log(`📄 Updating all document statuses to: ${mappedStatus}`);
+
+      if (seller.documents.gstin) {
+        seller.documents.gstin.status = mappedStatus;
+      }
+      if (seller.documents.pan) {
+        seller.documents.pan.status = mappedStatus;
+      }
+      if (seller.documents.aadhaar) {
+        seller.documents.aadhaar.status = mappedStatus;
+      }
+
+      // Also update legacy documents array if it exists
+      if (seller.documents.documents && Array.isArray(seller.documents.documents)) {
+        seller.documents.documents.forEach(doc => {
+          doc.status = mappedStatus;
+        });
+      }
+
+      // Update overall KYC verification flag for overall status changes
+      seller.kycVerified = status === 'approved';
+      console.log(`✅ Updated overall KYC status to: ${seller.kycVerified}`);
     }
 
     // Add verification history if it doesn't exist
@@ -718,28 +768,154 @@ export const updateSellerKYC = async (req, res, next) => {
     // Add new verification entry
     seller.verificationHistory.push({
       status,
-      comments,
+      documentType: documentType || 'overall',
+      comments: comments || `${documentType || 'Overall KYC'} ${status} by admin`,
       verifiedBy: req.user.id,
       timestamp: new Date()
     });
 
-    // Update KYC verification flag
-    seller.kycVerified = status === 'approved';
-
+    // Save the seller with updated document status
     await seller.save();
 
+    // Clear any cached seller data
+    try {
+      const { deleteCache } = await import('../../../utils/cache.js');
+      await deleteCache(`seller:${id}:profile`);
+      await deleteCache(`seller_profile:${id}`);
+      console.log(`🗑️ Cleared seller profile cache for ${id}`);
+    } catch (cacheError) {
+      console.warn(`⚠️ Failed to clear cache: ${cacheError.message}`);
+    }
+
+    // Emit real-time update for seller profile refresh
+    try {
+      const { getIO } = await import('../../../utils/socketio.js');
+      const io = getIO();
+
+      // Emit to seller-specific room to trigger profile refresh
+      io.to(`seller:${id}`).emit('profile:updated', {
+        message: 'KYC documents updated by admin',
+        documents: seller.documents,
+        timestamp: new Date()
+      });
+
+      // Emit to admin dashboard
+      io.to('admin-dashboard').emit('seller:kyc:updated', {
+        sellerId: id,
+        documentType: documentType || 'overall',
+        status: mappedStatus,
+        updatedBy: req.user.id,
+        timestamp: new Date()
+      });
+
+      console.log(`📡 Emitted real-time updates for seller ${id}`);
+    } catch (socketError) {
+      console.warn(`⚠️ Failed to emit real-time updates: ${socketError.message}`);
+    }
+
     // Log the KYC update
-    logger.info(`Admin ${req.user.id} updated seller ${id} KYC status to ${status}`);
+    console.log(`✅ Admin ${req.user.id} updated seller ${id} ${documentType || 'overall'} KYC status to ${status}`);
+    logger.info(`Admin ${req.user.id} updated seller ${id} ${documentType || 'overall'} KYC status to ${status}`);
 
     res.status(200).json({
       success: true,
       data: {
-        seller
-      }
+        seller: {
+          id: seller._id,
+          name: seller.name,
+          email: seller.email,
+          documents: seller.documents,
+          kycVerified: seller.kycVerified
+        }
+      },
+      message: `${documentType ? documentType.toUpperCase() + ' document' : 'KYC'} ${status === 'approved' ? 'verified' : status} successfully`
     });
   } catch (error) {
+    console.error(`❌ Error in updateSellerKYC: ${error.message}`);
     logger.error(`Error in updateSellerKYC: ${error.message}`);
     next(new AppError('Failed to update seller KYC status', 500));
+  }
+};
+
+/**
+ * Update seller bank details
+ * @route PATCH /api/v2/admin/users/sellers/:id/bank-details
+ * @access Private (Admin only)
+ */
+export const updateSellerBankDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { bankDetails } = req.body;
+
+    // Validate required fields
+    if (!bankDetails) {
+      return next(new AppError('Bank details are required', 400));
+    }
+
+    // Find seller
+    const seller = await Seller.findById(id);
+
+    if (!seller) {
+      return next(new AppError('Seller not found', 404));
+    }
+
+    // Update bank details
+    seller.bankDetails = {
+      ...seller.bankDetails,
+      ...bankDetails
+    };
+
+    // If cancelled cheque status is being updated, log the action
+    if (bankDetails.cancelledCheque && bankDetails.cancelledCheque.status) {
+      logger.info(`Admin ${req.user.id} updated cancelled cheque status to ${bankDetails.cancelledCheque.status} for seller ${id}`);
+    }
+
+    await seller.save();
+
+    // Invalidate seller cache
+    try {
+      invalidateCachePattern(`seller:${id}:*`);
+
+      // Get Socket.IO instance and broadcast update
+      const io = getIO();
+
+      // Emit to admin dashboard for real-time updates
+      io.to('admin-dashboard').emit('seller:bank-details:updated', {
+        sellerId: id,
+        bankDetails: seller.bankDetails,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      });
+
+      // Emit to admin-seller-specific room for admins who are subscribed to this seller
+      io.to(`admin-seller-${id}`).emit('seller:bank-details:updated', {
+        bankDetails: seller.bankDetails
+      });
+
+      logger.info(`Broadcasted seller bank details update for ${id}`);
+    } catch (error) {
+      logger.warn(`Failed to broadcast seller bank details update: ${error.message}`);
+      // Don't fail the request if broadcasting fails
+    }
+
+    // Log the bank details update
+    logger.info(`Admin ${req.user.id} updated bank details for seller ${id}`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        seller: {
+          id: seller._id,
+          name: seller.name,
+          email: seller.email,
+          bankDetails: seller.bankDetails
+        }
+      },
+      message: 'Bank details updated successfully'
+    });
+  } catch (error) {
+    logger.error(`Error in updateSellerBankDetails: ${error.message}`);
+    next(new AppError('Failed to update seller bank details', 500));
   }
 };
 
@@ -969,6 +1145,102 @@ export const removeSellerRateCardOverride = async (req, res, next) => {
   } catch (error) {
     logger.error(`Error in removeSellerRateCardOverride: ${error.message}`);
     next(new AppError('Failed to remove seller rate card override', 500));
+  }
+};
+
+/**
+ * Update seller rate band assignment
+ * @route PATCH /api/v1/admin/users/sellers/:id/rate-band
+ * @access Private (Admin only)
+ */
+export const updateSellerRateBand = async (req, res, next) => {
+  try {
+    const { id: sellerId } = req.params;
+    const { rateBand, paymentType, creditLimit, creditPeriod } = req.body;
+
+    // Verify seller exists
+    const seller = await Seller.findById(sellerId);
+    if (!seller) {
+      return next(new AppError('Seller not found', 404));
+    }
+
+    // Update rate band and payment settings
+    const updates = {};
+    if (rateBand !== undefined) {
+      updates.rateBand = rateBand === 'RBX1' ? null : rateBand; // null means default RBX1
+    }
+    if (paymentType !== undefined) {
+      updates.paymentType = paymentType;
+    }
+    if (creditLimit !== undefined) {
+      updates.creditLimit = creditLimit;
+    }
+    if (creditPeriod !== undefined) {
+      updates.creditPeriod = creditPeriod;
+    }
+
+    // Apply updates
+    Object.assign(seller, updates);
+    await seller.save();
+
+    // Log the rate band update
+    logger.info(`Admin ${req.user.id} updated seller ${sellerId} rate band to ${rateBand || 'RBX1 (default)'}`);
+
+    // Clear any cached seller data
+    try {
+      const { deleteCache } = await import('../../../utils/cache.js');
+      await deleteCache(`seller:${sellerId}:profile`);
+      await deleteCache(`seller_profile:${sellerId}`);
+      console.log(`🗑️ Cleared seller profile cache for ${sellerId}`);
+    } catch (cacheError) {
+      console.warn(`⚠️ Failed to clear cache: ${cacheError.message}`);
+    }
+
+    // Emit real-time update for seller profile refresh
+    try {
+      const { getIO } = await import('../../../utils/socketio.js');
+      const io = getIO();
+
+      // Emit to seller-specific room to trigger profile refresh
+      io.to(`seller:${sellerId}`).emit('profile:updated', {
+        message: 'Rate band updated by admin',
+        rateBand: rateBand || 'RBX1',
+        paymentSettings: { paymentType, creditLimit, creditPeriod },
+        timestamp: new Date()
+      });
+
+      // Emit to admin dashboard
+      io.to('admin-dashboard').emit('seller:rate-band:updated', {
+        sellerId: sellerId,
+        rateBand: rateBand || 'RBX1',
+        updatedBy: req.user.id,
+        timestamp: new Date()
+      });
+
+      console.log(`📡 Emitted real-time rate band updates for seller ${sellerId}`);
+    } catch (socketError) {
+      console.warn(`⚠️ Failed to emit real-time updates: ${socketError.message}`);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        seller: {
+          id: seller._id,
+          name: seller.name,
+          email: seller.email,
+          rateBand: seller.rateBand || 'RBX1',
+          paymentType: seller.paymentType,
+          creditLimit: seller.creditLimit,
+          creditPeriod: seller.creditPeriod
+        }
+      },
+      message: `Rate band updated to ${rateBand || 'RBX1 (default)'} successfully`
+    });
+
+  } catch (error) {
+    logger.error(`Error in updateSellerRateBand: ${error.message}`);
+    next(new AppError('Failed to update seller rate band', 500));
   }
 };
 

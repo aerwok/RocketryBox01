@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import { calculateRateSchema } from '../validators/ratecard.validator.js';
 import {
@@ -13,7 +13,7 @@ import {
 const router = express.Router();
 
 // All routes require seller authentication
-router.use(protect);
+router.use(authenticateSeller);
 
 // Get available rate cards for seller
 router.get('/', getSellerRateCard);

@@ -11,10 +11,11 @@ import { Input } from "@/components/ui/input";
 import { BankDetailsInput, bankDetailsSchema } from "@/lib/validations/admin-user";
 import { ServiceFactory } from "@/services/service-factory";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Upload } from "lucide-react";
-import { useEffect } from "react";
+import { Check, Eye, FileIcon, Upload, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
+import { toast } from "sonner";
 
 interface AdminBankDetailsProps {
   onSave: (message?: string) => void;
@@ -22,6 +23,10 @@ interface AdminBankDetailsProps {
 
 const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
   const { id } = useParams();
+  const [showChequeUpload, setShowChequeUpload] = useState(false);
+  const [existingCheque, setExistingCheque] = useState<{ url: string; status: string } | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [mongoId, setMongoId] = useState<string | null>(null); // Store the MongoDB ObjectId
 
   const form = useForm<BankDetailsInput>({
     resolver: zodResolver(bankDetailsSchema),
@@ -63,6 +68,15 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
 
           console.log('🏦 Extracted seller data:', sellerData);
 
+          // Extract and store the MongoDB ObjectId
+          const sellerId = sellerData._id || sellerData.id;
+          if (sellerId) {
+            setMongoId(sellerId);
+            console.log('🆔 Extracted MongoDB ObjectId:', sellerId);
+          } else {
+            console.error('❌ No MongoDB ObjectId found in seller data');
+          }
+
           if (sellerData && sellerData.bankDetails) {
             console.log('💳 Found bankDetails:', sellerData.bankDetails);
 
@@ -81,6 +95,16 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
 
               console.log('📝 Bank form data to populate:', formData);
               form.reset(formData);
+
+              // Check for existing cancelled cheque
+              if (bankAccount.cancelledCheque?.url) {
+                setExistingCheque({
+                  url: bankAccount.cancelledCheque.url,
+                  status: bankAccount.cancelledCheque.status || 'pending'
+                });
+                console.log('📄 Found existing cancelled cheque:', bankAccount.cancelledCheque);
+              }
+
               console.log('✅ Bank form populated successfully');
             } else {
               console.warn('⚠️ No valid bank account found');
@@ -91,7 +115,7 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
         } else {
           console.error('❌ API request failed or no data:', response);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Error fetching bank details:', error);
 
         // Try to extract more details from the error
@@ -103,34 +127,98 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
     fetchBankDetails();
   }, [id, form]);
 
-  const onSubmit = async (data: BankDetailsInput) => {
-    if (!id) return;
-    try {
-      console.log('💾 Saving bank details:', data);
+  const handleViewCheque = async () => {
+    if (!existingCheque?.url) return;
 
-      // Create bank details in the format expected by the seller schema (single object)
-      const bankDetailsUpdate = {
+    try {
+      // If it's already a full URL, open it directly
+      if (existingCheque.url.startsWith('http')) {
+        window.open(existingCheque.url, '_blank');
+      } else {
+        // If it's a relative path, we might need to get a signed URL
+        // For now, try to construct the full URL
+        const fullUrl = existingCheque.url.startsWith('/')
+          ? `${window.location.origin}${existingCheque.url}`
+          : existingCheque.url;
+        window.open(fullUrl, '_blank');
+      }
+    } catch (error: any) {
+      console.error('Error viewing cheque:', error);
+      toast.error('Failed to open document');
+    }
+  };
+
+  const handleVerifyCheque = async (status: 'verified' | 'rejected') => {
+    if (!mongoId || !existingCheque) {
+      console.error('❌ Missing MongoDB ObjectId or cancelled cheque data');
+      toast.error('Unable to verify: Missing required data');
+      return;
+    }
+
+    try {
+      setIsVerifying(true);
+
+      console.log('🔍 Using MongoDB ObjectId for verification:', mongoId);
+
+      // Simple payload - just update the cancelled cheque status
+      const payload = {
         bankDetails: {
-          accountType: "Current Account", // Default for business accounts
-          bankName: data.bankName,
-          accountNumber: data.accountNumber,
-          ifscCode: data.ifscCode,
-          accountHolderName: data.accountName,
-          branchName: data.branchName,
           cancelledCheque: {
-            status: 'verified',
-            url: '/documents/admin-updated-bank-details.pdf'
+            url: existingCheque.url,
+            status: status
           }
         }
       };
 
-      console.log('📝 Bank update payload:', bankDetailsUpdate);
+      await ServiceFactory.admin.updateSellerBankDetails(mongoId, payload);
 
-      await ServiceFactory.admin.updateTeamMember(id, bankDetailsUpdate);
-      console.log('✅ Bank details saved successfully');
+      setExistingCheque(prev => prev ? { ...prev, status } : null);
+
+      const message = status === 'verified'
+        ? 'Cancelled cheque verified successfully'
+        : 'Cancelled cheque rejected';
+
+      toast.success(message);
+      onSave(message);
+
+    } catch (error: any) {
+      console.error('❌ Verification error:', error);
+      toast.error(`Failed to ${status === 'verified' ? 'verify' : 'reject'} cancelled cheque. Please try again.`);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const onSubmit = async (data: BankDetailsInput) => {
+    if (!mongoId) {
+      console.error('❌ Missing MongoDB ObjectId for bank details update');
+      onSave('Unable to save: Missing required data');
+      return;
+    }
+
+    try {
+      console.log('🔍 Using MongoDB ObjectId for bank details update:', mongoId);
+
+      // Create bank details payload in the format expected by the new endpoint
+      const bankDetailsPayload = {
+        accountType: "Current Account", // Default for business accounts
+        bankName: data.bankName,
+        accountNumber: data.accountNumber,
+        ifscCode: data.ifscCode,
+        accountHolderName: data.accountName,
+        branchName: data.branchName,
+        // Preserve existing cancelled cheque if no new one is uploaded
+        cancelledCheque: existingCheque || {
+          status: 'pending',
+          url: '/documents/admin-updated-bank-details.pdf'
+        }
+      };
+
+      // Use the new proper admin endpoint
+      await ServiceFactory.admin.updateSellerBankDetails(mongoId, bankDetailsPayload);
       onSave("Bank details saved successfully");
     } catch (err: any) {
-      console.error('❌ Failed to save bank details:', err);
+      console.error('❌ Bank details save error:', err);
       onSave(`Failed to save bank details: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
@@ -246,30 +334,108 @@ const AdminBankDetails = ({ onSave }: AdminBankDetailsProps) => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    Cancelled Cheque Image
+                    Cancelled Cheque Document
                   </FormLabel>
                   <FormControl>
-                    <div className="flex items-center justify-center w-full">
-                      <label
-                        htmlFor="dropzone-file"
-                        className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-[#F8F7FF] hover:bg-gray-100"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                          <Upload className="w-8 h-8 mb-2 text-gray-500" />
-                          <p className="mb-2 text-sm text-gray-500">
-                            <span className="font-semibold">Click to upload</span> or drag and drop
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            JPG, PNG or PDF (MAX. 2MB)
-                          </p>
+                    {existingCheque && !showChequeUpload ? (
+                      <div className="space-y-2">
+                        {/* Display existing document */}
+                        <div className="flex items-center gap-3 p-3 border rounded-md bg-[#F8F7FF]">
+                          <div className="flex items-center gap-2 flex-1">
+                            <FileIcon className="h-8 w-8 text-blue-500" />
+                            <div>
+                              <p className="text-sm font-medium">Cancelled Cheque</p>
+                              <p className="text-xs text-gray-500">
+                                Status: <span className={`font-medium ${existingCheque.status === 'verified' ? 'text-green-600' :
+                                  existingCheque.status === 'pending' ? 'text-yellow-600' :
+                                    'text-red-600'
+                                  }`}>
+                                  {existingCheque.status}
+                                </span>
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={handleViewCheque}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              View
+                            </Button>
+                            {existingCheque.status === 'pending' && (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                  onClick={() => handleVerifyCheque('verified')}
+                                  disabled={isVerifying}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Verify
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-600 hover:bg-red-50"
+                                  onClick={() => handleVerifyCheque('rejected')}
+                                  disabled={isVerifying}
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowChequeUpload(true)}
+                            >
+                              Change
+                            </Button>
+                          </div>
                         </div>
-                        <input id="dropzone-file" type="file" className="hidden" onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            field.onChange(e.target.files[0]);
-                          }
-                        }} />
-                      </label>
-                    </div>
+                        {existingCheque.status === 'verified' && (
+                          <div className="text-xs text-green-600 font-medium">
+                            ✅ Document verified by admin
+                          </div>
+                        )}
+                        {existingCheque.status === 'rejected' && (
+                          <div className="text-xs text-red-600 font-medium">
+                            ❌ Document rejected by admin
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center w-full">
+                        <label
+                          htmlFor="dropzone-file"
+                          className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-[#F8F7FF] hover:bg-gray-100"
+                        >
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-2 text-gray-500" />
+                            <p className="mb-2 text-sm text-gray-500">
+                              <span className="font-semibold">Click to upload</span> or drag and drop
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              JPG, PNG or PDF (MAX. 2MB)
+                            </p>
+                          </div>
+                          <input id="dropzone-file" type="file" className="hidden" onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              field.onChange(e.target.files[0]);
+                              setShowChequeUpload(false);
+                            }
+                          }} />
+                        </label>
+                      </div>
+                    )}
                   </FormControl>
                   <FormMessage />
                 </FormItem>

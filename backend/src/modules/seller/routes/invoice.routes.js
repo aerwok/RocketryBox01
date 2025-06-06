@@ -1,5 +1,5 @@
 import express from 'express';
-import { protect } from '../../../middleware/auth.js';
+import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import {
   createInvoice,
@@ -21,7 +21,7 @@ import {
 const router = express.Router();
 
 // Apply auth middleware to all routes
-router.use(protect);
+router.use(authenticateSeller);
 
 // Invoice CRUD routes
 router.post('/', validationHandler(createInvoiceSchema), createInvoice);
