@@ -1,7 +1,7 @@
-import CODRemittance from '../models/codRemittance.model.js';
-import Seller from '../models/seller.model.js';
-import Ledger from '../models/ledger.model.js';
 import { AppError } from '../../../middleware/errorHandler.js';
+import CODRemittance from '../models/codRemittance.model.js';
+import Ledger from '../models/ledger.model.js';
+import Seller from '../models/seller.model.js';
 
 // Seller: List COD Remittances
 export const listCODRemittances = async (req, res, next) => {
@@ -22,10 +22,23 @@ export const listCODRemittances = async (req, res, next) => {
         .limit(parseInt(limit)),
       CODRemittance.countDocuments(query)
     ]);
+
+    // Transform data to match frontend expectations
+    const formattedRemittances = remittances.map(r => ({
+      remittanceId: r.remittanceId || r._id.toString(),
+      status: r.status || 'Pending',
+      paymentDate: r.paymentDate ? new Date(r.paymentDate).toLocaleDateString() : new Date(r.createdAt).toLocaleDateString(),
+      remittanceAmount: `₹${parseFloat(r.remittanceAmount || 0).toFixed(2)}`,
+      freightDeduction: `₹${parseFloat(r.freightDeduction || 0).toFixed(2)}`,
+      convenienceFee: `₹${parseFloat(r.convenienceFee || 0).toFixed(2)}`,
+      total: `₹${parseFloat(r.total || 0).toFixed(2)}`,
+      paymentRef: r.paymentRef || 'N/A'
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        remittances,
+        remittances: formattedRemittances,
         pagination: {
           total,
           page: parseInt(page),
@@ -122,4 +135,44 @@ export const updateCODRemittance = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};
+
+// Seller: Get COD Summary
+export const getCODSummary = async (req, res, next) => {
+  try {
+    const sellerId = req.user.id;
+
+    // Get all remittances for this seller
+    const remittances = await CODRemittance.find({ seller: sellerId });
+
+    // Calculate summary statistics
+    const totalCOD = remittances.reduce((sum, r) => sum + parseFloat(r.remittanceAmount || 0), 0);
+    const completedRemittances = remittances.filter(r => r.status === 'Completed');
+    const remittedTillDate = completedRemittances.reduce((sum, r) => sum + parseFloat(r.total || 0), 0);
+    const pendingRemittances = remittances.filter(r => r.status === 'Pending');
+    const totalRemittanceDue = pendingRemittances.reduce((sum, r) => sum + parseFloat(r.total || 0), 0);
+
+    // Get last completed remittance
+    const lastRemittance = completedRemittances
+      .sort((a, b) => new Date(b.paymentDate || b.createdAt) - new Date(a.paymentDate || a.createdAt))[0];
+    const lastRemittanceAmount = lastRemittance ? parseFloat(lastRemittance.total || 0) : 0;
+
+    // Estimate next remittance (this could be enhanced with actual business logic)
+    const nextRemittance = totalRemittanceDue > 0 ? 'Pending' : 'N/A';
+
+    const summary = {
+      totalCOD: `₹${totalCOD.toFixed(2)}`,
+      remittedTillDate: `₹${remittedTillDate.toFixed(2)}`,
+      lastRemittance: `₹${lastRemittanceAmount.toFixed(2)}`,
+      totalRemittanceDue: `₹${totalRemittanceDue.toFixed(2)}`,
+      nextRemittance
+    };
+
+    res.status(200).json({
+      success: true,
+      data: summary
+    });
+  } catch (error) {
+    next(error);
+  }
+};

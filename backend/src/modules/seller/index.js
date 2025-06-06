@@ -74,7 +74,7 @@ router.use('/bulk-orders', authenticateSeller, requireDocumentUpload, bulkOrders
 router.use('/wallet', authenticateSeller, requireBasicProfile, walletRoutes);
 router.use('/invoices', authenticateSeller, requireDocumentUpload, invoiceRoutes);
 router.use('/ledger', authenticateSeller, requireDocumentUpload, ledgerRoutes);
-router.use('/cod-remittance', authenticateSeller, requireDocumentUpload, codRemittanceRoutes);
+router.use('/cod', authenticateSeller, requireDocumentUpload, codRemittanceRoutes);
 
 // Rate Card management - REQUIRES AUTHENTICATION + ALL DOCUMENTS
 router.use('/rate-card', authenticateSeller, requireDocumentUpload, rateCardRoutes);
