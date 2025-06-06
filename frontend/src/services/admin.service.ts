@@ -1,12 +1,12 @@
-import { ApiService } from './api.service';
 import { toast } from 'sonner';
-import { ApiResponse, Admin, Order, UserRole, UserStatus } from '../types/api';
+import { Admin, ApiResponse, Order, UserRole, UserStatus } from '../types/api';
+import { ApiService } from './api.service';
 
 export class AdminService {
   private apiService: ApiService;
 
   constructor() {
-    this.apiService = new ApiService();
+    this.apiService = ApiService.getInstance();
   }
 
   // User Management
@@ -94,6 +94,7 @@ export class AdminService {
     sortOrder?: 'asc' | 'desc';
     page?: number;
     limit?: number;
+    type?: 'seller' | 'customer' | 'all';
   }): Promise<ApiResponse<{ data: Order[]; pagination: any }>> {
     try {
       const queryParams: Record<string, string> = {};
@@ -113,11 +114,16 @@ export class AdminService {
         if (params.page) queryParams.page = params.page.toString();
         if (params.limit) queryParams.limit = params.limit.toString();
       }
+      console.log('AdminService: Making API call to /admin/orders with params:', queryParams);
       const response = await this.apiService.get<ApiResponse<{ data: Order[]; pagination: any }>>('/admin/orders', queryParams);
+      console.log('AdminService: Raw API response:', response);
+      console.log('AdminService: Returning response.data:', response.data);
       return response.data;
-    } catch (error) {
-      toast.error('Failed to fetch orders');
-      throw error;
+    } catch (error: any) {
+      console.error('AdminService.getOrders error:', error);
+      const errorMessage = error.message || error.error || 'Failed to fetch orders';
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
@@ -155,15 +161,35 @@ export class AdminService {
     from?: string;
     to?: string;
     sellerId?: string;
-  }): Promise<ApiResponse<Record<string, number>>> {
+    type?: 'seller' | 'customer' | 'all';
+  }): Promise<ApiResponse<{
+    total: number;
+    byStatus: Record<string, number>;
+    byPaymentType: Record<string, number>;
+    byDate: any[];
+    avgOrderValue: number;
+    today: number;
+    revenue: number;
+    todayRevenue: number;
+  }>> {
     try {
       const queryParams: Record<string, string> = {};
       if (params) {
         if (params.from) queryParams.from = params.from;
         if (params.to) queryParams.to = params.to;
         if (params.sellerId) queryParams.sellerId = params.sellerId;
+        if (params.type) queryParams.type = params.type;
       }
-      const response = await this.apiService.get<ApiResponse<Record<string, number>>>('/admin/orders/status-counts', queryParams);
+      const response = await this.apiService.get<ApiResponse<{
+        total: number;
+        byStatus: Record<string, number>;
+        byPaymentType: Record<string, number>;
+        byDate: any[];
+        avgOrderValue: number;
+        today: number;
+        revenue: number;
+        todayRevenue: number;
+      }>>('/admin/orders/stats', queryParams);
       return response.data;
     } catch (error) {
       toast.error('Failed to fetch order status counts');
@@ -230,4 +256,4 @@ export class AdminService {
       throw error;
     }
   }
-} 
+}
