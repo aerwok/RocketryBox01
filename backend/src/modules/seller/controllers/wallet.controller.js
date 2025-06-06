@@ -1,5 +1,5 @@
 import xlsx from 'xlsx';
-import { checkDocumentUploadStatus } from '../../../middleware/documentVerification.js';
+import { getDocumentUploadStatus } from '../../../middleware/documentVerification.js';
 import { AppError } from '../../../middleware/errorHandler.js';
 import razorpayService from '../../../services/razorpay.service.js';
 import Seller from '../models/seller.model.js';
@@ -267,24 +267,25 @@ export const initiateRecharge = async (req, res, next) => {
     }
 
     // PROGRESSIVE ACCESS: Check document completion for recharge operations
-    const documentStatus = checkDocumentUploadStatus(seller);
-    if (!documentStatus.isComplete) {
+    const documentStatus = getDocumentUploadStatus(seller);
+    if (!documentStatus.documentsUploaded || !documentStatus.adminVerified) {
       return res.status(403).json({
         success: false,
         error: 'Document verification required',
-        message: 'Please complete document upload to enable wallet recharge functionality',
+        message: 'Please complete document upload and admin verification to enable wallet recharge functionality',
         data: {
           completionPercentage: documentStatus.completionPercentage,
-          uploaded: documentStatus.uploaded,
-          totalRequired: documentStatus.totalRequired,
+          documentsUploaded: documentStatus.documentsUploaded,
+          adminVerified: documentStatus.adminVerified,
+          uploadedDocuments: documentStatus.uploadedDocuments,
           missingDocuments: documentStatus.missingDocuments,
-          bankDocumentMissing: documentStatus.bankDocumentMissing,
+          status: documentStatus.status,
           requiredActions: [
             ...documentStatus.missingDocuments.map(doc => `Upload ${doc.toUpperCase()} document`),
-            ...(documentStatus.bankDocumentMissing ? ['Upload cancelled cheque'] : [])
+            ...(documentStatus.documentsUploaded && !documentStatus.adminVerified ? ['Wait for admin verification'] : [])
           ],
           nextSteps: [
-            'Upload all required documents (GST, PAN, Aadhaar, Bank details)',
+            'Upload all required documents (GST, PAN, Aadhaar)',
             'Admin team will verify your documents',
             'Wallet recharge will be enabled after verification'
           ]
@@ -361,8 +362,8 @@ export const verifyRecharge = async (req, res, next) => {
     }
 
     // PROGRESSIVE ACCESS: Double-check document completion during verification
-    const documentStatus = checkDocumentUploadStatus(seller);
-    if (!documentStatus.isComplete) {
+    const documentStatus = getDocumentUploadStatus(seller);
+    if (!documentStatus.documentsUploaded || !documentStatus.adminVerified) {
       console.log('[ERROR] Document verification incomplete during payment verification');
       throw new AppError('Document verification required to complete wallet recharge', 403);
     }
