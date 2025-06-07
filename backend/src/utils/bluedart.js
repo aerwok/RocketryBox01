@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { logger } from './logger.js';
 import { BLUEDART_CONFIG } from '../config/bluedart.config.js';
+import { logger } from './logger.js';
 
 /**
  * Professional BlueDart REST API Integration
@@ -24,7 +24,7 @@ const getAuthToken = async () => {
     }
 
     logger.info('Generating new BlueDart JWT token using official API spec');
-    
+
     // Validate configuration
     if (!BLUEDART_CONFIG.LICENSE_KEY || !BLUEDART_CONFIG.USER || !BLUEDART_CONFIG.CONSUMER_KEY || !BLUEDART_CONFIG.CONSUMER_SECRET) {
       throw new Error('BlueDart API credentials not configured properly. Need USER, LICENSE_KEY, CONSUMER_KEY, and CONSUMER_SECRET');
@@ -33,7 +33,7 @@ const getAuthToken = async () => {
     // Official BlueDart JWT Generation API (based on generateJWT_0.yaml)
     // GET /v1/login with ClientID and clientSecret headers
     const jwtUrl = `${BLUEDART_CONFIG.API_URL}/in/transportation/token/v1/login`;
-    
+
     logger.info('BlueDart Official JWT Authentication Request:', {
       url: jwtUrl,
       clientId: BLUEDART_CONFIG.CONSUMER_KEY.substring(0, 8) + '...',
@@ -80,10 +80,10 @@ const getAuthToken = async () => {
       // If official API fails, try fallback methods
       if (officialError.response?.status === 401) {
         logger.info('Official API returned 401, trying fallback authentication methods');
-        
+
         // Fallback Method 1: Profile-based authentication
         logger.info('Attempting profile-based authentication fallback');
-        
+
         const profilePayload = {
           profile: {
             Api_type: BLUEDART_CONFIG.API_TYPE,
@@ -105,9 +105,9 @@ const getAuthToken = async () => {
             timeout: BLUEDART_CONFIG.REQUEST_TIMEOUT
           });
 
-          const fallbackToken = profileResponse.data?.JWTToken || 
-                                profileResponse.data?.token || 
-                                profileResponse.data?.access_token;
+          const fallbackToken = profileResponse.data?.JWTToken ||
+            profileResponse.data?.token ||
+            profileResponse.data?.access_token;
 
           if (fallbackToken) {
             cachedToken = fallbackToken;
@@ -122,7 +122,7 @@ const getAuthToken = async () => {
         // Fallback Method 2: Generate manual token
         logger.info('Generating manual token as final fallback');
         const manualToken = generateManualToken();
-        
+
         if (manualToken) {
           cachedToken = manualToken;
           tokenExpiry = new Date(Date.now() + BLUEDART_CONFIG.TOKEN_EXPIRY);
@@ -138,13 +138,13 @@ const getAuthToken = async () => {
     // Clear cached token on error
     cachedToken = null;
     tokenExpiry = null;
-    
+
     logger.error('BlueDart authentication failed:', {
       message: error.message,
       status: error.response?.status,
       data: error.response?.data
     });
-    
+
     throw new Error(`BlueDart API authentication failed: ${error.message}`);
   }
 };
@@ -177,14 +177,14 @@ const generateManualToken = () => {
     // Create JWT-like token (simplified version)
     const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
     const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
-    
+
     // Simple signature using consumer secret
     const signature = Buffer.from(
       `${encodedHeader}.${encodedPayload}.${BLUEDART_CONFIG.CONSUMER_SECRET}`
     ).toString('base64url');
 
     const token = `${encodedHeader}.${encodedPayload}.${signature}`;
-    
+
     logger.info('Manual JWT token generated successfully');
     return token;
 
@@ -200,7 +200,7 @@ const generateManualToken = () => {
  */
 const createBlueDartApiClient = async () => {
   const token = await getAuthToken();
-  
+
   return axios.create({
     baseURL: BLUEDART_CONFIG.API_URL,
     timeout: BLUEDART_CONFIG.REQUEST_TIMEOUT,
@@ -274,7 +274,7 @@ export const registerPickup = async (pickupDetails, partnerDetails) => {
     // Process successful response
     if (response.data && (response.data.success || response.data.Status === 'Success')) {
       const pickupData = response.data.data || response.data.Response || response.data;
-      
+
       return {
         success: true,
         pickupRequestNumber: pickupData.PickupRequestNumber || pickupData.RequestNumber,
@@ -289,7 +289,7 @@ export const registerPickup = async (pickupDetails, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`BlueDart REST API pickup registration failed: ${error.message}`);
-    
+
     return {
       success: false,
       error: error.message,
@@ -422,30 +422,26 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
         }
       };
     } else {
-      // If E-Way Bill generation fails, fall back to manual booking
-      logger.warn('E-Way Bill generation failed, falling back to manual booking', {
+      // If E-Way Bill generation fails, return error
+      logger.warn('E-Way Bill generation failed', {
         error: eWayBillResponse.error,
         apiError: eWayBillResponse.apiError
       });
 
-      // Generate temporary reference for manual processing
-      const tempReference = `BD${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-      
       return {
-        success: true,
-        awb: tempReference,
-        trackingUrl: `https://www.bluedart.com/tracking`,
+        success: false,
+        error: `BlueDart E-Way Bill API failed: ${eWayBillResponse.error}`,
         courierName: 'Blue Dart Express',
-        bookingType: 'MANUAL_REQUIRED',
+        bookingType: 'API_ERROR',
         apiError: eWayBillResponse.error,
         instructions: {
-          step1: 'Visit BlueDart business portal or call 1860 233 1234',
-          step2: 'Provide shipment details for manual E-Way Bill generation',
-          step3: 'Update system with actual AWB number received',
-          step4: 'Contact support if API issues persist'
+          step1: 'Contact BlueDart support for manual booking',
+          step2: 'Provide shipment details manually',
+          step3: 'Try again later when API is stable',
+          step4: 'Consider using alternative courier partners'
         },
-        tempReference: tempReference,
-        message: 'E-Way Bill API failed. Manual booking required.',
+        availableAlternatives: ['Delhivery', 'Ecom Express', 'Ekart', 'XpressBees'],
+        message: 'BlueDart E-Way Bill API failed. Please try alternative couriers.',
         timestamp: new Date().toISOString()
       };
     }
@@ -455,25 +451,21 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
       error: error.message,
       stack: error.stack
     });
-    
-    // Generate temporary reference for manual processing
-    const tempReference = `BD${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-    
+
     return {
-      success: true,
-      awb: tempReference,
-      trackingUrl: `https://www.bluedart.com/tracking`,
+      success: false,
+      error: `BlueDart API booking failed: ${error.message}`,
       courierName: 'Blue Dart Express',
-      bookingType: 'MANUAL_REQUIRED',
+      bookingType: 'API_ERROR',
       apiError: error.message,
       instructions: {
-        step1: 'Visit BlueDart business portal or call 1860 233 1234',
-        step2: 'Provide shipment details for manual booking',
-        step3: 'Update system with actual AWB number received',
-        step4: 'Contact support if API issues persist'
+        step1: 'Contact BlueDart support for manual booking',
+        step2: 'Provide shipment details manually',
+        step3: 'Try again later when API is stable',
+        step4: 'Consider using alternative courier partners'
       },
-      tempReference: tempReference,
-      message: 'API booking failed. Manual booking required.',
+      availableAlternatives: ['Delhivery', 'Ecom Express', 'Ekart', 'XpressBees'],
+      message: 'BlueDart API booking failed. Please try alternative couriers.',
       timestamp: new Date().toISOString()
     };
   }
@@ -529,29 +521,29 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
     if (response.status === 200 && response.data) {
       // Parse XML response - even empty <ShipmentData/> means API is working
       const isXmlResponse = typeof response.data === 'string' && response.data.includes('<?xml');
-      
+
       if (isXmlResponse) {
         // Check if shipment data exists
-        const hasShipmentData = response.data.includes('<ShipmentData>') && 
-                               !response.data.includes('<ShipmentData/>');
+        const hasShipmentData = response.data.includes('<ShipmentData>') &&
+          !response.data.includes('<ShipmentData/>');
 
         if (hasShipmentData) {
           // Parse actual tracking data
-      return {
-        success: true,
-        trackingNumber: trackingNumber,
+          return {
+            success: true,
+            trackingNumber: trackingNumber,
             status: 'In Transit', // Would parse from XML
             statusDetail: 'Shipment tracking data available',
             currentLocation: 'Processing', // Would parse from XML
             trackingHistory: [], // Would parse from XML
-        courierName: 'Blue Dart Express',
-        trackingType: 'API_AUTOMATED',
+            courierName: 'Blue Dart Express',
+            trackingType: 'API_AUTOMATED',
             apiEndpoint: 'BD-Tracking Of Shipment',
             trackingUrl: BLUEDART_CONFIG.getTrackingUrl(trackingNumber),
             rawResponse: response.data,
-        lastUpdated: new Date().toISOString()
-      };
-    } else {
+            lastUpdated: new Date().toISOString()
+          };
+        } else {
           // Empty shipment data - AWB not found or invalid
           return {
             success: true,
@@ -585,7 +577,7 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
       statusText: error.response?.statusText,
       data: error.response?.data
     });
-    
+
     // Return fallback response for manual tracking
     return {
       success: true,
@@ -649,7 +641,7 @@ export const findLocation = async (pincode, partnerDetails) => {
     // Process successful response
     if (response.data && response.status === 200) {
       const locationData = response.data;
-      
+
       // Check for error responses
       if (locationData['error-response']) {
         const errorInfo = locationData['error-response'][0];
@@ -689,7 +681,7 @@ export const findLocation = async (pincode, partnerDetails) => {
       data: error.response?.data,
       pincode
     });
-    
+
     // Return fallback response with basic serviceability check
     return {
       success: true, // Set to true to allow order processing to continue
@@ -728,10 +720,10 @@ export const findLocation = async (pincode, partnerDetails) => {
  */
 export const getServiceForProduct = async (pincode, productCode = 'A', subProductCode = 'P', partnerDetails) => {
   try {
-    logger.info('BlueDart Get Services for Product API request:', { 
-      pincode, 
-      productCode, 
-      subProductCode 
+    logger.info('BlueDart Get Services for Product API request:', {
+      pincode,
+      productCode,
+      subProductCode
     });
 
     // Create authenticated API client
@@ -771,7 +763,7 @@ export const getServiceForProduct = async (pincode, productCode = 'A', subProduc
     // Process successful response
     if (response.data && response.status === 200) {
       const serviceData = response.data;
-      
+
       // Check for error responses
       if (serviceData['error-response']) {
         const errorInfo = serviceData['error-response'][0];
@@ -809,7 +801,7 @@ export const getServiceForProduct = async (pincode, productCode = 'A', subProduc
       productCode,
       subProductCode
     });
-    
+
     // Return fallback response
     return {
       success: true, // Set to true to allow order processing to continue
@@ -847,10 +839,10 @@ export const getServiceForProduct = async (pincode, productCode = 'A', subProduc
  */
 export const getServiceForPincodeAndProduct = async (pincode, productCode = 'A', subProductCode = 'P', partnerDetails) => {
   try {
-    logger.info('BlueDart Get Services for Pincode and Product API request:', { 
-      pincode, 
-      productCode, 
-      subProductCode 
+    logger.info('BlueDart Get Services for Pincode and Product API request:', {
+      pincode,
+      productCode,
+      subProductCode
     });
 
     // Create authenticated API client
@@ -887,7 +879,7 @@ export const getServiceForPincodeAndProduct = async (pincode, productCode = 'A',
     // Process successful response
     if (response.data && response.status === 200) {
       const serviceData = response.data;
-      
+
       // Check for error responses
       if (serviceData['error-response']) {
         const errorInfo = serviceData['error-response'][0];
@@ -926,7 +918,7 @@ export const getServiceForPincodeAndProduct = async (pincode, productCode = 'A',
       productCode,
       subProductCode
     });
-    
+
     // Return fallback response
     return {
       success: true, // Set to true to allow order processing to continue
@@ -966,10 +958,10 @@ export const getServiceForPincodeAndProduct = async (pincode, productCode = 'A',
  */
 export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDate = null, remarks = "", partnerDetails) => {
   try {
-    logger.info('BlueDart Cancel Pickup API request:', { 
-      tokenNumber, 
-      pickupRegistrationDate, 
-      remarks 
+    logger.info('BlueDart Cancel Pickup API request:', {
+      tokenNumber,
+      pickupRegistrationDate,
+      remarks
     });
 
     // Create authenticated API client
@@ -978,8 +970,8 @@ export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDa
     // Handle date formatting - convert to BlueDart date format /Date(timestamp)/
     let formattedDate;
     if (pickupRegistrationDate) {
-      const date = pickupRegistrationDate instanceof Date 
-        ? pickupRegistrationDate 
+      const date = pickupRegistrationDate instanceof Date
+        ? pickupRegistrationDate
         : new Date(pickupRegistrationDate);
       formattedDate = `/Date(${date.getTime()})/`;
     } else {
@@ -1023,7 +1015,7 @@ export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDa
     // Process successful response
     if (response.data && response.status === 200) {
       const responseData = response.data;
-      
+
       // Check for error responses in BlueDart format
       if (responseData['error-response']) {
         const errorInfo = responseData['error-response'][0];
@@ -1034,11 +1026,11 @@ export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDa
 
       // Check for successful cancellation
       const cancelData = responseData.data || responseData.Response || responseData;
-      const isSuccess = responseData.IsError === false || 
-                       responseData.success === true ||
-                       responseData.Status === 'Success' ||
-                       cancelData.Status === 'Cancelled' ||
-                       cancelData.CancellationStatus === 'Success';
+      const isSuccess = responseData.IsError === false ||
+        responseData.success === true ||
+        responseData.Status === 'Success' ||
+        cancelData.Status === 'Cancelled' ||
+        cancelData.CancellationStatus === 'Success';
 
       if (isSuccess || !responseData.IsError) {
         return {
@@ -1065,7 +1057,7 @@ export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDa
       tokenNumber,
       pickupRegistrationDate
     });
-    
+
     // Return intelligent fallback for production continuity
     return {
       success: true, // Set to true to allow operations to continue
@@ -1096,11 +1088,11 @@ export const cancelPickupRegistration = async (tokenNumber, pickupRegistrationDa
  */
 export const cancelPickupByRequestNumber = async (pickupRequestNumber, partnerDetails) => {
   logger.info('Legacy cancel pickup by request number:', { pickupRequestNumber });
-  
+
   // Try to extract token number from pickup request number
   // This is a best-guess approach since we don't have the exact mapping
   let tokenNumber;
-  
+
   if (pickupRequestNumber && typeof pickupRequestNumber === 'string') {
     // Try to extract numeric part from pickup request number
     const numericPart = pickupRequestNumber.replace(/\D/g, '');
@@ -1108,12 +1100,12 @@ export const cancelPickupByRequestNumber = async (pickupRequestNumber, partnerDe
   } else {
     tokenNumber = 123456; // Default fallback
   }
-  
+
   logger.warn('Converting pickup request number to token number (best guess):', {
     original: pickupRequestNumber,
     extracted: tokenNumber
   });
-  
+
   // Call the main cancel function with extracted token
   return await cancelPickupRegistration(tokenNumber, null, `Legacy cancellation for: ${pickupRequestNumber}`, partnerDetails);
 };
@@ -1149,7 +1141,7 @@ export const downloadMasterData = async (masterType, partnerDetails) => {
     // Process successful response
     if (response.data && (response.data.success || response.data.Status === 'Success')) {
       const masterData = response.data.data || response.data.Response || response.data;
-      
+
       return {
         success: true,
         masterType: masterType,
@@ -1163,7 +1155,7 @@ export const downloadMasterData = async (masterType, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`BlueDart Master Download API failed: ${error.message}`);
-    
+
     return {
       success: false,
       masterType: masterType,
@@ -1304,13 +1296,13 @@ export const generateEWayBill = async (eWayBillDetails, partnerDetails) => {
     // Process successful response
     if (response.data && response.status === 200) {
       const eWayBillData = response.data;
-      
+
       // Handle different response structures
-      const isSuccess = eWayBillData.IsError === false || 
-                       eWayBillData.success === true ||
-                       eWayBillData.Status === 'Success' ||
-                       eWayBillData.AWBNumber ||
-                       eWayBillData.WayBillNumber;
+      const isSuccess = eWayBillData.IsError === false ||
+        eWayBillData.success === true ||
+        eWayBillData.Status === 'Success' ||
+        eWayBillData.AWBNumber ||
+        eWayBillData.WayBillNumber;
 
       if (isSuccess) {
         logger.info('BlueDart E-Way Bill generation successful:', {
@@ -1351,10 +1343,10 @@ export const generateEWayBill = async (eWayBillDetails, partnerDetails) => {
         };
       } else {
         // Handle API errors
-        const errorMessage = eWayBillData.ErrorMessage || 
-                            eWayBillData.message || 
-                            eWayBillData.error || 
-                            'E-Way Bill generation failed';
+        const errorMessage = eWayBillData.ErrorMessage ||
+          eWayBillData.message ||
+          eWayBillData.error ||
+          'E-Way Bill generation failed';
 
         logger.error('BlueDart E-Way Bill generation failed:', {
           isError: eWayBillData.IsError,
@@ -1418,15 +1410,15 @@ export const generateEWayBill = async (eWayBillDetails, partnerDetails) => {
  * Calculate transit time between source and destination using BlueDart Transit Time API
  * Updated to use the working endpoint found during testing
  * @param {string} sourcePincode - Source pincode
- * @param {string} destinationPincode - Destination pincode  
+ * @param {string} destinationPincode - Destination pincode
  * @param {Object} partnerDetails - Partner configuration from the database
  * @returns {Object} - Transit time information
  */
 export const calculateTransitTime = async (sourcePincode, destinationPincode, partnerDetails) => {
   try {
-    logger.info('BlueDart Transit Time API request:', { 
-      sourcePincode, 
-      destinationPincode 
+    logger.info('BlueDart Transit Time API request:', {
+      sourcePincode,
+      destinationPincode
     });
 
     // Create authenticated API client
@@ -1467,7 +1459,7 @@ export const calculateTransitTime = async (sourcePincode, destinationPincode, pa
     // Process successful response
     if (response.data && response.status === 200) {
       const transitData = response.data;
-      
+
       // Check if response contains valid transit time information
       if (transitData['error-response']) {
         const errorInfo = transitData['error-response'][0];
@@ -1484,7 +1476,7 @@ export const calculateTransitTime = async (sourcePincode, destinationPincode, pa
           }
         }
       }
-      
+
       // Check for valid transit time data
       if (transitData.ExpectedDateDelivery || transitData.ExpectedDeliveryDate || transitData.TransitDays) {
         return {
@@ -1525,11 +1517,11 @@ export const calculateTransitTime = async (sourcePincode, destinationPincode, pa
       sourcePincode,
       destinationPincode
     });
-    
+
     // Determine appropriate fallback based on error type
     let fallbackDays = '2-3';
     let errorType = 'api_error';
-    
+
     if (error.message.includes('InvalidOriginPincode') || error.message.includes('not serviceable')) {
       fallbackDays = '2-4'; // Slightly longer for non-serviceable areas
       errorType = 'pincode_not_serviceable';
@@ -1537,7 +1529,7 @@ export const calculateTransitTime = async (sourcePincode, destinationPincode, pa
       fallbackDays = '3-5'; // Longer for destination issues
       errorType = 'destination_not_serviceable';
     }
-    
+
     // Return intelligent fallback transit time
     return {
       success: true, // Set to true to allow order processing to continue
@@ -1578,8 +1570,8 @@ export const calculateTransitTime = async (sourcePincode, destinationPincode, pa
  */
 export const importWaybillData = async (waybillsArray, partnerDetails) => {
   try {
-    logger.info('BlueDart Import Waybill Data request:', { 
-      waybillCount: waybillsArray?.length 
+    logger.info('BlueDart Import Waybill Data request:', {
+      waybillCount: waybillsArray?.length
     });
 
     // Create authenticated API client
@@ -1686,7 +1678,7 @@ export const importWaybillData = async (waybillsArray, partnerDetails) => {
 
   } catch (error) {
     logger.error(`BlueDart Import Waybill Data failed: ${error.message}`);
-    
+
     return {
       success: false,
       waybillCount: waybillsArray?.length || 0,
@@ -1742,7 +1734,7 @@ export const cancelWaybill = async (awbNumber, partnerDetails) => {
 
   } catch (error) {
     logger.error(`BlueDart Cancel Waybill failed: ${error.message}`);
-    
+
     return {
       success: false,
       awbNumber: awbNumber,
@@ -1762,8 +1754,8 @@ export const cancelWaybill = async (awbNumber, partnerDetails) => {
  */
 export const updateEWaybill = async (updateDetailsArray, partnerDetails) => {
   try {
-    logger.info('BlueDart Update E-Waybill request:', { 
-      updateCount: updateDetailsArray?.length 
+    logger.info('BlueDart Update E-Waybill request:', {
+      updateCount: updateDetailsArray?.length
     });
 
     // Create authenticated API client
@@ -1870,7 +1862,7 @@ export const updateEWaybill = async (updateDetailsArray, partnerDetails) => {
 
   } catch (error) {
     logger.error(`BlueDart Update E-Waybill failed: ${error.message}`);
-    
+
     return {
       success: false,
       updateCount: updateDetailsArray?.length || 0,
@@ -1898,4 +1890,4 @@ export default {
   importWaybillData,
   cancelWaybill,
   updateEWaybill
-}; 
+};

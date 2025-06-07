@@ -79,16 +79,7 @@ interface OrderData {
   };
 }
 
-interface ExportHistory {
-  fileName: string;
-  startDate: string;
-  endDate: string;
-  filterApplied: string;
-  exportDate: string;
-  exportCount: string;
-  generatedBy: string;
-  status: string;
-}
+
 
 interface StatusButton {
   id: number;
@@ -98,7 +89,7 @@ interface StatusButton {
   status: string;
 }
 
-const EXPORT_HISTORY: ExportHistory[] = [];
+
 
 // Status buttons for order filtering
 const STATUS_BUTTONS: StatusButton[] = [
@@ -140,7 +131,7 @@ const AdminOrdersPage = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
-  const [exportHistoryOpen, setExportHistoryOpen] = useState(false);
+
   const [shippingModalOpen, setShippingModalOpen] = useState(false);
   const [selectedOrderForShipping, setSelectedOrderForShipping] = useState<string>("");
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -230,19 +221,37 @@ const AdminOrdersPage = () => {
         setOrders([]);
         setTotalItems(0);
         setTotalPages(0);
-      } else if (response && response.success) {
+      } else if (response && (response as any).success) {
         // Expected format: { success: true, data: { data: [...], pagination: {...} } }
-        setOrders(response.data?.data || []);
-        setTotalItems(response.data?.pagination?.total || 0);
-        setTotalPages(response.data?.pagination?.pages || 0);
-      } else if (response && response.data) {
+        const apiResponse = response as any;
+        const orders = apiResponse.data?.data || [];
+        // Transform Order[] to OrderData[] by adding missing properties
+        const transformedOrders: OrderData[] = orders.map((order: any) => ({
+          ...order,
+          createdAt: order.createdAt || order.date || new Date().toISOString(),
+          updatedAt: order.updatedAt || order.date || new Date().toISOString(),
+          orderType: (order.orderType || 'seller') as 'seller' | 'customer'
+        }));
+        setOrders(transformedOrders);
+        setTotalItems(apiResponse.data?.pagination?.total || 0);
+        setTotalPages(apiResponse.data?.pagination?.pages || 0);
+      } else if (response && (response as any).data) {
         // Alternative format: { data: [...], pagination: {...} }
-        setOrders(response.data || []);
-        setTotalItems(response.pagination?.total || 0);
-        setTotalPages(response.pagination?.pages || 0);
+        const apiResponse = response as any;
+        const orders = Array.isArray(apiResponse.data) ? apiResponse.data : [];
+        // Transform Order[] to OrderData[] by adding missing properties
+        const transformedOrders: OrderData[] = orders.map((order: any) => ({
+          ...order,
+          createdAt: order.createdAt || order.date || new Date().toISOString(),
+          updatedAt: order.updatedAt || order.date || new Date().toISOString(),
+          orderType: (order.orderType || 'seller') as 'seller' | 'customer'
+        }));
+        setOrders(transformedOrders);
+        setTotalItems(apiResponse.pagination?.total || 0);
+        setTotalPages(apiResponse.pagination?.pages || 0);
       } else {
         console.error('API Response Error:', response); // Debug log
-        throw new Error(response?.error || response?.message || 'Failed to fetch orders');
+        throw new Error((response as any)?.error || (response as any)?.message || 'Failed to fetch orders');
       }
     } catch (err: any) {
       console.error('Error fetching orders:', err);
@@ -413,7 +422,8 @@ const AdminOrdersPage = () => {
     setShippingModalOpen(true);
   };
 
-  const handleShipSelected = () => {
+  const handleShipSelected = (courier: string, warehouse: string, mode: string) => {
+    console.log('Shipping selected:', { courier, warehouse, mode, orderId: selectedOrderForShipping });
     toast.success("Order shipped successfully");
     setShippingModalOpen(false);
     setSelectedOrderForShipping("");
@@ -628,7 +638,7 @@ const AdminOrdersPage = () => {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => setExportHistoryOpen(true)}
+              onClick={handleExport}
             >
               <Download className="size-4" />
               Export
@@ -1030,8 +1040,8 @@ const AdminOrdersPage = () => {
                           <SelectValue placeholder="Select shipping mode" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="standard">Standard</SelectItem>
-                          <SelectItem value="express">Express</SelectItem>
+                          <SelectItem value="surface">Surface</SelectItem>
+                          <SelectItem value="air">Air</SelectItem>
                         </SelectContent>
                       </Select>
                     </FormControl>
@@ -1083,8 +1093,9 @@ const AdminOrdersPage = () => {
       <AdminShippingOptionsModal
         isOpen={shippingModalOpen}
         onClose={() => setShippingModalOpen(false)}
-        onShip={handleShipSelected}
-        orderId={selectedOrderForShipping}
+        onShipSelected={handleShipSelected}
+        orderNumber={selectedOrderForShipping}
+        weight={0.5}
       />
     </div>
   );

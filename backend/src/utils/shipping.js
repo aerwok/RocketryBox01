@@ -2,7 +2,6 @@ import ShippingPartner from '../modules/admin/models/shippingPartner.model.js';
 import * as bluedart from './bluedart.js';
 import { calculateRate } from './courierRates.js';
 import * as delhivery from './delhivery.js';
-import * as dtdc from './dtdc.js';
 import * as ecomexpress from './ecomexpress.js';
 import * as ekart from './ekart.js';
 import { logger } from './logger.js';
@@ -19,7 +18,7 @@ const RATE_CALCULATION_CONFIG = {
     'Delhivery': process.env.DELHIVERY_RATE_METHOD || 'DATABASE',     // Force Delhivery to use specific method
     'BlueDart': process.env.BLUEDART_RATE_METHOD || 'DATABASE',      // Can be changed to 'API' if you want live rates
     'Ecom Express': process.env.ECOMEXPRESS_RATE_METHOD || 'DATABASE',  // Can be changed to 'API' if you want live rates
-    'DTDC': process.env.DTDC_RATE_METHOD || 'DATABASE',
+
     'Ekart': process.env.EKART_RATE_METHOD || 'DATABASE',
     'Xpressbees': process.env.XPRESSBEES_RATE_METHOD || 'DATABASE'
   },
@@ -29,7 +28,7 @@ const RATE_CALCULATION_CONFIG = {
     'Delhivery': process.env.DELHIVERY_API_TYPE || 'B2C', // 'B2C' or 'B2B'
     'BlueDart': 'B2C',
     'Ecom Express': 'B2C',
-    'DTDC': 'B2C',
+
     'Ekart': 'B2C',
     'Xpressbees': 'B2C'
   }
@@ -44,8 +43,7 @@ const courierModules = {
   'Ecom Express': ecomexpress,
   DELHIVERY: delhivery,
   Delhivery: delhivery,
-  DTDC: dtdc,
-  Dtdc: dtdc,
+
   EKART: ekart,
   Ekart: ekart,
   'Ekart Logistics': ekart,
@@ -110,14 +108,107 @@ export const getPartnerDetails = async (courierCode) => {
     }
 
     // Find partner by name, case-insensitive
-    const partner = await ShippingPartner.findOne({
+    let partner = await ShippingPartner.findOne({
       name: { $regex: new RegExp(`^${courierCode}$`, 'i') },
       apiStatus: 'active' // Only use active partners
     }).lean();
 
+    // If partner not found, create default partner for testing
     if (!partner) {
-      logger.warn(`Shipping partner not found or not active: ${courierCode}`);
-      return null;
+      logger.warn(`Shipping partner not found: ${courierCode}, creating default partner for testing`);
+
+      const defaultPartners = {
+        'DELHIVERY': {
+          name: 'DELHIVERY',
+          apiStatus: 'active',
+          performanceScore: 85,
+          supportContact: '+91-9999999999',
+          supportEmail: 'support@delhivery.com',
+          apiKey: 'delhivery_test_key',
+          apiEndpoint: 'https://track.delhivery.com/api',
+          serviceTypes: ['Surface', 'Express'],
+          serviceAreas: ['PAN India'],
+          weightLimits: { min: 0.1, max: 50 },
+          dimensionLimits: { maxLength: 100, maxWidth: 100, maxHeight: 100 },
+          rates: { baseRate: 30, weightRate: 15, dimensionalFactor: 5000 },
+          trackingUrl: 'https://www.delhivery.com/track/package/'
+        },
+        'BLUEDART': {
+          name: 'BLUEDART',
+          apiStatus: 'active',
+          performanceScore: 90,
+          supportContact: '+91-8888888888',
+          supportEmail: 'support@bluedart.com',
+          apiKey: 'bluedart_test_key',
+          apiEndpoint: 'https://api.bluedart.com',
+          serviceTypes: ['Air', 'Surface'],
+          serviceAreas: ['PAN India'],
+          weightLimits: { min: 0.1, max: 100 },
+          dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80 },
+          rates: { baseRate: 40, weightRate: 20, dimensionalFactor: 5000 },
+          trackingUrl: 'https://www.bluedart.com/tracking?trackNumber='
+        },
+        'ECOMEXPRESS': {
+          name: 'ECOMEXPRESS',
+          apiStatus: 'active',
+          performanceScore: 80,
+          supportContact: '+91-7777777777',
+          supportEmail: 'support@ecomexpress.in',
+          apiKey: 'ecom_test_key',
+          apiEndpoint: 'https://api.ecomexpress.in',
+          serviceTypes: ['Surface', 'Express'],
+          serviceAreas: ['PAN India'],
+          weightLimits: { min: 0.1, max: 30 },
+          dimensionLimits: { maxLength: 100, maxWidth: 100, maxHeight: 100 },
+          rates: { baseRate: 25, weightRate: 12, dimensionalFactor: 5000 },
+          trackingUrl: 'https://www.ecomexpress.in/tracking/'
+        },
+
+        'EKART': {
+          name: 'EKART',
+          apiStatus: 'active',
+          performanceScore: 78,
+          supportContact: '+91-5555555555',
+          supportEmail: 'support@ekart.com',
+          apiKey: 'ekart_test_key',
+          apiEndpoint: 'https://api.ekart.com',
+          serviceTypes: ['Surface', 'Express'],
+          serviceAreas: ['PAN India'],
+          weightLimits: { min: 0.1, max: 20 },
+          dimensionLimits: { maxLength: 100, maxWidth: 100, maxHeight: 100 },
+          rates: { baseRate: 40, weightRate: 22, dimensionalFactor: 5000 },
+          trackingUrl: 'https://ekart.com/tracking/'
+        },
+        'XPRESSBEES': {
+          name: 'XPRESSBEES',
+          apiStatus: 'active',
+          performanceScore: 82,
+          supportContact: '+91-4444444444',
+          supportEmail: 'support@xpressbees.com',
+          apiKey: 'xpressbees_test_key',
+          apiEndpoint: 'https://api.xpressbees.com',
+          serviceTypes: ['Surface', 'Express'],
+          serviceAreas: ['PAN India'],
+          weightLimits: { min: 0.1, max: 30 },
+          dimensionLimits: { maxLength: 100, maxWidth: 100, maxHeight: 100 },
+          rates: { baseRate: 32, weightRate: 19, dimensionalFactor: 5000 },
+          trackingUrl: 'https://www.xpressbees.com/tracking/'
+        }
+      };
+
+      const defaultPartner = defaultPartners[courierCode.toUpperCase()];
+      if (defaultPartner) {
+        try {
+          partner = await ShippingPartner.create(defaultPartner);
+          logger.info(`Created default shipping partner: ${courierCode}`);
+        } catch (createError) {
+          logger.error(`Failed to create default partner ${courierCode}:`, createError.message);
+          return null;
+        }
+      } else {
+        logger.warn(`No default configuration for courier: ${courierCode}`);
+        return null;
+      }
     }
 
     // Extract relevant details for API integration
@@ -175,7 +266,8 @@ export const calculateShippingRates = async (packageDetails, deliveryDetails, pa
       // FALLBACK: If no partners found in database, use hardcoded list
       if (!availablePartners || availablePartners.length === 0) {
         logger.warn('No active shipping partners found in database, using fallback partners');
-        availablePartners = ['BlueDart', 'Ecom Express', 'Delhivery', 'DTDC', 'Ekart', 'Xpressbees'];
+        availablePartners = ['BlueDart', 'Ecom Express', 'Delhivery', 'Ekart', 'Xpressbees'];
+        // Note: DTDC removed until proper API integration is implemented
       }
     }
 
@@ -340,18 +432,7 @@ const createFallbackPartnerDetails = (partnerName) => {
       zones: [],
       trackingUrl: 'https://www.delhivery.com/tracking'
     },
-    DTDC: {
-      id: 'dtdc-fallback',
-      name: 'DTDC',
-      apiKey: null,
-      apiEndpoint: 'https://api.dtdc.com',
-      serviceTypes: ['standard', 'express'],
-      weightLimits: { min: 0.1, max: 50 },
-      dimensionLimits: { maxLength: 120, maxWidth: 80, maxHeight: 80, maxSum: 280 },
-      rates: { baseRate: 45, weightRate: 18, dimensionalFactor: 5000 },
-      zones: [],
-      trackingUrl: 'https://www.dtdc.com/tracking'
-    },
+
     Ekart: {
       id: 'ekart-fallback',
       name: 'Ekart',

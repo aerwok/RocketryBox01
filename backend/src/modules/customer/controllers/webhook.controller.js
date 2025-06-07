@@ -754,56 +754,7 @@ export const handleEcomExpressWebhook = async (req, res, next) => {
   }
 };
 
-/**
- * DTDC Webhook Handler
- */
-export const handleDTDCWebhook = async (req, res, next) => {
-  try {
-    logger.info('📨 DTDC webhook received', {
-      headers: req.headers,
-      bodyType: typeof req.body
-    });
 
-    const signature = req.headers['x-dtdc-signature'];
-    const secret = process.env.DTDC_WEBHOOK_SECRET;
-
-    // Verify signature if secret is configured
-    if (secret && signature) {
-      const isValid = courierWebhookVerifiers.generic(req.body, signature, secret);
-      if (!isValid) {
-        logger.warn('❌ Invalid DTDC webhook signature');
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-    }
-
-    const { refno, status, location, date, remarks } = req.body;
-
-    if (!refno) {
-      return res.status(400).json({ error: 'Reference number required' });
-    }
-
-    // Update order tracking
-    const result = await OrderBookingService.updateOrderTracking(refno, {
-      status: status,
-      location: location || 'Unknown',
-      timestamp: date ? new Date(date) : new Date(),
-      description: remarks || status,
-      courier: 'DTDC'
-    });
-
-    logger.info('✅ DTDC tracking updated', {
-      awb: refno,
-      status,
-      success: result.success
-    });
-
-    res.status(200).json({ success: true, message: 'Webhook processed' });
-
-  } catch (error) {
-    logger.error('❌ DTDC webhook error:', error);
-    next(new AppError('Webhook processing failed', 500));
-  }
-};
 
 /**
  * Generic Tracking Webhook Handler (for testing or unknown couriers)

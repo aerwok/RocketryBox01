@@ -489,13 +489,13 @@ const SellerDashboardPage = () => {
                       {row.ofd}
                     </TableCell>
                     <TableCell>
-                      {row.delivered.count} {row.delivered.percentage}
+                      {row.delivered?.count || 0} {row.delivered?.percentage || "0%"}
                     </TableCell>
                     <TableCell className="bg-purple-50">
-                      {row.cancelled.count} {row.cancelled.percentage}
+                      {row.cancelled?.count || 0} {row.cancelled?.percentage || "0%"}
                     </TableCell>
                     <TableCell>
-                      {row.exception.count} {row.exception.percentage}
+                      {row.exception?.count || 0} {row.exception?.percentage || "0%"}
                     </TableCell>
                     <TableCell className="bg-purple-50">
                       {row.rto}
@@ -670,8 +670,8 @@ const SellerDashboardPage = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {topProducts?.map((product) => (
-                  <TableRow key={product.productName}>
+                {topProducts?.map((product, index) => (
+                  <TableRow key={`${product.productName}-${index}`}>
                     <TableCell className="font-medium">
                       {product.productName}
                     </TableCell>

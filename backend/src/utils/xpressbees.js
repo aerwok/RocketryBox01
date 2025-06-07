@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { logger } from './logger.js';
 import { XPRESSBEES_CONFIG } from '../config/xpressbees.config.js';
+import { logger } from './logger.js';
 
 /**
  * Professional XpressBees API Integration
@@ -28,7 +28,7 @@ export const authenticate = async () => {
     logger.info('XpressBees authentication request');
 
     const loginUrl = XPRESSBEES_CONFIG.getApiUrl(XPRESSBEES_CONFIG.ENDPOINTS.LOGIN);
-    
+
     const response = await axios.post(loginUrl, {
       email: XPRESSBEES_CONFIG.AUTH.EMAIL,
       password: XPRESSBEES_CONFIG.AUTH.PASSWORD
@@ -39,7 +39,7 @@ export const authenticate = async () => {
 
     if (response.data && response.data.status && response.data.data) {
       const token = response.data.data;
-      
+
       // Cache token for 1 hour
       tokenCache = {
         token: token,
@@ -56,10 +56,10 @@ export const authenticate = async () => {
       status: error.response?.status,
       data: error.response?.data
     });
-    
+
     // Clear cached token on auth failure
     tokenCache = { token: null, expires: 0 };
-    
+
     throw new Error(`XpressBees authentication failed: ${error.message}`);
   }
 };
@@ -108,7 +108,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     if (!packageDetails || !deliveryDetails) {
       throw new Error('Missing required parameters for XpressBees rate calculation');
     }
-    
+
     if (!deliveryDetails.pickupPincode || !deliveryDetails.deliveryPincode) {
       throw new Error('Missing pickup or delivery pincode for XpressBees rate calculation');
     }
@@ -139,7 +139,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     // Calculate total rate based on weight and service type
     const weightCharge = Math.max(0, (chargeableWeight - 1)) * weightRate;
     const serviceCharge = serviceType === 'express' ? (partnerDetails?.rates?.expressCharge || 20) : 0;
-    
+
     const totalRate = Math.round(baseRate + weightCharge + serviceCharge + codCharges + fuelSurcharge);
 
     // Estimated delivery days based on service type
@@ -189,7 +189,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
       serviceType: packageDetails?.serviceType,
       weight: packageDetails?.weight
     });
-    
+
     throw new Error(`XpressBees rate calculation failed: ${error.message}`);
   }
 };
@@ -221,7 +221,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
       id: orderId,
       unique_order_number: XPRESSBEES_CONFIG.DEFAULT_SETTINGS.UNIQUE_ORDER_NUMBER,
       payment_method: shipmentDetails.cod ? XPRESSBEES_CONFIG.PAYMENT_METHODS.COD : XPRESSBEES_CONFIG.PAYMENT_METHODS.PREPAID,
-      
+
       // Consigner (Shipper) details
       consigner_name: shipmentDetails.shipper.name,
       consigner_phone: shipmentDetails.shipper.phone,
@@ -230,7 +230,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
       consigner_state: shipmentDetails.shipper.address.state,
       consigner_address: shipmentDetails.shipper.address.line1,
       consigner_gst_number: shipmentDetails.shipper.gstNumber || '',
-      
+
       // Consignee (Customer) details
       consignee_name: shipmentDetails.consignee.name,
       consignee_phone: shipmentDetails.consignee.phone,
@@ -239,7 +239,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
       consignee_state: shipmentDetails.consignee.address.state,
       consignee_address: shipmentDetails.consignee.address.line1,
       consignee_gst_number: shipmentDetails.consignee.gstNumber || '',
-      
+
       // Product details
       products: [{
         product_name: shipmentDetails.commodity || 'General Goods',
@@ -249,7 +249,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
         product_sku: shipmentDetails.sku || '',
         product_hsn: shipmentDetails.hsn || ''
       }],
-      
+
       // Invoice details
       invoice: [{
         invoice_number: shipmentDetails.invoiceNumber || orderId,
@@ -257,17 +257,17 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
         ebill_number: shipmentDetails.ebillNumber || '',
         ebill_expiry_date: shipmentDetails.ebillExpiryDate || ''
       }],
-      
+
       // Package details
       weight: weightInGrams.toString(),
       length: (shipmentDetails.dimensions?.length || 10).toString(),
       breadth: (shipmentDetails.dimensions?.width || 10).toString(),
       height: (shipmentDetails.dimensions?.height || 10).toString(),
-      
+
       // Service configuration
       courier_id: serviceConfig.id,
       pickup_location: XPRESSBEES_CONFIG.DEFAULT_SETTINGS.PICKUP_LOCATION,
-      
+
       // Pricing details (using calculated rates from database)
       shipping_charges: (shipmentDetails.calculatedRate?.breakdown?.baseRate || XPRESSBEES_CONFIG.PRICING.BASE_RATE).toString(),
       cod_charges: shipmentDetails.cod ? (shipmentDetails.calculatedRate?.breakdown?.codCharge || XPRESSBEES_CONFIG.PRICING.COD_CHARGES).toString() : '0',
@@ -311,25 +311,21 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`XpressBees booking failed: ${error.message}`);
-    
-    // Generate temporary reference for manual processing
-    const tempReference = `XB${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-    
+
     return {
-      success: true,
-      awb: tempReference,
-      trackingUrl: XPRESSBEES_CONFIG.getTrackingUrl(tempReference),
+      success: false,
+      error: `XpressBees API booking failed: ${error.message}`,
       courierName: 'XpressBees',
-      bookingType: 'MANUAL_REQUIRED',
+      bookingType: 'API_ERROR',
       apiError: error.message,
       instructions: {
-        step1: 'Contact XpressBees support',
-        step2: 'Provide shipment details for manual booking',
-        step3: 'Update system with actual AWB number received',
-        step4: 'Contact support if API issues persist'
+        step1: 'Contact XpressBees support for manual booking',
+        step2: 'Provide shipment details manually',
+        step3: 'Try again later when API is stable',
+        step4: 'Consider using alternative courier partners'
       },
-      tempReference: tempReference,
-      message: 'API booking failed. Manual booking required.',
+      availableAlternatives: ['BlueDart', 'Delhivery', 'Ecom Express', 'Ekart'],
+      message: 'XpressBees API booking failed. Please try alternative couriers.',
       timestamp: new Date().toISOString()
     };
   }
@@ -358,11 +354,11 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
     // Process successful response
     if (response.data && response.data.response === true) {
       const trackingData = response.data.tracking_data;
-      
+
       // Parse tracking events from different status categories
       const allEvents = [];
       const statusCategories = ['delivered', 'out for delivery', 'in transit', 'pending pickup'];
-      
+
       statusCategories.forEach(category => {
         if (trackingData[category] && Array.isArray(trackingData[category])) {
           allEvents.push(...trackingData[category]);
@@ -371,9 +367,9 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
 
       // Sort events by timestamp (most recent first)
       allEvents.sort((a, b) => parseInt(b.event_time) - parseInt(a.event_time));
-      
+
       const latestEvent = allEvents[0];
-      
+
       return {
         success: true,
         trackingNumber: trackingNumber,
@@ -399,7 +395,7 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`XpressBees tracking failed: ${error.message}`);
-    
+
     return {
       success: true,
       trackingNumber: trackingNumber,
@@ -541,4 +537,4 @@ export default {
   cancelShipment,
   requestPickup,
   getNDRList
-}; 
+};

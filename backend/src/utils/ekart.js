@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { logger } from './logger.js';
 import { EKART_CONFIG } from '../config/ekart.config.js';
+import { logger } from './logger.js';
 import { getCache, setCache } from './redis.js';
 
 /**
@@ -259,24 +259,20 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
       data: error.response?.data
     });
 
-    // Generate temporary reference for manual processing
-    const tempReference = `EK${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-
     return {
-      success: true,
-      awb: tempReference,
-      trackingUrl: EKART_CONFIG.getTrackingUrl(tempReference),
+      success: false,
+      error: `Ekart API booking failed: ${error.message}`,
       courierName: 'Ekart Logistics',
-      bookingType: 'MANUAL_REQUIRED',
+      bookingType: 'API_ERROR',
       apiError: error.message,
       instructions: {
-        step1: 'Contact Ekart support or use their dashboard',
-        step2: 'Provide shipment details for manual booking',
-        step3: 'Update system with actual tracking ID received',
-        step4: 'Contact support if API issues persist'
+        step1: 'Contact Ekart support for manual booking',
+        step2: 'Provide shipment details manually',
+        step3: 'Try again later when API is stable',
+        step4: 'Consider using alternative courier partners'
       },
-      tempReference: tempReference,
-      message: 'API booking failed. Manual booking required.',
+      availableAlternatives: ['BlueDart', 'Delhivery', 'Ecom Express', 'XpressBees'],
+      message: 'Ekart API booking failed. Please try alternative couriers.',
       timestamp: new Date().toISOString()
     };
   }
@@ -416,9 +412,9 @@ export const trackShipment = async (trackingId, partnerDetails) => {
  */
 export const downloadLabels = async (trackingIds, jsonOnly = false) => {
   try {
-    logger.info('Ekart label download request:', { 
+    logger.info('Ekart label download request:', {
       count: trackingIds.length,
-      jsonOnly 
+      jsonOnly
     });
 
     if (trackingIds.length > EKART_CONFIG.MAX_LABEL_IDS) {
@@ -478,8 +474,8 @@ export const downloadLabels = async (trackingIds, jsonOnly = false) => {
  */
 export const generateManifest = async (trackingIds) => {
   try {
-    logger.info('Ekart manifest generation request:', { 
-      count: trackingIds.length 
+    logger.info('Ekart manifest generation request:', {
+      count: trackingIds.length
     });
 
     if (trackingIds.length > EKART_CONFIG.MAX_MANIFEST_IDS) {
@@ -756,7 +752,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
 
   } catch (error) {
     logger.error(`Ekart rate calculation failed: ${error.message}`);
-    
+
     return {
       success: false,
       error: error.message,
@@ -764,4 +760,4 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
       timestamp: new Date().toISOString()
     };
   }
-}; 
+};

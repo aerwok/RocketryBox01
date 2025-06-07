@@ -1,13 +1,26 @@
-import SellerShipment from '../models/shipment.model.js';
-import SellerOrder from '../models/order.model.js';
-import NDR from '../models/ndr.model.js';
-import { AppError } from '../../../middleware/errorHandler.js';
-import xlsx from 'xlsx';
-import { bookOrderWithCourier } from '../../../utils/courierBooking.js';
-import { calculateShippingRates, bookShipment, trackShipment } from '../../../utils/shipping.js';
-import { getCourierHandler } from '../../../utils/courierBooking.js';
 import mongoose from 'mongoose';
-import { io } from '../../../server.js';
+import xlsx from 'xlsx';
+import { AppError } from '../../../middleware/errorHandler.js';
+// import { io } from '../../../server.js'; // Temporarily disabled to fix shipping flow
+import { getCourierHandler } from '../../../utils/courierBooking.js';
+import { bookShipment, calculateShippingRates, getPartnerDetails, trackShipment } from '../../../utils/shipping.js';
+import SellerOrder from '../models/order.model.js';
+import Seller from '../models/seller.model.js';
+import SellerShipment from '../models/shipment.model.js';
+import WalletTransaction from '../models/walletTransaction.model.js';
+
+// Safe socket emission helper (non-critical)
+const safeEmit = (event, data) => {
+  try {
+    // Socket.IO disabled temporarily to fix shipping flow
+    // if (io && typeof io.emit === 'function') {
+    //   io.emit(event, data);
+    // }
+    console.log(`🔔 Socket Event (disabled): ${event}`, data);
+  } catch (error) {
+    console.warn(`Socket emission failed for ${event}:`, error.message);
+  }
+};
 
 // Create a shipment from an order
 export const createShipment = async (req, res, next) => {
@@ -180,7 +193,7 @@ export const getShipments = async (req, res, next) => {
         .limit(limitNum)
         .populate({
           path: 'orderId',
-          select: 'orderNumber customer.name total items'
+          select: 'orderId customer.name total items'
         }),
       SellerShipment.countDocuments(filter)
     ]);
@@ -225,7 +238,7 @@ export const updateShipmentStatus = async (req, res, next) => {
     // Find and update shipment
     const shipment = await SellerShipment.findOneAndUpdate(
       { _id: id, seller: sellerId },
-      { 
+      {
         status,
         updatedAt: new Date(),
         $push: {
@@ -355,13 +368,13 @@ export const handleReturn = async (req, res, next) => {
  */
 export const getShippingRates = async (req, res, next) => {
   try {
-    const { 
-      weight, 
-      dimensions, 
-      pickupPincode, 
-      deliveryPincode, 
+    const {
+      weight,
+      dimensions,
+      pickupPincode,
+      deliveryPincode,
       cod,
-      declaredValue 
+      declaredValue
     } = req.body;
 
     // Validate required fields
@@ -402,15 +415,15 @@ export const getShippingRates = async (req, res, next) => {
  */
 export const bookCourierShipment = async (req, res, next) => {
   try {
-    const { 
-      orderId, 
+    const {
+      orderId,
       courierCode,
       serviceType,
       packageDetails,
       pickupDetails,
-      deliveryDetails 
+      deliveryDetails
     } = req.body;
-    
+
     const sellerId = req.user.id;
 
     // Check if order exists and belongs to the seller
@@ -555,16 +568,16 @@ export const trackShipmentStatus = async (req, res, next) => {
     if (trackingInfo.success) {
       // Update shipment status and tracking history
       shipment.status = trackingInfo.status || shipment.status;
-      
+
       // Only add new tracking events
       if (trackingInfo.trackingHistory && trackingInfo.trackingHistory.length > 0) {
         // Add any new tracking events not already in the history
         trackingInfo.trackingHistory.forEach(event => {
           const existingEvent = shipment.trackingHistory.find(
             e => e.timestamp.getTime() === new Date(event.timestamp).getTime() &&
-                 e.status === event.status
+              e.status === event.status
           );
-          
+
           if (!existingEvent) {
             shipment.trackingHistory.push({
               status: event.status,
@@ -574,26 +587,26 @@ export const trackShipmentStatus = async (req, res, next) => {
             });
           }
         });
-        
+
         // Sort tracking history by timestamp (newest first)
         shipment.trackingHistory.sort((a, b) => b.timestamp - a.timestamp);
       }
-      
+
       // If delivered, update order status and delivery date
       if (trackingInfo.status === 'Delivered' && shipment.status !== 'Delivered') {
         shipment.status = 'Delivered';
         shipment.deliveryDate = trackingInfo.timestamp || new Date();
-        
+
         // Update order
         await SellerOrder.findByIdAndUpdate(
           shipment.orderId,
-          { 
-            status: 'Delivered', 
-            deliveredAt: shipment.deliveryDate 
+          {
+            status: 'Delivered',
+            deliveredAt: shipment.deliveryDate
           }
         );
       }
-      
+
       await shipment.save();
     }
 
@@ -614,4 +627,273 @@ export const trackShipmentStatus = async (req, res, next) => {
   } catch (error) {
     next(new AppError(error.message, 400));
   }
-}; 
+};
+
+/**
+ * Ship order with rate selection and wallet deduction (IDEAL WORKFLOW)
+ * @route POST /api/v2/seller/shipments/ship-with-payment
+ * @access Private (Seller only)
+ */
+export const shipOrderWithWalletPayment = async (req, res, next) => {
+  try {
+    const {
+      orderId,
+      selectedRate // The rate selected from availableRates
+    } = req.body;
+
+    const sellerId = req.user.id;
+
+    // Debug logging
+    console.log(`🚀 Ship order request received:`, {
+      orderId,
+      selectedRate,
+      sellerId,
+      requestBody: req.body
+    });
+
+    // Check what orders exist for this seller
+    const existingOrders = await SellerOrder.find({ seller: sellerId }).select('orderId status customer.name');
+    console.log(`📋 Existing orders for seller ${sellerId}:`, existingOrders.map(o => ({
+      orderId: o.orderId,
+      status: o.status,
+      customerName: o.customer?.name
+    })));
+
+    // Get seller for wallet operations
+    const seller = await Seller.findById(sellerId);
+    if (!seller) {
+      return next(new AppError('Seller not found', 404));
+    }
+
+    // Check if order exists and belongs to the seller
+    const order = await SellerOrder.findOne({
+      orderId: orderId, // Search by orderId field instead of _id
+      seller: sellerId,
+      status: { $in: ['Created', 'not-booked'] } // Allow both Created and not-booked status
+    });
+
+    console.log(`🔍 Order lookup result:`, {
+      orderId,
+      sellerId,
+      found: !!order,
+      orderData: order ? {
+        orderId: order.orderId,
+        status: order.status,
+        hasCustomer: !!order.customer,
+        customerName: order.customer?.name,
+        hasProduct: !!order.product,
+        hasPayment: !!order.payment
+      } : null
+    });
+
+    if (!order) {
+      console.log(`❌ Order not found: orderId=${orderId}, sellerId=${sellerId}`);
+      return next(new AppError(`Order not found with ID: ${orderId}. Please ensure the order exists and belongs to you.`, 404));
+    }
+
+    // Validate that we have real customer data (not defaults)
+    if (!order.customer || !order.customer.name || !order.customer.address || !order.customer.address.pincode) {
+      console.log(`❌ Order missing customer data:`, {
+        hasCustomer: !!order.customer,
+        customerName: order.customer?.name,
+        hasAddress: !!order.customer?.address,
+        pincode: order.customer?.address?.pincode
+      });
+      return next(new AppError(`Order ${orderId} is missing required customer information`, 400));
+    }
+
+    // Validate selected rate
+    if (!selectedRate || !selectedRate.courier || !selectedRate.total) {
+      return next(new AppError('Valid rate selection is required', 400));
+    }
+
+    // Check wallet balance BEFORE booking
+    const currentBalance = parseFloat(seller.walletBalance || '0');
+    const shippingCharge = parseFloat(selectedRate.total);
+
+    if (currentBalance < shippingCharge) {
+      return next(new AppError(`Insufficient wallet balance. Required: ₹${shippingCharge}, Available: ₹${currentBalance}`, 402));
+    }
+
+    // Validate courier code and get partner details
+    const partnerDetails = await getPartnerDetails(selectedRate.courier);
+    if (!partnerDetails) {
+      console.log(`❌ Partner details not found for courier: ${selectedRate.courier}`);
+      return next(new AppError(`Invalid or unavailable courier: ${selectedRate.courier}`, 400));
+    }
+
+    console.log(`✅ Partner details found for ${selectedRate.courier}:`, {
+      name: partnerDetails.name,
+      id: partnerDetails.id
+    });
+
+    // Prepare shipment details for courier API
+    const shipmentDetails = {
+      referenceNumber: order.orderId,
+      serviceType: selectedRate.mode || 'Standard',
+      weight: parseFloat(order.product.weight),
+      dimensions: order.product.dimensions || { length: 10, width: 10, height: 10 },
+      declaredValue: parseFloat(order.payment.amount) || 100,
+      cod: order.payment.method === 'COD',
+      codAmount: order.payment.method === 'COD' ? parseFloat(order.payment.amount) : 0,
+      consignee: {
+        name: order.customer.name,
+        phone: order.customer.phone,
+        email: order.customer.email,
+        address: {
+          line1: order.customer.address.street,
+          line2: order.customer.address.landmark || '',
+          city: order.customer.address.city,
+          state: order.customer.address.state,
+          pincode: order.customer.address.pincode,
+          country: order.customer.address.country || 'India'
+        }
+      },
+      shipper: {
+        name: seller.businessName || seller.name,
+        phone: seller.phone,
+        email: seller.email,
+        address: {
+          line1: seller.address?.street || 'Default Address',
+          line2: seller.address?.landmark || '',
+          city: seller.address?.city || 'City',
+          state: seller.address?.state || 'State',
+          pincode: seller.address?.pincode || '110001',
+          country: seller.address?.country || 'India'
+        }
+      }
+    };
+
+    console.log(`📋 Shipment Details Debug:`, {
+      orderId: order.orderId,
+      receiverName: shipmentDetails.consignee.name,
+      receiverPhone: shipmentDetails.consignee.phone,
+      receiverAddress: shipmentDetails.consignee.address,
+      shipperName: shipmentDetails.shipper.name,
+      shipperAddress: shipmentDetails.shipper.address,
+      weight: shipmentDetails.weight,
+      cod: shipmentDetails.cod,
+      codAmount: shipmentDetails.codAmount,
+      fullShipmentDetails: JSON.stringify(shipmentDetails, null, 2)
+    });
+
+    // Book the shipment with the courier API
+    console.log(`📦 Booking shipment with ${selectedRate.courier} for order ${order.orderId}`);
+    const bookingResponse = await bookShipment(selectedRate.courier, shipmentDetails);
+
+    if (!bookingResponse.success) {
+      return next(new AppError(bookingResponse.error || 'Failed to book shipment with courier', 400));
+    }
+
+    // SUCCESS: Now deduct from wallet and create records
+    console.log(`💰 Deducting ₹${shippingCharge} from wallet`);
+
+    // Update seller wallet balance
+    seller.walletBalance = (currentBalance - shippingCharge).toFixed(2);
+    await seller.save();
+
+    // Record wallet transaction
+    const walletTransaction = await WalletTransaction.create({
+      seller: seller._id,
+      orderId: order._id,
+      type: 'Debit',
+      amount: shippingCharge.toString(),
+      remark: `Shipping charge for ${selectedRate.courier} - Order: ${order.orderId}`,
+      closingBalance: seller.walletBalance
+    });
+
+    // Create shipment record
+    const shipment = await SellerShipment.create({
+      seller: sellerId,
+      orderId: order._id,
+      courier: selectedRate.courier,
+      awb: bookingResponse.awb,
+      pickupDate: new Date(),
+      status: 'Booked',
+      channel: 'MANUAL',
+      weight: order.product.weight,
+      dimensions: order.product.dimensions,
+      shippingCharge: shippingCharge,
+      trackingHistory: [{
+        status: 'Booked',
+        timestamp: new Date(),
+        description: `Shipment booked with ${selectedRate.courier}`,
+        location: 'System'
+      }]
+    });
+
+    // Update order with shipping details and status
+    order.status = 'Shipped';
+    order.courier = selectedRate.courier;
+    order.awb = bookingResponse.awb;
+    order.payment.shippingCharge = shippingCharge.toString();
+    order.payment.total = (parseFloat(order.payment.amount) + shippingCharge).toString();
+    order.shippingDetails = {
+      courier: selectedRate.courier,
+      trackingNumber: bookingResponse.awb,
+      shippedAt: new Date(),
+      zone: selectedRate.zone,
+      weight: order.product.weight,
+      chargeableWeight: selectedRate.weight?.toString(),
+      baseRate: selectedRate.base?.toString(),
+      additionalCharges: selectedRate.addlCharge?.toString(),
+      totalCharges: shippingCharge.toString()
+    };
+    order.orderTimeline.push({
+      status: 'Shipped',
+      timestamp: new Date(),
+      comment: `Shipped with ${selectedRate.courier} - AWB: ${bookingResponse.awb}`
+    });
+
+    await order.save();
+
+    // Emit real-time events (using safe emission)
+    safeEmit('shipment:created', {
+      sellerId,
+      orderId: order._id,
+      shipmentId: shipment._id,
+      status: 'Booked'
+    });
+
+    safeEmit('wallet:updated', {
+      sellerId,
+      newBalance: seller.walletBalance,
+      transaction: walletTransaction
+    });
+
+    console.log(`✅ Order ${order.orderId} shipped successfully with ${selectedRate.courier}`);
+
+    res.status(201).json({
+      success: true,
+      message: `Order shipped successfully with ${selectedRate.courier}`,
+      data: {
+        order: {
+          orderId: order.orderId,
+          status: order.status,
+          awb: order.awb,
+          courier: order.courier
+        },
+        shipment: {
+          id: shipment._id,
+          awb: shipment.awb,
+          status: shipment.status,
+          courier: shipment.courier
+        },
+        booking: {
+          awb: bookingResponse.awb,
+          trackingUrl: bookingResponse.trackingUrl,
+          label: bookingResponse.label,
+          manifest: bookingResponse.manifest
+        },
+        payment: {
+          charged: shippingCharge,
+          walletBalance: seller.walletBalance,
+          transactionId: walletTransaction._id
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in shipOrderWithWalletPayment:', error);
+    next(new AppError(error.message, 400));
+  }
+};

@@ -4,7 +4,6 @@ import { protect } from '../../../middleware/auth.js';
 import {
   handleBlueDartWebhook,
   handleDelhiveryWebhook,
-  handleDTDCWebhook,
   handleEcomExpressWebhook,
   handleGenericTrackingWebhook,
   handleManualTrackingUpdate,
@@ -64,12 +63,7 @@ router.post('/xpressbees', webhookLimiter, handleXpressBeesWebhook);
  */
 router.post('/ecomexpress', webhookLimiter, handleEcomExpressWebhook);
 
-/**
- * @route POST /api/v2/webhooks/dtdc
- * @desc DTDC tracking webhook
- * @access Public (verified by signature)
- */
-router.post('/dtdc', webhookLimiter, handleDTDCWebhook);
+
 
 /**
  * @route POST /api/v2/webhooks/ekart
@@ -118,7 +112,6 @@ router.get('/health', (req, res) => {
       bluedart: '/api/v2/webhooks/bluedart',
       xpressbees: '/api/v2/webhooks/xpressbees',
       ecomexpress: '/api/v2/webhooks/ecomexpress',
-      dtdc: '/api/v2/webhooks/dtdc',
       ekart: '/api/v2/webhooks/ekart',
       generic: '/api/v2/webhooks/generic',
       tracking: '/api/v2/webhooks/tracking',

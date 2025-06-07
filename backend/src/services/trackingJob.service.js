@@ -179,8 +179,7 @@ export class TrackingJobService {
         'Blue Dart Express': 'BLUEDART',
         'Ekart Logistics': 'EKART',
         'XpressBees': 'XPRESSBEES',
-        'Ecom Express': 'ECOMEXPRESS',
-        'DTDC': 'DTDC'
+        'Ecom Express': 'ECOMEXPRESS'
       };
 
       const courierCode = courierMapping[order.courierPartner] || 'DELHIVERY';

@@ -1062,9 +1062,30 @@ class RateCardService {
       // Sort by total cost (ascending)
       calculations.sort((a, b) => a.total - b.total);
 
-      // Get best options (cheapest per courier)
-      const bestOptions = {};
+      // Remove duplicates: Keep only the cheapest rate for each courier-mode combination
+      const uniqueCalculations = [];
+      const seenCombinations = new Set();
+
       calculations.forEach(calc => {
+        const key = `${calc.courier}-${calc.mode}`;
+        if (!seenCombinations.has(key)) {
+          seenCombinations.add(key);
+          uniqueCalculations.push(calc);
+          console.log(`✅ Keeping rate: ${calc.courier} ${calc.mode} - ₹${calc.total}`);
+        } else {
+          console.log(`🗑️  Skipping duplicate: ${calc.courier} ${calc.mode} - ₹${calc.total} (${calc.productName})`);
+        }
+      });
+
+      console.log(`🔄 Deduplication summary:`, {
+        originalCount: calculations.length,
+        afterDeduplication: uniqueCalculations.length,
+        duplicatesRemoved: calculations.length - uniqueCalculations.length
+      });
+
+      // Get best options (cheapest per courier) from deduplicated results
+      const bestOptions = {};
+      uniqueCalculations.forEach(calc => {
         if (!bestOptions[calc.courier] || calc.total < bestOptions[calc.courier].total) {
           bestOptions[calc.courier] = calc;
         }
@@ -1079,15 +1100,15 @@ class RateCardService {
         orderType,
         includeRTO,
         rateSource,
-        optionsCount: calculations.length,
-        cheapestOption: calculations[0]?.courier,
-        cheapestRate: calculations[0]?.total,
-        customRatesUsed: rateCards ? calculations.filter(c => c.isCustomRate).length : 0
+        optionsCount: uniqueCalculations.length,
+        cheapestOption: uniqueCalculations[0]?.courier,
+        cheapestRate: uniqueCalculations[0]?.total,
+        customRatesUsed: rateCards ? uniqueCalculations.filter(c => c.isCustomRate).length : 0
       });
 
       return {
         success: true,
-        calculations,
+        calculations: uniqueCalculations, // Return deduplicated results
         bestOptions: Object.values(bestOptions),
         zone: determinedZone,
         billedWeight: Number(billedWeight.toFixed(2)), // Changed from chargeableWeight to match script.js

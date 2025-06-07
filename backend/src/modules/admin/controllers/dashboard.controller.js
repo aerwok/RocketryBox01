@@ -1,12 +1,12 @@
 import { AppError } from '../../../middleware/errorHandler.js';
 import { logger } from '../../../utils/logger.js';
-import Seller from '../../seller/models/seller.model.js';
 import Customer from '../../customer/models/customer.model.js';
 import Order from '../../order/models/order.model.js';
-import Session from '../models/session.model.js';
+import Seller from '../../seller/models/seller.model.js';
+import WeightDispute from '../../seller/models/weightDispute.model.js';
 import Shipment from '../../shipping/models/shipment.model.js';
 import Ticket from '../../support/models/ticket.model.js';
-import WeightDispute from '../../seller/models/weightDispute.model.js';
+import Session from '../models/session.model.js';
 import { getRealtimeDashboardData } from '../services/realtime.service.js';
 
 /**
@@ -19,7 +19,7 @@ export const getDashboardOverview = async (req, res, next) => {
     // Get today's date for filtering
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Get user statistics
     const [
       totalUsers,
@@ -33,26 +33,26 @@ export const getDashboardOverview = async (req, res, next) => {
         Seller.countDocuments(),
         Customer.countDocuments()
       ]).then(counts => counts.reduce((acc, count) => acc + count, 0)),
-      
+
       // Total sellers
       Seller.countDocuments(),
-      
+
       // Total customers
       Customer.countDocuments(),
-      
+
       // New users today
       Promise.all([
         Seller.countDocuments({ createdAt: { $gte: today } }),
         Customer.countDocuments({ createdAt: { $gte: today } })
       ]).then(counts => counts.reduce((acc, count) => acc + count, 0)),
-      
+
       // Active users today (based on sessions)
-      Session.countDocuments({ 
-        isActive: true, 
-        lastActive: { $gte: today } 
+      Session.countDocuments({
+        isActive: true,
+        lastActive: { $gte: today }
       })
     ]);
-    
+
     // Get order statistics
     const [
       totalOrders,
@@ -71,17 +71,17 @@ export const getDashboardOverview = async (req, res, next) => {
       Order.countDocuments({ status: 'Cancelled' }),
       Order.countDocuments({ createdAt: { $gte: today } })
     ]);
-    
+
     // Get revenue statistics
     const [totalRevenue, todayRevenue] = await Promise.all([
       Order.aggregate([
         { $match: { status: { $ne: 'Cancelled' } } },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]).then(result => (result.length > 0 ? result[0].total : 0)),
-      
+
       Order.aggregate([
-        { 
-          $match: { 
+        {
+          $match: {
             status: { $ne: 'Cancelled' },
             createdAt: { $gte: today }
           }
@@ -89,15 +89,15 @@ export const getDashboardOverview = async (req, res, next) => {
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]).then(result => (result.length > 0 ? result[0].total : 0))
     ]);
-    
+
     // Calculate revenue growth (compare with yesterday)
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayRevenue = await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           status: { $ne: 'Cancelled' },
-          createdAt: { 
+          createdAt: {
             $gte: yesterday,
             $lt: today
           }
@@ -105,11 +105,11 @@ export const getDashboardOverview = async (req, res, next) => {
       },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]).then(result => (result.length > 0 ? result[0].total : 0));
-    
-    const revenueGrowth = yesterdayRevenue > 0 
+
+    const revenueGrowth = yesterdayRevenue > 0
       ? ((todayRevenue - yesterdayRevenue) / yesterdayRevenue * 100).toFixed(2)
       : 0;
-    
+
     // Get shipment statistics
     const [
       totalShipments,
@@ -124,7 +124,7 @@ export const getDashboardOverview = async (req, res, next) => {
       Shipment.countDocuments({ status: 'Returned' }),
       Shipment.countDocuments({ createdAt: { $gte: today } })
     ]);
-    
+
     // Get support statistics
     const [
       totalDisputes,
@@ -141,7 +141,7 @@ export const getDashboardOverview = async (req, res, next) => {
       Ticket.countDocuments({ status: { $in: ['New', 'In Progress'] } }),
       Ticket.countDocuments({ status: { $in: ['Resolved', 'Closed'] } })
     ]);
-    
+
     // Assemble response
     const overview = {
       users: {
@@ -183,7 +183,7 @@ export const getDashboardOverview = async (req, res, next) => {
         closed: closedTickets
       }
     };
-    
+
     res.status(200).json({
       success: true,
       data: overview
@@ -213,7 +213,7 @@ export const getKPI = async (req, res, next) => {
       topPerformingSellers: [],
       topCouriers: []
     };
-    
+
     res.status(200).json({
       success: true,
       data: kpiData
@@ -232,7 +232,7 @@ export const getKPI = async (req, res, next) => {
 export const getRealtimeData = async (req, res, next) => {
   try {
     const dashboardData = await getRealtimeDashboardData();
-    
+
     res.status(200).json({
       success: true,
       data: dashboardData
@@ -268,7 +268,7 @@ export const getShipments = async (req, res, next) => {
         orderId: 'ORD002',
         customer: 'Jane Smith',
         status: 'Delivered',
-        courier: 'DTDC',
+        courier: 'Delhivery',
         createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
         deliveredAt: new Date()
       },
@@ -292,4 +292,4 @@ export const getShipments = async (req, res, next) => {
     logger.error(`Error in getShipments: ${error.message}`);
     next(new AppError('Failed to fetch shipments', 500));
   }
-}; 
+};

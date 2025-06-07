@@ -369,6 +369,47 @@ export class ServiceFactory {
       return apiService.get(`/shipping/shipments/${id}`);
     },
 
+    // Ship order with wallet payment and shipping partner booking
+    async shipOrderWithWalletPayment(shipmentData: {
+      orderId: string;
+      selectedRate: {
+        courier: string;
+        mode: string;
+        total: number;
+        zone?: string;
+        weight?: string;
+        base?: number;
+        addlCharge?: number;
+      };
+    }): Promise<ApiResponse<{
+      order: {
+        orderId: string;
+        status: string;
+        awb: string;
+        courier: string;
+      };
+      shipment: {
+        id: string;
+        awb: string;
+        status: string;
+        courier: string;
+      };
+      booking: {
+        awb: string;
+        trackingUrl?: string;
+        label?: string;
+        manifest?: string;
+      };
+      payment: {
+        charged: number;
+        walletBalance: string;
+        transactionId: string;
+      };
+    }>> {
+      const apiService = ServiceFactory.getInstance().getApiService();
+      return apiService.post('/seller/shipments/ship-with-payment', shipmentData);
+    },
+
     async printLabel(id: string): Promise<ApiResponse<Blob>> {
       const apiService = ServiceFactory.getInstance().getApiService();
       return apiService.get(`/shipping/shipments/${id}/label`, { responseType: 'blob' });

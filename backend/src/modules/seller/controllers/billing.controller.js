@@ -23,28 +23,32 @@ export const getSellerRateCard = async (req, res, next) => {
     }
 
     // Transform rate cards to frontend-expected format
-    // Group rate cards by courier and mode for better organization
-    const rateCardsByService = {};
+    // Create a simpler structure with delivery partner names prominent
+    const ratesByService = {};
 
     effectiveRates.forEach(card => {
-      const serviceKey = `${card.courier} ${card.mode.toLowerCase()}-${card.minimumBillableWeight || 0.5}`;
+      const serviceKey = `${card.courier} - ${card.mode} (${card.minimumBillableWeight || 0.5}kg)`;
 
-      if (!rateCardsByService[serviceKey]) {
-        rateCardsByService[serviceKey] = {
+      if (!ratesByService[serviceKey]) {
+        ratesByService[serviceKey] = {
           name: serviceKey,
-          cod: card.codAmount.toString(),
-          codPercent: card.codPercent.toString(),
+          displayName: serviceKey,
+          courier: card.courier,
+          mode: serviceKey, // Use full name in mode field too
+          originalMode: card.mode,
+          weight: card.minimumBillableWeight || 0.5,
+          cod: card.codAmount?.toString() || '0',
+          codPercent: card.codPercent?.toString() || '2',
           withinCity: { base: '0', additional: '0', rto: '0' },
           withinState: { base: '0', additional: '0', rto: '0' },
           metroToMetro: { base: '0', additional: '0', rto: '0' },
           restOfIndia: { base: '0', additional: '0', rto: '0' },
           northEastJK: { base: '0', additional: '0', rto: '0' },
-          isCustom: card.isOverride || false,
-          lastUpdated: card.lastUpdated
+          isCustom: card.isOverride || false
         };
       }
 
-      const service = rateCardsByService[serviceKey];
+      const service = ratesByService[serviceKey];
 
       // Map zones to the frontend expected format
       switch (card.zone) {
@@ -110,15 +114,23 @@ export const getSellerRateCard = async (req, res, next) => {
     // Count custom rates for additional info
     const customRatesCount = effectiveRates.filter(rate => rate.isOverride).length;
 
+    // Convert to array format for frontend
+    const allRates = Object.values(ratesByService);
+
+    // Extract delivery partners from the rates
+    const uniqueCouriers = [...new Set(allRates.map(rate => rate.courier))];
+
     res.status(200).json({
       success: true,
       data: {
         lastUpdated: new Date(lastUpdated).toISOString(),
-        rates: Object.values(rateCardsByService),
+        rates: allRates,
         statistics: {
           totalRates: effectiveRates.length,
           customRates: customRatesCount,
           hasCustomRates: customRatesCount > 0,
+          totalDeliveryPartners: uniqueCouriers.length,
+          deliveryPartners: uniqueCouriers,
           customizationPercentage: Math.round((customRatesCount / effectiveRates.length) * 100)
         }
       }

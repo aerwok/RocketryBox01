@@ -1,16 +1,24 @@
 import express from 'express';
 import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
-import { addStockSchema } from '../validators/warehouse.validator.js';
-import { listWarehouseItems, addStockToItem } from '../controllers/warehouse.controller.js';
+import {
+  addStockToItem,
+  addWarehouse,
+  listWarehouseItems,
+  listWarehouses
+} from '../controllers/warehouse.controller.js';
+import { addStockSchema, addWarehouseSchema } from '../validators/warehouse.validator.js';
 
 const router = express.Router();
 
 router.use(authenticateSeller);
 
-// List warehouse items
+// Warehouse management routes
+router.get('/', listWarehouses);
+router.post('/', validationHandler(addWarehouseSchema), addWarehouse);
+
+// Warehouse items management routes
 router.get('/items', listWarehouseItems);
-// Add stock to item
 router.post('/items/:itemId/stock', validationHandler(addStockSchema), addStockToItem);
 
-export default router; 
+export default router;

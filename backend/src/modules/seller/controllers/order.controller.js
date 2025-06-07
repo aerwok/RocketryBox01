@@ -1,13 +1,11 @@
-import SellerOrder from '../models/order.model.js';
-import SellerShipment from '../models/shipment.model.js';
-import Seller from '../models/seller.model.js';
-import WalletTransaction from '../models/walletTransaction.model.js';
-import { AppError } from '../../../middleware/errorHandler.js';
-import { validateOrder, validateBulkOrderStatus } from '../validators/order.validator.js';
 import xlsx from 'xlsx';
-import { Readable } from 'stream';
+import { AppError } from '../../../middleware/errorHandler.js';
 import { calculateCourierRates } from '../../../utils/courierRates.js';
 import { getPincodeDetails } from '../../../utils/pincode.js';
+import SellerOrder from '../models/order.model.js';
+import Seller from '../models/seller.model.js';
+import SellerShipment from '../models/shipment.model.js';
+import { validateOrder } from '../validators/order.validator.js';
 
 // Create a new order
 export const createOrder = async (req, res, next) => {
@@ -38,12 +36,12 @@ export const createOrder = async (req, res, next) => {
     if (!pickupDetails) {
       throw new AppError(`Invalid seller pickup pincode: ${sellerPincode}. Please ensure your address has a valid 6-digit pincode.`, 400);
     }
-    
+
     if (!deliveryDetails) {
       throw new AppError(`Invalid customer delivery pincode: ${req.body.customer.address.pincode}. Please check the delivery address pincode.`, 400);
     }
 
-    // Calculate shipping rates
+    // Calculate shipping rates for reference (NO WALLET DEDUCTION)
     const weight = parseFloat(req.body.product.weight);
     const isCOD = req.body.payment.method === 'COD';
     const courierRates = await calculateCourierRates({
@@ -53,68 +51,32 @@ export const createOrder = async (req, res, next) => {
       isCOD
     });
 
-    // Find the best rate (lowest cost)
-    const bestRate = courierRates.reduce((min, rate) =>
-      rate.total < min.total ? rate : min
-    );
-
-    // Update payment details with shipping charges
-    const shippingCharge = bestRate.total.toString();
-    const codCharge = isCOD ? bestRate.cod.toString() : '0';
-    const total = (
-      parseFloat(req.body.payment.amount) +
-      parseFloat(shippingCharge) +
-      parseFloat(codCharge)
-    ).toString();
-
-    // Wallet debit logic
-    const currentBalance = parseFloat(seller.walletBalance || '0');
-    if (currentBalance < parseFloat(shippingCharge)) {
-      throw new AppError('Insufficient wallet balance for shipping charge', 402);
-    }
-    // Deduct shipping charge and update wallet
-    seller.walletBalance = (currentBalance - parseFloat(shippingCharge)).toFixed(2);
-    await seller.save();
-    // Record wallet transaction
-    await WalletTransaction.create({
-      seller: seller._id,
-      orderId: null, // Will update after order is created
-      type: 'Debit',
-      amount: shippingCharge,
-      remark: 'Shipping charge debited for new order',
-      closingBalance: seller.walletBalance
-    });
+    // Store rates for later use during shipping selection
+    // No immediate payment or wallet deduction
 
     const order = new SellerOrder({
       ...req.body,
       seller: req.user.id,
       orderDate: new Date(),
-      status: 'Pending',
+      status: 'Created', // New status for unshipped orders
       payment: {
         ...req.body.payment,
-        shippingCharge,
-        codCharge,
-        total
+        // Store item amount only, shipping will be added during shipping
+        amount: req.body.payment.amount,
+        method: req.body.payment.method
       },
-      courier: bestRate.courier,
-      shippingDetails: {
-        zone: bestRate.zone,
-        weight: weight.toString(),
-        chargeableWeight: bestRate.weight.toString(),
-        baseRate: bestRate.base.toString(),
-        additionalCharges: bestRate.addlCharge.toString(),
-        codCharges: codCharge,
-        totalCharges: shippingCharge
-      },
-      orderTimeline: [{ status: 'Pending', timestamp: new Date(), comment: 'Order created' }]
+      // Store available rates for shipping selection
+      availableRates: courierRates,
+      // No courier selected yet
+      courier: null,
+      orderTimeline: [{
+        status: 'Created',
+        timestamp: new Date(),
+        comment: 'Order created - ready for shipping selection'
+      }]
     });
 
     await order.save();
-    // Update wallet transaction with orderId
-    await WalletTransaction.updateOne(
-      { seller: seller._id, orderId: null, type: 'Debit', amount: shippingCharge },
-      { orderId: order._id }
-    );
 
     res.status(201).json({
       success: true,
@@ -143,11 +105,11 @@ export const getOrders = async (req, res, next) => {
     } = req.query;
 
     const query = { seller: req.user.id };
-    
+
     // Map frontend status to backend status
     const statusMapping = {
-      'not-booked': 'Pending',
-      'processing': 'Processing', 
+      'not-booked': 'Created', // Orders ready for shipping
+      'processing': 'Processing',
       'booked': 'Shipped',
       'cancelled': 'Cancelled',
       'shipment-cancelled': 'Cancelled', // Could be separate if needed
@@ -158,7 +120,7 @@ export const getOrders = async (req, res, next) => {
     if (status && statusMapping[status]) {
       query.status = statusMapping[status];
     }
-    
+
     if (startDate || endDate) {
       query.orderDate = {};
       if (startDate) query.orderDate.$gte = new Date(startDate);
@@ -186,9 +148,10 @@ export const getOrders = async (req, res, next) => {
     const transformedOrders = orders.map(order => {
       // Map backend status to frontend status
       const frontendStatusMapping = {
+        'Created': 'not-booked', // Ready for shipping
         'Pending': 'not-booked',
         'Processing': 'processing',
-        'Shipped': 'booked', 
+        'Shipped': 'booked',
         'Delivered': 'booked',
         'Cancelled': 'cancelled',
         'Returned': 'error'
@@ -210,7 +173,7 @@ export const getOrders = async (req, res, next) => {
         chanel: order.channel || 'MANUAL', // Note: frontend uses 'chanel', not 'channel'
         weight: order.product.weight,
         tags: '', // Empty for now, can be added later
-        action: order.status === 'Pending' ? 'Ship' : order.status,
+        action: order.status === 'Created' ? 'Ship' : order.status,
         whatsapp: 'Message Delivered', // Default value
         status: frontendStatusMapping[order.status] || 'not-booked',
         awbNumber: order.awb || null,
@@ -244,6 +207,13 @@ export const getOrder = async (req, res, next) => {
       throw new AppError('Order not found', 404);
     }
 
+    // Fetch seller's warehouse data (use first active warehouse as default)
+    const Warehouse = (await import('../models/warehouse.model.js')).default;
+    const warehouse = await Warehouse.findOne({
+      seller: req.user.id,
+      isActive: true
+    }).sort({ createdAt: 1 }); // Get the first (oldest) warehouse as default
+
     // Transform the order data to match frontend expectations
     const transformedOrder = {
       orderId: order.orderId,
@@ -253,52 +223,67 @@ export const getOrder = async (req, res, next) => {
       channel: order.channel || 'MANUAL',
       shipmentType: 'Forward', // Default value since not in model
       weight: order.product?.weight || '0',
-      category: 'General', // Default value since not in model  
-      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' : 
-             order.status?.toLowerCase() === 'processing' ? 'processing' :
-             order.status?.toLowerCase() === 'shipped' ? 'booked' :
-             order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
-             'not-booked',
+      category: 'General', // Default value since not in model
+      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' :
+        order.status?.toLowerCase() === 'processing' ? 'processing' :
+          order.status?.toLowerCase() === 'shipped' ? 'booked' :
+            order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
+              'not-booked',
+      // Include product info at top level for easier access
+      product: {
+        name: order.product?.name || 'Product',
+        sku: order.product?.sku || 'N/A',
+        quantity: order.product?.quantity || 1,
+        price: parseFloat(order.product?.price) || 0,
+        weight: order.product?.weight || '0',
+        dimensions: order.product?.dimensions || {
+          length: 10,
+          width: 10,
+          height: 5
+        }
+      },
       customerDetails: {
         name: order.customer?.name || '',
-        address: order.customer?.address ? 
+        address: order.customer?.address ?
           `${order.customer.address.street || ''}\n${order.customer.address.city || ''}, ${order.customer.address.state || ''} ${order.customer.address.pincode || ''}\n${order.customer.address.country || 'India'}`.trim() :
           '',
         phone: order.customer?.phone || ''
       },
-      warehouseDetails: {
-        name: 'Default Warehouse', // Since warehouseDetails is not in the model
-        address: 'Warehouse Address\nCity, State 000000\nIndia', // Default warehouse address
-        phone: '1234567890' // Default warehouse phone
+      warehouseDetails: warehouse ? {
+        name: warehouse.name,
+        address: `${warehouse.address}\n${warehouse.city}, ${warehouse.state} ${warehouse.pincode}\n${warehouse.country}`,
+        phone: warehouse.phone || warehouse.contactPerson || 'Not provided'
+      } : {
+        name: 'No Warehouse Configured',
+        address: 'Please add a warehouse in Warehouse Management\nto display shipping origin details',
+        phone: 'Not configured'
       },
       products: [{
-        name: order.product?.name || '',
-        sku: order.product?.sku || '',
+        name: order.product?.name || 'Product',
+        sku: order.product?.sku || 'N/A',
         quantity: order.product?.quantity || 1,
-        price: parseFloat(order.product?.price || '0'),
-        total: parseFloat(order.product?.price || '0') * (order.product?.quantity || 1),
-        image: '' // No image field in model
+        price: parseFloat(order.product?.price) || 0,
+        total: parseFloat(order.product?.price) || 0, // Total is same as price since price represents total amount
+        image: '', // Not stored in current model
+        dimensions: order.product?.dimensions || {
+          length: 10,
+          width: 10,
+          height: 5
+        }
       }],
-      tracking: {
-        awb: order.awb || null,
-        courier: order.courier || null,
-        expectedDelivery: order.awb ? 
-          new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toLocaleDateString() : // 3 days from now if AWB exists
-          null
-      },
-      timeline: order.orderTimeline && order.orderTimeline.length > 0 ? 
-        order.orderTimeline.map(event => ({
-          status: event.status,
-          timestamp: event.timestamp,
-          comment: event.comment || '',
-          location: event.location || null
-        })) : 
-        [{
-          status: 'Order Created',
-          timestamp: order.orderDate || order.createdAt,
-          comment: `Order ${order.orderId} has been successfully placed and is being processed.`,
-          location: null
-        }]
+      // Optional tracking information
+      tracking: order.awb ? {
+        awb: order.awb,
+        courier: order.courier || 'Not assigned',
+        expectedDelivery: 'TBD'
+      } : undefined,
+      // Optional timeline from order timeline
+      timeline: order.orderTimeline?.map(event => ({
+        status: event.status,
+        timestamp: event.timestamp,
+        comment: event.comment,
+        location: 'System' // Default location since not stored
+      }))
     };
 
     res.status(200).json({
@@ -318,8 +303,8 @@ export const updateOrderStatus = async (req, res, next) => {
 
     // Map frontend status to backend status
     const statusMapping = {
-      'not-booked': 'Pending',
-      'processing': 'Processing', 
+      'not-booked': 'Created',
+      'processing': 'Processing',
       'booked': 'Shipped',
       'cancelled': 'Cancelled',
       'shipment-cancelled': 'Cancelled',
@@ -723,7 +708,7 @@ export const importOrders = async (req, res, next) => {
 export const bulkUpdateStatus = async (req, res, next) => {
   try {
     const { orderIds, status } = req.body;
-    
+
     if (!Array.isArray(orderIds) || orderIds.length === 0) {
       throw new AppError('Please provide an array of order IDs', 400);
     }
@@ -731,7 +716,7 @@ export const bulkUpdateStatus = async (req, res, next) => {
     // Map frontend status to backend status
     const statusMapping = {
       'not-booked': 'Pending',
-      'processing': 'Processing', 
+      'processing': 'Processing',
       'booked': 'Shipped',
       'cancelled': 'Cancelled',
       'shipment-cancelled': 'Cancelled',
@@ -863,11 +848,11 @@ export const updateTracking = async (req, res, next) => {
       orderId: order.orderId,
       awb: order.awb,
       courier: order.courier,
-      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' : 
-             order.status?.toLowerCase() === 'processing' ? 'processing' :
-             order.status?.toLowerCase() === 'shipped' ? 'booked' :
-             order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
-             'not-booked',
+      status: order.status?.toLowerCase() === 'pending' ? 'not-booked' :
+        order.status?.toLowerCase() === 'processing' ? 'processing' :
+          order.status?.toLowerCase() === 'shipped' ? 'booked' :
+            order.status?.toLowerCase() === 'cancelled' ? 'cancelled' :
+              'not-booked',
       tracking: {
         awb: order.awb,
         courier: order.courier,
@@ -883,4 +868,4 @@ export const updateTracking = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};

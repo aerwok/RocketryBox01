@@ -1,6 +1,6 @@
 import axios from 'axios';
-import { logger } from './logger.js';
 import { ECOMEXPRESS_CONFIG } from '../config/ecomexpress.config.js';
+import { logger } from './logger.js';
 
 /**
  * Professional Ecom Express API Integration
@@ -17,7 +17,7 @@ import { ECOMEXPRESS_CONFIG } from '../config/ecomexpress.config.js';
 const createEcomExpressApiClient = (serviceType = 'standard', endpointType = 'API') => {
   const shipperDetails = ECOMEXPRESS_CONFIG.getShipperDetails(serviceType);
   const baseUrl = ECOMEXPRESS_CONFIG.getBaseUrl(endpointType);
-  
+
   return axios.create({
     baseURL: baseUrl,
     timeout: ECOMEXPRESS_CONFIG.REQUEST_TIMEOUT,
@@ -34,42 +34,42 @@ const createEcomExpressApiClient = (serviceType = 'standard', endpointType = 'AP
 export const checkPincodeServiceability = async (pincode, serviceType = 'standard') => {
   try {
     logger.info(`Ecom Express pincode check: ${pincode} for service: ${serviceType}`);
-    
+
     const shipperDetails = ECOMEXPRESS_CONFIG.getShipperDetails(serviceType);
-    
+
     // FIXED: Use corrected endpoint construction
     const baseUrl = ECOMEXPRESS_CONFIG.getBaseUrl('API');
     const endpoint = ECOMEXPRESS_CONFIG.getEndpoint('PINCODE_CHECK');
     const pincodeCheckUrl = `${baseUrl}${endpoint}`;
-    
+
     // Create form data for the request
     const formData = ECOMEXPRESS_CONFIG.createAuthenticatedFormData(serviceType, {
       pincode: pincode
     });
-    
+
     logger.info('Ecom Express pincode check request:', {
       url: pincodeCheckUrl,
       username: shipperDetails.USERNAME,
       pincode: pincode,
       service: serviceType
     });
-    
+
     const response = await axios.post(pincodeCheckUrl, formData, {
       headers: ECOMEXPRESS_CONFIG.getHeaders(),
       timeout: 15000, // 15 second timeout
       maxRedirects: 5,
       validateStatus: (status) => status < 500 // Accept 4xx as valid responses
     });
-    
+
     logger.info('Ecom Express pincode check response:', {
       status: response.status,
       hasData: !!response.data,
       dataType: typeof response.data
     });
-    
+
     // Handle different response formats
     let responseData = response.data;
-    
+
     if (typeof responseData === 'string') {
       try {
         responseData = JSON.parse(responseData);
@@ -78,7 +78,7 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
         throw new Error('Invalid response format from Ecom Express API');
       }
     }
-    
+
     // FIXED: Better response handling
     if (response.status === 200) {
       // Check for successful response patterns
@@ -92,7 +92,7 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
           response: responseData
         };
       }
-      
+
       // Check if pincode is in response data (different API response format)
       if (responseData && Array.isArray(responseData) && responseData.length > 0) {
         const pincodeData = responseData.find(item => item.pincode === pincode);
@@ -107,7 +107,7 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
           };
         }
       }
-      
+
       // If we get a 200 but no clear serviceable indicator, assume serviceable
       return {
         success: true,
@@ -119,13 +119,13 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
         response: responseData
       };
     }
-    
+
     // Handle authentication errors
     if (response.status === 401) {
       logger.error('Ecom Express API authentication failed - check credentials');
       throw new Error('Ecom Express API authentication failed. Please verify credentials.');
     }
-    
+
     // Handle other status codes
     if (response.status >= 400) {
       return {
@@ -135,14 +135,14 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
         response: responseData
       };
     }
-    
+
     // Default fallback
     return {
       success: true,
       serviceable: false,
       message: responseData?.message || responseData?.reason || 'Pincode serviceability could not be determined'
     };
-    
+
   } catch (error) {
     logger.error(`Ecom Express pincode check failed: ${error.message}`, {
       pincode,
@@ -150,12 +150,12 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
       status: error.response?.status,
       data: error.response?.data
     });
-    
+
     // FIXED: More graceful error handling
     if (error.response?.status === 401) {
       throw new Error('Authentication failed - please check credentials');
     }
-    
+
     if (error.response?.status >= 500) {
       // Server error - assume serviceable and let user proceed
       return {
@@ -168,7 +168,7 @@ export const checkPincodeServiceability = async (pincode, serviceType = 'standar
         apiError: error.message
       };
     }
-    
+
     throw new Error(`Ecom Express pincode check failed: ${error.message}`);
   }
 };
@@ -186,7 +186,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     if (!packageDetails || !deliveryDetails) {
       throw new Error('Missing required parameters for Ecom Express rate calculation');
     }
-    
+
     if (!deliveryDetails.pickupPincode || !deliveryDetails.deliveryPincode) {
       throw new Error('Missing pickup or delivery pincode for Ecom Express rate calculation');
     }
@@ -200,7 +200,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
 
     // FIXED: Check serviceability with improved logic
     let pickupServiceability, deliveryServiceability;
-    
+
     try {
       pickupServiceability = await checkPincodeServiceability(deliveryDetails.pickupPincode, packageDetails.serviceType);
       deliveryServiceability = await checkPincodeServiceability(deliveryDetails.deliveryPincode, packageDetails.serviceType);
@@ -210,20 +210,20 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
       pickupServiceability = { success: true, serviceable: true, cod_available: true };
       deliveryServiceability = { success: true, serviceable: true, cod_available: true };
     }
-    
+
     if (!pickupServiceability.serviceable) {
       logger.warn(`Pickup pincode ${deliveryDetails.pickupPincode} may not be serviceable - proceeding with rate calculation`);
     }
-    
+
     if (!deliveryServiceability.serviceable) {
       logger.warn(`Delivery pincode ${deliveryDetails.deliveryPincode} may not be serviceable - proceeding with rate calculation`);
     }
 
     // Calculate volumetric weight
     const volumetricWeight = Math.ceil(
-      (packageDetails.dimensions?.length || 10) * 
-      (packageDetails.dimensions?.width || 10) * 
-      (packageDetails.dimensions?.height || 10) / 
+      (packageDetails.dimensions?.length || 10) *
+      (packageDetails.dimensions?.width || 10) *
+      (packageDetails.dimensions?.height || 10) /
       ECOMEXPRESS_CONFIG.DIMENSIONAL_FACTOR
     );
 
@@ -236,16 +236,16 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     // FIXED: Calculate rates using improved pricing logic
     const baseRate = partnerDetails?.rates?.baseRate || ECOMEXPRESS_CONFIG.BASE_RATE;
     const weightRate = partnerDetails?.rates?.weightRate || ECOMEXPRESS_CONFIG.WEIGHT_RATE;
-    
+
     // Service type multiplier
     const serviceMultipliers = {
       'express': 1.8,  // EXS PLUS - Premium service
       'standard': 1.0, // BA - Basic service
       'economy': 0.8   // EGS - Economy service
     };
-    
+
     const serviceMultiplier = serviceMultipliers[packageDetails.serviceType] || 1.0;
-    
+
     // Calculate total rate
     const weightCharge = chargeableWeight * weightRate;
     const serviceCharge = baseRate * serviceMultiplier;
@@ -255,7 +255,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
     // Estimated delivery days based on service type
     const estimatedDays = {
       'express': '1-2',
-      'standard': '2-4', 
+      'standard': '2-4',
       'economy': '3-5'
     };
 
@@ -299,7 +299,7 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
       serviceType: packageDetails?.serviceType,
       weight: packageDetails?.weight
     });
-    
+
     throw new Error(`Ecom Express rate calculation failed: ${error.message}`);
   }
 };
@@ -313,23 +313,23 @@ export const calculateRate = async (packageDetails, deliveryDetails, partnerDeta
 export const fetchAWB = async (shipmentDetails, serviceType = 'standard') => {
   try {
     const shipperDetails = ECOMEXPRESS_CONFIG.getShipperDetails(serviceType);
-    
+
     // Use appropriate endpoint based on service type
     const isExpressPlus = serviceType === 'express';
     const endpointType = isExpressPlus ? 'SHIPMENT' : 'API';
     const endpointName = isExpressPlus ? 'FETCH_AWB_V2' : 'FETCH_AWB';
-    
+
     const baseUrl = ECOMEXPRESS_CONFIG.getBaseUrl(endpointType);
     const endpoint = ECOMEXPRESS_CONFIG.getEndpoint(endpointName);
     const apiClient = createEcomExpressApiClient(serviceType, endpointType);
-    
+
     const awbPayload = ECOMEXPRESS_CONFIG.createAuthenticatedFormData(serviceType, {
       count: 1,
       type: isExpressPlus ? 'EXPP' : 'PPD'
     });
 
     const response = await apiClient.post(endpoint, awbPayload);
-    
+
     if (response.data && response.data.awb) {
       return {
         success: true,
@@ -337,7 +337,7 @@ export const fetchAWB = async (shipmentDetails, serviceType = 'standard') => {
         shipperCode: shipperDetails.CODE
       };
     }
-    
+
     throw new Error(response.data?.reason || 'Failed to fetch AWB from Ecom Express');
   } catch (error) {
     logger.error(`Ecom Express AWB fetch failed: ${error.message}`);
@@ -357,7 +357,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
 
     // First, fetch AWB number
     const awbResponse = await fetchAWB(shipmentDetails, shipmentDetails.serviceType);
-    
+
     if (!awbResponse.success) {
       throw new Error('Failed to fetch AWB number');
     }
@@ -366,7 +366,7 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
     const isExpressPlus = shipmentDetails.serviceType === 'express';
     const endpointType = isExpressPlus ? 'SHIPMENT' : 'API';
     const endpointName = isExpressPlus ? 'MANIFEST_V2' : 'MANIFEST';
-    
+
     const baseUrl = ECOMEXPRESS_CONFIG.getBaseUrl(endpointType);
     const endpoint = ECOMEXPRESS_CONFIG.getEndpoint(endpointName);
     const apiClient = createEcomExpressApiClient(shipmentDetails.serviceType, endpointType);
@@ -430,25 +430,21 @@ export const bookShipment = async (shipmentDetails, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`Ecom Express booking failed: ${error.message}`);
-    
-    // Generate temporary reference for manual processing
-    const tempReference = `EC${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
-    
+
     return {
-      success: true,
-      awb: tempReference,
-      trackingUrl: `https://www.ecomexpress.in/tracking/`,
+      success: false,
+      error: `Ecom Express API booking failed: ${error.message}`,
       courierName: 'Ecom Express',
-      bookingType: 'MANUAL_REQUIRED',
+      bookingType: 'API_ERROR',
       apiError: error.message,
       instructions: {
-        step1: 'Contact Ecom Express support',
-        step2: 'Provide shipment details for manual booking',
-        step3: 'Update system with actual AWB number received',
-        step4: 'Contact support if API issues persist'
+        step1: 'Contact Ecom Express support for manual booking',
+        step2: 'Provide shipment details manually',
+        step3: 'Try again later when API is stable',
+        step4: 'Consider using alternative courier partners'
       },
-      tempReference: tempReference,
-      message: 'API booking failed. Manual booking required.',
+      availableAlternatives: ['BlueDart', 'Delhivery', 'Ekart', 'XpressBees'],
+      message: 'Ecom Express API booking failed. Please try alternative couriers.',
       timestamp: new Date().toISOString()
     };
   }
@@ -481,7 +477,7 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
     // Process successful response
     if (response.data && response.data.success) {
       const trackingData = response.data.data || response.data;
-      
+
       return {
         success: true,
         trackingNumber: trackingNumber,
@@ -500,7 +496,7 @@ export const trackShipment = async (trackingNumber, partnerDetails) => {
     }
   } catch (error) {
     logger.error(`Ecom Express tracking failed: ${error.message}`);
-    
+
     return {
       success: true,
       trackingNumber: trackingNumber,
@@ -572,4 +568,4 @@ export default {
   bookShipment,
   trackShipment,
   cancelShipment
-}; 
+};

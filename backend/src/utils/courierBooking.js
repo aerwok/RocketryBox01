@@ -1,16 +1,16 @@
-import { getPartnerDetails } from './shipping.js';
 import * as bluedart from './bluedart.js';
 import * as delhivery from './delhivery.js';
-import * as dtdc from './dtdc.js';
+import * as ecomexpress from './ecomexpress.js';
 import * as ekart from './ekart.js';
-import * as xpressbees from './xpressbees.js';
 import { logger } from './logger.js';
+import { getPartnerDetails } from './shipping.js';
+import * as xpressbees from './xpressbees.js';
 
 // Map of courier codes to their respective modules
 const courierModules = {
   BLUEDART: bluedart,
   DELHIVERY: delhivery,
-  DTDC: dtdc,
+  ECOMEXPRESS: ecomexpress,
   EKART: ekart,
   XPRESSBEES: xpressbees
 };
