@@ -2,20 +2,20 @@ import UploadModal from "@/components/shared/upload-modal";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
 import { sellerBankSchema, type SellerBankInput } from "@/lib/validations/seller";
 import { ServiceFactory } from "@/services/service-factory";
@@ -120,6 +120,28 @@ const SellerBankDetailsPage = () => {
 
       console.log("Bank details with S3 URL:", bankDetails);
 
+      // 🐛 DEBUG: Log validation details
+      console.log("🔍 VALIDATION DEBUG:", {
+        ifscCode: {
+          value: data.ifscCode,
+          length: data.ifscCode?.length,
+          isUppercase: data.ifscCode === data.ifscCode?.toUpperCase(),
+          pattern: /^[A-Z]{4}0[A-Z0-9]{6}$/.test(data.ifscCode || ''),
+          expected: "Format: BANK0XXXXXX (11 chars, 5th char must be '0')"
+        },
+        accountNumber: {
+          value: data.accountNumber,
+          length: data.accountNumber?.length,
+          isOnlyDigits: /^\d+$/.test(data.accountNumber || ''),
+          expected: "Only digits, 9-18 characters"
+        },
+        cancelledCheque: {
+          hasUrl: !!uploadedCheque?.url,
+          url: uploadedCheque?.url,
+          expected: "Valid URL required"
+        }
+      });
+
       // FIXED: Call actual API to save bank details using the correct seller service
       const response = await ServiceFactory.seller.profile.updateBankDetails(bankDetails);
 
@@ -138,9 +160,21 @@ const SellerBankDetailsPage = () => {
 
       // Navigate to seller dashboard
       navigate('/seller/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving bank details:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save bank details. Please try again.");
+
+      // 🚨 Enhanced error logging
+      if (error?.status === 400) {
+        console.error("🚨 VALIDATION ERROR DETAILS:", {
+          status: error.status,
+          message: error.message,
+          details: error.details,
+          data: error.data
+        });
+        toast.error(`Validation Error: ${error.message || 'Please check your input format'}`);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Failed to save bank details. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -264,12 +298,24 @@ const SellerBankDetailsPage = () => {
                       <FormLabel>Account Number</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Account Number"
+                          placeholder="Account Number (digits only, 9-18 chars)"
                           className="bg-[#99BCDDB5]"
                           {...field}
+                          onChange={(e) => {
+                            // Allow only digits
+                            const value = e.target.value.replace(/\D/g, '');
+                            field.onChange(value);
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
+                      {field.value && (
+                        <p className="text-xs text-gray-600">
+                          Length: {field.value.length}/18 chars
+                          {field.value.length < 9 && " (minimum 9)"}
+                          {field.value.length > 18 && " (maximum 18)"}
+                        </p>
+                      )}
                     </FormItem>
                   )}
                 />
@@ -318,12 +364,34 @@ const SellerBankDetailsPage = () => {
                       <FormLabel>IFSC Code</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="IFSC Code"
+                          placeholder="BANK0XXXXXX (11 chars, 5th char must be 0)"
                           className="bg-[#99BCDDB5]"
                           {...field}
+                          onChange={(e) => {
+                            // Convert to uppercase and limit to 11 chars
+                            const value = e.target.value.toUpperCase().slice(0, 11);
+                            field.onChange(value);
+                          }}
                         />
                       </FormControl>
                       <FormMessage />
+                      {field.value && (
+                        <div className="text-xs">
+                          <p className={`${field.value.length === 11 ? 'text-green-600' : 'text-red-600'}`}>
+                            Length: {field.value.length}/11 chars
+                          </p>
+                          {field.value.length >= 5 && (
+                            <p className={`${field.value[4] === '0' ? 'text-green-600' : 'text-red-600'}`}>
+                              5th character: '{field.value[4]}' {field.value[4] === '0' ? '✓' : '(must be 0)'}
+                            </p>
+                          )}
+                          {field.value.length === 11 && (
+                            <p className={`${/^[A-Z]{4}0[A-Z0-9]{6}$/.test(field.value) ? 'text-green-600' : 'text-red-600'}`}>
+                              Format: {/^[A-Z]{4}0[A-Z0-9]{6}$/.test(field.value) ? 'Valid ✓' : 'Invalid ✗'}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </FormItem>
                   )}
                 />
