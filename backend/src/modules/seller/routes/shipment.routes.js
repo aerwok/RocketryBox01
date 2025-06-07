@@ -1,27 +1,27 @@
 import express from 'express';
-import {
-  createShipment,
-  createBulkShipments,
-  getShipments,
-  getShipment,
-  updateShipmentStatus,
-  addTrackingEvent,
-  getTrackingHistory,
-  getManifest,
-  handleReturn,
-  getShippingRates,
-  bookCourierShipment,
-  trackShipmentStatus
-} from '../controllers/shipment.controller.js';
 import { authenticateSeller } from '../../../middleware/auth.js';
 import {
-  validateCreateShipment,
-  validateCreateBulkShipments,
-  validateUpdateShipmentStatus,
+  addTrackingEvent,
+  bookCourierShipment,
+  createBulkShipments,
+  createShipment,
+  getManifest,
+  getShipment,
+  getShipments,
+  getShippingRates,
+  getTrackingHistory,
+  handleReturn,
+  trackShipmentStatus,
+  updateShipmentStatus
+} from '../controllers/shipment.controller.js';
+import {
   validateAddTrackingEvent,
+  validateCourierBooking,
+  validateCreateBulkShipments,
+  validateCreateShipment,
   validateHandleReturn,
   validateShippingRates,
-  validateCourierBooking
+  validateUpdateShipmentStatus
 } from '../validators/shipment.validator.js';
 
 const router = express.Router();
@@ -65,4 +65,4 @@ router.get('/:id/tracking', getTrackingHistory);
 // Handle return/NDR
 router.post('/:id/return', validateHandleReturn, handleReturn);
 
-export default router; 
+export default router;

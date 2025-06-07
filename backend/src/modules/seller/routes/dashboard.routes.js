@@ -1,6 +1,6 @@
 import express from 'express';
-import { getDashboardStats, getChartData, getCourierPerformance, getProductPerformance, getDashboardSummary } from '../controllers/dashboard.controller.js';
 import { authenticateSeller } from '../../../middleware/auth.js';
+import { getChartData, getCourierPerformance, getDashboardStats, getDashboardSummary, getProductPerformance } from '../controllers/dashboard.controller.js';
 
 const router = express.Router();
 
@@ -23,4 +23,4 @@ router.get('/products', getProductPerformance);
 
 // Note: downloadReport function was removed as it doesn't exist in the controller
 
-export default router; 
+export default router;

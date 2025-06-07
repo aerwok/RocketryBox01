@@ -39,6 +39,7 @@ export const addTeamUserSchema = Joi.object({
     .required()
     .min(2)
     .max(50)
+    .trim()
     .messages({
       'string.min': 'Name must be at least 2 characters',
       'string.max': 'Name cannot exceed 50 characters',
@@ -47,22 +48,32 @@ export const addTeamUserSchema = Joi.object({
   email: Joi.string()
     .email()
     .required()
+    .lowercase()
+    .trim()
     .messages({
       'string.email': 'Please provide a valid email',
       'any.required': 'Email is required'
     }),
   phone: Joi.string()
     .pattern(/^[0-9]{10}$/)
-    .required()
+    .allow('')
     .messages({
-      'string.pattern.base': 'Phone number must be 10 digits',
-      'any.required': 'Phone number is required'
+      'string.pattern.base': 'Phone number must be 10 digits'
+    }),
+  password: Joi.string()
+    .required()
+    .min(6)
+    .max(128)
+    .messages({
+      'string.min': 'Password must be at least 6 characters',
+      'string.max': 'Password cannot exceed 128 characters',
+      'any.required': 'Password is required'
     }),
   role: Joi.string()
-    .valid('Admin', 'Manager', 'Staff')
+    .valid('Owner', 'Manager', 'Staff')
     .default('Staff')
     .messages({
-      'any.only': 'Role must be either Admin, Manager, or Staff'
+      'any.only': 'Role must be either Owner, Manager, or Staff'
     }),
   permissions: permissionsSchema
 });
@@ -71,27 +82,56 @@ export const updateTeamUserSchema = Joi.object({
   name: Joi.string()
     .min(2)
     .max(50)
+    .trim()
     .messages({
       'string.min': 'Name must be at least 2 characters',
       'string.max': 'Name cannot exceed 50 characters'
     }),
   phone: Joi.string()
     .pattern(/^[0-9]{10}$/)
+    .allow('')
     .messages({
       'string.pattern.base': 'Phone number must be 10 digits'
     }),
   role: Joi.string()
-    .valid('Admin', 'Manager', 'Staff')
+    .valid('Owner', 'Manager', 'Staff')
     .messages({
-      'any.only': 'Role must be either Admin, Manager, or Staff'
+      'any.only': 'Role must be either Owner, Manager, or Staff'
     }),
   status: Joi.string()
-    .valid('Active', 'Inactive')
+    .valid('Active', 'Inactive', 'Suspended', 'Pending')
     .messages({
-      'any.only': 'Status must be either Active or Inactive'
-    })
+      'any.only': 'Status must be either Active, Inactive, Suspended, or Pending'
+    }),
+  permissions: permissionsSchema
 });
 
 export const updatePermissionsSchema = Joi.object({
   permissions: permissionsSchema.required()
-}); 
+});
+
+// Team User Authentication Schemas
+export const loginTeamUserSchema = Joi.object({
+  email: Joi.string()
+    .email()
+    .required()
+    .lowercase()
+    .trim()
+    .messages({
+      'string.email': 'Please provide a valid email',
+      'any.required': 'Email is required'
+    }),
+  password: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'Password is required'
+    })
+});
+
+export const refreshTokenSchema = Joi.object({
+  refreshToken: Joi.string()
+    .required()
+    .messages({
+      'any.required': 'Refresh token is required'
+    })
+});

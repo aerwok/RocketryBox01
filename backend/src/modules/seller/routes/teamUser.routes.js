@@ -2,22 +2,28 @@ import express from 'express';
 import { authenticateSeller } from '../../../middleware/auth.js';
 import { validationHandler } from '../../../middleware/validator.js';
 import {
-  addTeamUserSchema,
-  updateTeamUserSchema,
-  updatePermissionsSchema
-} from '../validators/teamUser.validator.js';
-import {
-  listTeamUsers,
   addTeamUser,
-  getTeamUser,
-  updateTeamUser,
   deleteTeamUser,
+  getTeamUser,
+  listTeamUsers,
+  updateTeamUser,
   updateTeamUserPermissions
 } from '../controllers/teamUser.controller.js';
+import {
+  addTeamUserSchema,
+  updatePermissionsSchema,
+  updateTeamUserSchema
+} from '../validators/teamUser.validator.js';
+
+// Import auth routes
+import teamUserAuthRoutes from './teamUserAuth.routes.js';
 
 const router = express.Router();
 
-// All routes require seller authentication
+// Auth routes (public and protected)
+router.use('/auth', teamUserAuthRoutes);
+
+// All other routes require seller authentication
 router.use(authenticateSeller);
 
 // List team users with filters and pagination
@@ -38,4 +44,4 @@ router.delete('/:id', deleteTeamUser);
 // Update team user permissions
 router.patch('/:id/permissions', validationHandler(updatePermissionsSchema), updateTeamUserPermissions);
 
-export default router; 
+export default router;

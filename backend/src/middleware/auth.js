@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Seller from '../modules/seller/models/seller.model.js';
+import TeamUser from '../modules/seller/models/teamUser.model.js';
 import { logger } from '../utils/logger.js';
 import { getSession, setSession } from '../utils/redis.js';
 import { AppError } from './errorHandler.js';
@@ -132,7 +133,19 @@ export const authenticateSeller = async (req, res, next) => {
     }
 
     // 2) Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('Your token has expired! Please log in again.', 401));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        return next(new AppError('Invalid token. Please log in again!', 401));
+      } else {
+        logger.error('JWT verification error in authenticateSeller:', jwtError);
+        return next(new AppError('Authentication failed. Please try again.', 500));
+      }
+    }
 
     // 3) Check if user is a seller
     if (decoded.role !== 'seller') {
@@ -178,10 +191,98 @@ export const authenticateSeller = async (req, res, next) => {
     }
 
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      return next(new AppError('Invalid token. Please log in again!', 401));
+    logger.error('Error in authenticateSeller:', error);
+    return next(new AppError('Authentication failed. Please try again.', 500));
+  }
+};
+
+// Middleware to authenticate team user
+export const authenticateTeamUser = async (req, res, next) => {
+  try {
+    // 1) Get token from header
+    let token;
+    if (req.headers.authorization?.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
     }
-    next(error);
+
+    if (!token) {
+      return next(new AppError('You are not logged in! Please log in to get access.', 401));
+    }
+
+    // 2) Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('Your token has expired! Please log in again.', 401));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        return next(new AppError('Invalid token. Please log in again!', 401));
+      } else {
+        logger.error('JWT verification error in authenticateTeamUser:', jwtError);
+        return next(new AppError('Authentication failed. Please try again.', 500));
+      }
+    }
+
+    // 3) Check if user is a team member
+    if (decoded.role !== 'team_member') {
+      return next(new AppError('You do not have permission to access this route', 403));
+    }
+
+    // 4) Fetch current team user data from database
+    try {
+      const teamUser = await TeamUser.findById(decoded.id).populate('seller', 'name businessName status');
+      if (!teamUser) {
+        return next(new AppError('Team user not found. Please log in again.', 401));
+      }
+
+      // 5) Check if team user is active
+      if (teamUser.status === 'Suspended') {
+        return next(new AppError('Your account has been suspended. Please contact your administrator.', 403));
+      }
+
+      if (teamUser.status !== 'Active') {
+        return next(new AppError('Your account is not active. Please contact your administrator.', 403));
+      }
+
+      // 6) Check if parent seller is active
+      if (!teamUser.seller) {
+        return next(new AppError('Parent seller account not found. Please contact support.', 404));
+      }
+
+      if (teamUser.seller.status === 'suspended') {
+        return next(new AppError('Parent seller account is suspended. Please contact support.', 403));
+      }
+
+      // 7) Update last active time
+      teamUser.lastActive = new Date();
+      await teamUser.save();
+
+      // 8) Add complete team user data to request
+      req.user = {
+        id: teamUser._id,
+        email: teamUser.email,
+        role: 'team_member',
+        name: teamUser.name,
+        phone: teamUser.phone,
+        status: teamUser.status,
+        permissions: teamUser.permissions,
+        sellerId: teamUser.seller._id,
+        sellerName: teamUser.seller.name,
+        businessName: teamUser.seller.businessName,
+        // Add any other fields needed for middleware checks
+        ...teamUser.toObject()
+      };
+
+      next();
+    } catch (dbError) {
+      logger.error('Database error in authenticateTeamUser:', dbError);
+      return next(new AppError('Authentication failed. Please try again.', 500));
+    }
+
+  } catch (error) {
+    logger.error('Error in authenticateTeamUser:', error);
+    return next(new AppError('Authentication failed. Please try again.', 500));
   }
 };
 
@@ -199,7 +300,19 @@ export const authenticateAdmin = async (req, res, next) => {
     }
 
     // 2) Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('Your token has expired! Please log in again.', 401));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        return next(new AppError('Invalid token. Please log in again!', 401));
+      } else {
+        logger.error('JWT verification error in authenticateAdmin:', jwtError);
+        return next(new AppError('Authentication failed. Please try again.', 500));
+      }
+    }
 
     // 3) Check if user is an admin
     if (decoded.role !== 'Admin' && decoded.role !== 'Manager') {
@@ -253,10 +366,51 @@ export const authenticateAdmin = async (req, res, next) => {
 
     next();
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      return next(new AppError('Invalid token. Please log in again!', 401));
+    logger.error('Error in authenticateAdmin:', error);
+    return next(new AppError('Authentication failed. Please try again.', 500));
+  }
+};
+
+// Middleware to authenticate either seller or team user
+export const authenticateUser = async (req, res, next) => {
+  try {
+    // 1) Get token from header
+    let token;
+    if (req.headers.authorization?.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
     }
-    next(error);
+
+    if (!token) {
+      return next(new AppError('You are not logged in! Please log in to get access.', 401));
+    }
+
+    // 2) Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('Your token has expired! Please log in again.', 401));
+      } else if (jwtError.name === 'JsonWebTokenError') {
+        return next(new AppError('Invalid token. Please log in again!', 401));
+      } else {
+        logger.error('JWT verification error in authenticateUser:', jwtError);
+        return next(new AppError('Authentication failed. Please try again.', 500));
+      }
+    }
+
+    // 3) Route to appropriate authentication based on role
+    if (decoded.role === 'seller') {
+      return authenticateSeller(req, res, next);
+    } else if (decoded.role === 'team_member') {
+      return authenticateTeamUser(req, res, next);
+    } else {
+      return next(new AppError('Invalid user role', 403));
+    }
+
+  } catch (error) {
+    logger.error('Error in authenticateUser:', error);
+    return next(new AppError('Authentication failed. Please try again.', 500));
   }
 };
 

@@ -4,11 +4,10 @@
 import { SendEmailCommand } from '@aws-sdk/client-ses';
 import express from 'express';
 import { AWS_CONFIG, sesClient } from '../config/aws.js';
+import VerificationToken from '../modules/seller/models/verificationToken.model.js';
+import { logger } from '../utils/logger.js';
 
 const router = express.Router();
-
-// In-memory OTP storage (use Redis or database in production)
-const otpStore = new Map();
 
 /**
  * Generate OTP for customer registration
@@ -29,19 +28,48 @@ router.post('/send-customer-registration', async (req, res) => {
       });
     }
 
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a valid email address'
+      });
+    }
+
+    // Check for recent OTP to prevent rapid requests
+    const recentOTP = await VerificationToken.findOne({
+      identifier: email.toLowerCase(),
+      type: 'register',
+      createdAt: { $gt: new Date(Date.now() - 2 * 60 * 1000) } // Within last 2 minutes
+    });
+
+    if (recentOTP) {
+      return res.status(429).json({
+        success: false,
+        error: 'Please wait 2 minutes before requesting another OTP'
+      });
+    }
+
     // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP (use Redis/database in production)
-    otpStore.set(email, {
-      otp,
-      type: 'customer-registration',
-      expiresAt,
-      attempts: 0,
-      name,
-      phone
+    // Delete any existing OTP for this email and type
+    await VerificationToken.deleteMany({
+      identifier: email.toLowerCase(),
+      type: 'register'
     });
+
+    // Store OTP in database
+    await VerificationToken.create({
+      identifier: email.toLowerCase(),
+      token: otp,
+      type: 'register',
+      expiresAt
+    });
+
+    logger.info(`Customer registration OTP generated for: ${email}`);
 
     // Send OTP email
     const result = await sendOTPEmail(email, otp, name || 'Customer', 'customer registration');
@@ -59,7 +87,12 @@ router.post('/send-customer-registration', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error sending customer registration OTP:', error);
+    logger.error('Error sending customer registration OTP:', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body?.email
+    });
+
     res.status(500).json({
       success: false,
       error: 'Failed to send OTP',
@@ -80,54 +113,10 @@ router.post('/send-customer-registration', async (req, res) => {
  * Sends OTP to seller email for registration verification
  */
 router.post('/send-seller-registration-DISABLED', async (req, res) => {
-  try {
-    const { email, businessName, contactName, phone } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email is required'
-      });
-    }
-
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    // Store OTP
-    otpStore.set(email, {
-      otp,
-      type: 'seller-registration',
-      expiresAt,
-      attempts: 0,
-      businessName,
-      contactName,
-      phone
-    });
-
-    // Send OTP email
-    const result = await sendOTPEmail(email, otp, contactName || businessName || 'Business Partner', 'seller registration');
-
-    res.json({
-      success: true,
-      message: 'OTP sent successfully',
-      data: {
-        email,
-        expiresAt: expiresAt.toISOString(),
-        messageId: result.MessageId,
-        // Include OTP in development for testing
-        ...(process.env.NODE_ENV === 'development' && { otp })
-      }
-    });
-
-  } catch (error) {
-    console.error('Error sending seller registration OTP:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to send OTP',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
+  return res.status(410).json({
+    success: false,
+    error: 'This endpoint is disabled. Please use /api/v2/seller/auth/otp/send instead'
+  });
 });
 
 /**
@@ -149,65 +138,72 @@ router.post('/verify', async (req, res) => {
       });
     }
 
-    const stored = otpStore.get(email);
-
-    if (!stored) {
+    // Validate email format
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(email)) {
       return res.status(400).json({
         success: false,
-        error: 'No OTP found for this email'
+        error: 'Please provide a valid email address'
       });
     }
 
-    // Check expiration
-    if (new Date() > stored.expiresAt) {
-      otpStore.delete(email);
+    // Find the verification token in database
+    const verificationToken = await VerificationToken.findOne({
+      identifier: email.toLowerCase(),
+      token: otp.trim(),
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!verificationToken) {
       return res.status(400).json({
         success: false,
-        error: 'OTP has expired'
+        error: 'Invalid or expired OTP'
       });
     }
 
-    // Check attempts
-    if (stored.attempts >= 3) {
-      otpStore.delete(email);
-      return res.status(400).json({
-        success: false,
-        error: 'Too many failed attempts. Please request a new OTP'
+    // Check if this is for registration (which doesn't need user verification)
+    if (verificationToken.type === 'register') {
+      // Delete the used OTP
+      await VerificationToken.deleteOne({ _id: verificationToken._id });
+
+      logger.info(`Customer registration OTP verified for: ${email}`);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          message: 'Email verified successfully',
+          verified: true,
+          email: email.toLowerCase(),
+          type: verificationToken.type,
+          verifiedAt: new Date().toISOString()
+        }
       });
     }
 
-    // Verify OTP
-    if (stored.otp !== otp) {
-      stored.attempts++;
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid OTP',
-        attemptsRemaining: 3 - stored.attempts
-      });
-    }
+    // For other types, we might need additional verification logic here
+    // Delete the used verification token
+    await VerificationToken.deleteOne({ _id: verificationToken._id });
 
-    // Success - OTP is valid
-    const userData = {
-      email,
-      type: stored.type,
-      verifiedAt: new Date().toISOString(),
-      ...(stored.name && { name: stored.name }),
-      ...(stored.businessName && { businessName: stored.businessName }),
-      ...(stored.contactName && { contactName: stored.contactName }),
-      ...(stored.phone && { phone: stored.phone })
-    };
+    logger.info(`OTP verified successfully for: ${email}, type: ${verificationToken.type}`);
 
-    // Remove OTP after successful verification
-    otpStore.delete(email);
-
-    res.json({
+    res.status(200).json({
       success: true,
-      message: 'Email verified successfully',
-      data: userData
+      data: {
+        message: 'OTP verified successfully',
+        verified: true,
+        email: email.toLowerCase(),
+        type: verificationToken.type,
+        verifiedAt: new Date().toISOString()
+      }
     });
 
   } catch (error) {
-    console.error('Error verifying OTP:', error);
+    logger.error('Error verifying OTP:', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body?.email
+    });
+
     res.status(500).json({
       success: false,
       error: 'Failed to verify OTP'
@@ -244,7 +240,7 @@ async function sendOTPEmail(email, otp, recipientName, registrationType) {
             <li>This OTP will expire in 10 minutes</li>
             <li>Do not share this code with anyone</li>
             <li>If you didn't request this, please ignore this email</li>
-            <li>Maximum 3 attempts allowed</li>
+            <li>Each OTP can only be used once</li>
           </ul>
         </div>
 
@@ -271,7 +267,7 @@ Security Information:
 - This OTP will expire in 10 minutes
 - Do not share this code with anyone
 - If you didn't request this, please ignore this email
-- Maximum 3 attempts allowed
+- Each OTP can only be used once
 
 If you have any questions, please contact our support team.
 
@@ -305,18 +301,20 @@ Email: ${email} | Type: ${registrationType}
  *    POST /api/v2/otp/send-customer-registration
  *    { "email": "customer@gmail.com", "name": "John Doe" }
  *
- * 2. Seller Registration (DISABLED - Use /api/v2/seller/auth/otp/send instead):
- *    POST /api/v2/otp/send-seller-registration-DISABLED
- *    { "email": "business@company.com", "businessName": "ABC Corp", "contactName": "Jane Smith" }
+ * 2. Seller Registration (Use /api/v2/seller/auth/otp/send instead):
+ *    This endpoint is disabled to prevent conflicts
  *
  * 3. Verify OTP:
  *    POST /api/v2/otp/verify
  *    { "email": "customer@gmail.com", "otp": "123456" }
  *
  * IMPORTANT:
+ * - All OTP data is now stored securely in MongoDB database
+ * - No in-memory storage used - fully database-driven
  * - Works with ANY email address once SES production access is approved
  * - No need to manually verify each customer/seller email
  * - Perfect for scalable registration system
+ * - Automatic cleanup of expired OTPs via MongoDB TTL indexes
  */
 
 export default router;

@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { AppError } from '../../../middleware/errorHandler.js';
 import { sendEmail } from '../../../utils/email.js';
 import { emitEvent, EVENT_TYPES } from '../../../utils/eventEmitter.js';
+import { logger } from '../../../utils/logger.js';
 import { sendOTP as sendSMSOTP } from '../../../utils/sms.js';
 import Seller from '../models/seller.model.js';
 import VerificationToken from '../models/verificationToken.model.js';
@@ -16,31 +17,52 @@ function generateOTP(length = 6) {
 export const login = async (req, res, next) => {
   try {
     const { emailOrPhone, password, otp, rememberMe } = req.body;
+
+    // Input validation
+    if (!emailOrPhone) {
+      return next(new AppError('Email or phone number is required', 400));
+    }
+
+    if (!password && !otp) {
+      return next(new AppError('Password or OTP is required', 400));
+    }
+
+    // Find seller
     const seller = await Seller.findOne({
       $or: [
         { email: emailOrPhone.toLowerCase() },
         { phone: emailOrPhone }
       ]
     }).select('+password');
-    if (!seller) return next(new AppError('Seller not found', 404));
+
+    if (!seller) {
+      return next(new AppError('Invalid credentials', 401));
+    }
+
+    // Check seller status
+    if (seller.status === 'suspended') {
+      return next(new AppError('Your account has been suspended. Please contact support.', 403));
+    }
 
     // Password login
     if (password) {
       const isMatch = await seller.comparePassword(password);
-      if (!isMatch) return next(new AppError('Invalid credentials', 401));
+      if (!isMatch) {
+        return next(new AppError('Invalid credentials', 401));
+      }
     } else if (otp) {
       // OTP login
       if (!seller.otp || seller.otp.code !== otp || seller.otp.expiresAt < new Date()) {
         return next(new AppError('Invalid or expired OTP', 401));
       }
       seller.otp = undefined;
-    } else {
-      return next(new AppError('Password or OTP required', 400));
     }
 
+    // Update login time
     seller.lastLogin = new Date();
-    await seller.save();
+    seller.lastActive = new Date();
 
+    // Generate tokens
     const accessToken = seller.generateAuthToken();
     const refreshToken = seller.generateRefreshToken();
     seller.refreshToken = refreshToken;
@@ -69,11 +91,16 @@ export const login = async (req, res, next) => {
     }
 
     // Emit seller login event for real-time dashboard updates
-    emitEvent(EVENT_TYPES.SELLER_LOGIN, {
-      sellerId: seller._id,
-      businessName: seller.businessName,
-      email: seller.email
-    });
+    try {
+      emitEvent(EVENT_TYPES.SELLER_LOGIN, {
+        sellerId: seller._id,
+        businessName: seller.businessName,
+        email: seller.email
+      });
+    } catch (eventError) {
+      console.warn('⚠️ Failed to emit seller login event:', eventError.message);
+      // Don't fail login if event emission fails
+    }
 
     res.status(200).json({
       success: true,
@@ -82,10 +109,25 @@ export const login = async (req, res, next) => {
         refreshToken,
         expiresIn: rememberMe ? 604800 : 86400, // 7d or 1d
         seller: seller.toJSON()
-      }
+      },
+      message: 'Login successful'
     });
   } catch (error) {
-    next(new AppError(error.message, 400));
+    logger.error('Seller login error:', {
+      error: error.message,
+      stack: error.stack,
+      emailOrPhone: req.body?.emailOrPhone
+    });
+
+    if (error.name === 'ValidationError') {
+      return next(new AppError('Invalid input data', 400));
+    }
+
+    if (error.name === 'CastError') {
+      return next(new AppError('Invalid data format', 400));
+    }
+
+    next(new AppError('Login failed. Please try again.', 500));
   }
 };
 
@@ -576,13 +618,30 @@ export const register = async (req, res, next) => {
       }
     });
   } catch (error) {
-    console.error('Registration error:', {
+    logger.error('Seller registration error:', {
       error: error.message,
       stack: error.stack,
       code: error.code,
-      name: error.name
+      name: error.name,
+      email: req.body?.email
     });
-    next(new AppError(error.message || 'Registration failed', 400));
+
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(err => err.message);
+      return next(new AppError(`Validation error: ${validationErrors.join(', ')}`, 400));
+    }
+
+    if (error.code === 11000) {
+      // Duplicate key error
+      const field = Object.keys(error.keyPattern)[0];
+      return next(new AppError(`${field} already exists`, 409));
+    }
+
+    if (error.name === 'CastError') {
+      return next(new AppError('Invalid data format', 400));
+    }
+
+    next(new AppError('Registration failed. Please try again.', 500));
   }
 };
 

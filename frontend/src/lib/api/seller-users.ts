@@ -3,11 +3,11 @@
  * This file defines the interface for managing team members in a seller account.
  */
 
-import { toast } from "sonner";
 import { apiService } from '@/services/api.service';
+import { sellerAuthService } from '@/services/seller-auth.service';
 import { ApiResponse } from '@/types/api';
 import { User, UserFilters } from '@/types/user';
-import { sellerAuthService } from '@/services/seller-auth.service';
+import { toast } from "sonner";
 
 // Job role definitions
 export type JobRole = 'Manager' | 'Support' | 'Finance';
@@ -30,7 +30,7 @@ export const ROLE_PERMISSIONS: Record<JobRole, string[]> = {
   Manager: [
     "Dashboard access",
     "Order",
-    "Shipments", 
+    "Shipments",
     "Manifest",
     "Received",
     "New Order",
@@ -49,7 +49,7 @@ export const ROLE_PERMISSIONS: Record<JobRole, string[]> = {
     "Order",
     "Shipments",
     "NDR List",
-    "Weight Dispute", 
+    "Weight Dispute",
     "Support",
     "Warehouse",
     "Service"
@@ -279,50 +279,50 @@ export const getAvailableJobRoles = (): JobRole[] => {
 };
 
 export const sellerUsersApi = {
-    async getUsers(filters?: UserFilters): Promise<ApiResponse<User[]>> {
-        try {
-            const response = await apiService.get<User[]>('/seller/users', {
-                params: filters
-            });
-            return response;
-        } catch (error) {
-            throw new Error('Failed to fetch users');
-        }
-    },
-
-    async getUserById(id: string): Promise<ApiResponse<User>> {
-        try {
-            const response = await apiService.get<User>(`/seller/users/${id}`);
-            return response;
-        } catch (error) {
-            throw new Error('Failed to fetch user');
-        }
-    },
-
-    async createUser(userData: Partial<User>): Promise<ApiResponse<User>> {
-        try {
-            const response = await apiService.post<User>('/seller/users', userData);
-            return response;
-        } catch (error) {
-            throw new Error('Failed to create user');
-        }
-    },
-
-    async updateUser(id: string, userData: Partial<User>): Promise<ApiResponse<User>> {
-        try {
-            const response = await apiService.put<User>(`/seller/users/${id}`, userData);
-            return response;
-        } catch (error) {
-            throw new Error('Failed to update user');
-        }
-    },
-
-    async deleteUser(id: string): Promise<ApiResponse<void>> {
-        try {
-            const response = await apiService.delete(`/seller/users/${id}`);
-            return response as ApiResponse<void>;
-        } catch (error) {
-            throw new Error('Failed to delete user');
-        }
+  async getUsers(filters?: UserFilters): Promise<ApiResponse<User[]>> {
+    try {
+      const response = await apiService.get<User[]>('/seller/users', {
+        params: filters
+      });
+      return response;
+    } catch (error) {
+      throw new Error('Failed to fetch users');
     }
-}; 
+  },
+
+  async getUserById(id: string): Promise<ApiResponse<User>> {
+    try {
+      const response = await apiService.get<User>(`/seller/users/${id}`);
+      return response;
+    } catch (error) {
+      throw new Error('Failed to fetch user');
+    }
+  },
+
+  async createUser(userData: Partial<User>): Promise<ApiResponse<User>> {
+    try {
+      const response = await apiService.post<User>('/seller/users', userData);
+      return response;
+    } catch (error) {
+      throw new Error('Failed to create user');
+    }
+  },
+
+  async updateUser(id: string, userData: Partial<User>): Promise<ApiResponse<User>> {
+    try {
+      const response = await apiService.put<User>(`/seller/users/${id}`, userData);
+      return response;
+    } catch (error) {
+      throw new Error('Failed to update user');
+    }
+  },
+
+  async deleteUser(id: string): Promise<ApiResponse<void>> {
+    try {
+      const response = await apiService.delete(`/seller/users/${id}`);
+      return response as ApiResponse<void>;
+    } catch (error) {
+      throw new Error('Failed to delete user');
+    }
+  }
+};
